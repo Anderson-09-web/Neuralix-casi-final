@@ -10,17 +10,28 @@ export interface AntiraidConfig {
   id: number;
   guildId: string;
   enabled: boolean;
+  antiJoin: boolean;
+  antiJoinThreshold: number;
+  antiJoinInterval: number;
+  antiJoinAction: string;
   antiAlt: boolean;
   antiAltMinAge: number;
   antiBot: boolean;
   antiBotWhitelist: string[];
   antiSpam: boolean;
   antiSpamLimit: number;
+  antiSpamInterval: number;
+  antiSpamAction: string;
   antiLinks: boolean;
   allowedDomains: string[];
   blockedDomains: string[];
   antiMassMention: boolean;
   massMentionLimit: number;
+  antiVpn: boolean;
+  antiVpnAction: string;
+  antiProxy: boolean;
+  antiTor: boolean;
+  vpnCheckLevel: string;
   antiWebhook: boolean;
   antiChannelCreate: boolean;
   antiChannelDelete: boolean;
@@ -33,4 +44,6 @@ export interface AntiraidConfig {
   antiBanMass: boolean;
   antiKickMass: boolean;
   antiNuke: boolean;
+  nukeThreshold: number;
+  nukeAction: string;
 }

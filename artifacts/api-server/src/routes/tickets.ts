@@ -43,4 +43,10 @@ router.post("/guilds/:guildId/tickets/:ticketId/close", requireAuth, async (req,
   res.json({ ok: true });
 });
 
+router.post("/guilds/:guildId/tickets/:ticketId/reopen", requireAuth, async (req, res) => {
+  const ticketId = Number(req.params.ticketId as string);
+  await db.update(ticketsTable).set({ status: "open", closedAt: null }).where(eq(ticketsTable.id, ticketId));
+  res.json({ ok: true });
+});
+
 export default router;

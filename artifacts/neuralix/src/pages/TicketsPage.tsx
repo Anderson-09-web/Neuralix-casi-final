@@ -1,7 +1,7 @@
 import { useParams } from "wouter";
 import { useState, useEffect } from "react";
-import { Ticket, CheckCircle, Clock, X, Layout as PanelIcon, Settings, List, Star } from "lucide-react";
-import { useGetTicketConfig, useUpdateTicketConfig, useGetTickets, useCloseTicket, getGetTicketConfigQueryKey, getGetTicketsQueryKey } from "@workspace/api-client-react";
+import { Ticket, CheckCircle, Clock, X, RotateCcw, Layout as PanelIcon, Settings, List, Star } from "lucide-react";
+import { useGetTicketConfig, useUpdateTicketConfig, useGetTickets, useCloseTicket, useReopenTicket, getGetTicketConfigQueryKey, getGetTicketsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,7 @@ export default function TicketsPage() {
   const { data: tickets } = useGetTickets(guildId, { query: { queryKey: getGetTicketsQueryKey(guildId), enabled: !!guildId && tab === "list" } });
   const update = useUpdateTicketConfig();
   const closeTicket = useCloseTicket();
+  const reopenTicket = useReopenTicket();
   const [cfg, setCfg] = useState<any>(null);
 
   useEffect(() => { if (config) setCfg(config); }, [config]);
@@ -47,7 +48,15 @@ export default function TicketsPage() {
 
   const handleClose = (ticketId: number) => {
     closeTicket.mutate({ guildId, ticketId }, {
-      onSuccess: () => { toast({ title: "Ticket cerrado" }); qc.invalidateQueries({ queryKey: getGetTicketsQueryKey(guildId) }); }
+      onSuccess: () => { toast({ title: "Ticket cerrado" }); qc.invalidateQueries({ queryKey: getGetTicketsQueryKey(guildId) }); },
+      onError: () => toast({ title: "Error al cerrar ticket", variant: "destructive" }),
+    });
+  };
+
+  const handleReopen = (ticketId: number) => {
+    reopenTicket.mutate({ guildId, ticketId }, {
+      onSuccess: () => { toast({ title: "Ticket reabierto" }); qc.invalidateQueries({ queryKey: getGetTicketsQueryKey(guildId) }); },
+      onError: () => toast({ title: "Error al reabrir ticket", variant: "destructive" }),
     });
   };
 
@@ -263,9 +272,13 @@ export default function TicketsPage() {
                       <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", t.status === "open" ? "bg-green-500/15 text-green-400" : "bg-secondary text-muted-foreground")}>
                         {t.status === "open" ? "Abierto" : "Cerrado"}
                       </span>
-                      {t.status === "open" && (
+                      {t.status === "open" ? (
                         <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handleClose(t.id)}>
                           <X className="w-3 h-3 mr-1" /> Cerrar
+                        </Button>
+                      ) : (
+                        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handleReopen(t.id)}>
+                          <RotateCcw className="w-3 h-3 mr-1" /> Reabrir
                         </Button>
                       )}
                     </div>

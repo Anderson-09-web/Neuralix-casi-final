@@ -1929,6 +1929,78 @@ export const useCloseTicket = <TError = ErrorType<unknown>,
       return useMutation(getCloseTicketMutationOptions(options));
     }
 
+export const getReopenTicketUrl = (guildId: string,
+    ticketId: number,) => {
+
+
+
+
+  return `/api/guilds/${guildId}/tickets/${ticketId}/reopen`
+}
+
+/**
+ * @summary Reopen a closed ticket
+ */
+export const reopenTicket = async (guildId: string,
+    ticketId: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getReopenTicketUrl(guildId,ticketId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getReopenTicketMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reopenTicket>>, TError,{guildId: string;ticketId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reopenTicket>>, TError,{guildId: string;ticketId: number}, TContext> => {
+
+const mutationKey = ['reopenTicket'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reopenTicket>>, {guildId: string;ticketId: number}> = (props) => {
+          const {guildId,ticketId} = props ?? {};
+
+          return  reopenTicket(guildId,ticketId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReopenTicketMutationResult = NonNullable<Awaited<ReturnType<typeof reopenTicket>>>
+
+    export type ReopenTicketMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Reopen a closed ticket
+ */
+export const useReopenTicket = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reopenTicket>>, TError,{guildId: string;ticketId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reopenTicket>>,
+        TError,
+        {guildId: string;ticketId: number},
+        TContext
+      > => {
+      return useMutation(getReopenTicketMutationOptions(options));
+    }
+
 export const getGetAntiraidConfigUrl = (guildId: string,) => {
 
 

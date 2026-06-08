@@ -484,6 +484,26 @@ paths:
         "200":
           description: Closed
 
+  /guilds/{guildId}/tickets/{ticketId}/reopen:
+    post:
+      operationId: reopenTicket
+      tags: [tickets]
+      summary: Reopen a closed ticket
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Reopened
+
   # ANTIRAID
   /guilds/{guildId}/antiraid:
     get:
@@ -1333,6 +1353,14 @@ components:
           type: string
         enabled:
           type: boolean
+        antiJoin:
+          type: boolean
+        antiJoinThreshold:
+          type: integer
+        antiJoinInterval:
+          type: integer
+        antiJoinAction:
+          type: string
         antiAlt:
           type: boolean
         antiAltMinAge:
@@ -1347,6 +1375,10 @@ components:
           type: boolean
         antiSpamLimit:
           type: integer
+        antiSpamInterval:
+          type: integer
+        antiSpamAction:
+          type: string
         antiLinks:
           type: boolean
         allowedDomains:
@@ -1361,6 +1393,16 @@ components:
           type: boolean
         massMentionLimit:
           type: integer
+        antiVpn:
+          type: boolean
+        antiVpnAction:
+          type: string
+        antiProxy:
+          type: boolean
+        antiTor:
+          type: boolean
+        vpnCheckLevel:
+          type: string
         antiWebhook:
           type: boolean
         antiChannelCreate:
@@ -1385,13 +1427,25 @@ components:
           type: boolean
         antiNuke:
           type: boolean
-      required: [id, guildId, enabled, antiAlt, antiAltMinAge, antiBot, antiBotWhitelist, antiSpam, antiSpamLimit, antiLinks, allowedDomains, blockedDomains, antiMassMention, massMentionLimit, antiWebhook, antiChannelCreate, antiChannelDelete, antiChannelUpdate, antiRoleCreate, antiRoleDelete, antiRoleUpdate, antiEmojiCreate, antiEmojiDelete, antiBanMass, antiKickMass, antiNuke]
+        nukeThreshold:
+          type: integer
+        nukeAction:
+          type: string
+      required: [id, guildId, enabled, antiJoin, antiJoinThreshold, antiJoinInterval, antiJoinAction, antiAlt, antiAltMinAge, antiBot, antiBotWhitelist, antiSpam, antiSpamLimit, antiSpamInterval, antiSpamAction, antiLinks, allowedDomains, blockedDomains, antiMassMention, massMentionLimit, antiVpn, antiVpnAction, antiProxy, antiTor, vpnCheckLevel, antiWebhook, antiChannelCreate, antiChannelDelete, antiChannelUpdate, antiRoleCreate, antiRoleDelete, antiRoleUpdate, antiEmojiCreate, antiEmojiDelete, antiBanMass, antiKickMass, antiNuke, nukeThreshold, nukeAction]
 
     AntiraidConfigInput:
       type: object
       properties:
         enabled:
           type: boolean
+        antiJoin:
+          type: boolean
+        antiJoinThreshold:
+          type: integer
+        antiJoinInterval:
+          type: integer
+        antiJoinAction:
+          type: string
         antiAlt:
           type: boolean
         antiAltMinAge:
@@ -1406,6 +1460,10 @@ components:
           type: boolean
         antiSpamLimit:
           type: integer
+        antiSpamInterval:
+          type: integer
+        antiSpamAction:
+          type: string
         antiLinks:
           type: boolean
         allowedDomains:
@@ -1420,6 +1478,16 @@ components:
           type: boolean
         massMentionLimit:
           type: integer
+        antiVpn:
+          type: boolean
+        antiVpnAction:
+          type: string
+        antiProxy:
+          type: boolean
+        antiTor:
+          type: boolean
+        vpnCheckLevel:
+          type: string
         antiWebhook:
           type: boolean
         antiChannelCreate:
@@ -1444,6 +1512,10 @@ components:
           type: boolean
         antiNuke:
           type: boolean
+        nukeThreshold:
+          type: integer
+        nukeAction:
+          type: string
 
     AntiraidStats:
       type: object

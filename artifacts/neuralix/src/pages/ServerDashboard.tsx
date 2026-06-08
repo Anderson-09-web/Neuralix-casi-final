@@ -1,5 +1,4 @@
 import { useParams, useLocation } from "wouter";
-import { motion } from "framer-motion";
 import { Users, Ticket, Shield, ShieldAlert, Database, FileText, ExternalLink, AlertTriangle, Bell, CheckCircle } from "lucide-react";
 import { useGetGuild, useGetGuildStats, useGetGuildBotStatus, useGetAnnouncements, getGetGuildQueryKey, getGetGuildStatsQueryKey, getGetGuildBotStatusQueryKey, getGetAnnouncementsQueryKey } from "@workspace/api-client-react";
 import Layout from "@/components/Layout";
@@ -28,8 +27,7 @@ export default function ServerDashboard() {
     <Layout guildId={guildId} guildName={guild?.name} guildIcon={guild?.icon}>
       {/* Bot not present banner */}
       {botStatus && !botStatus.present && (
-        <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
-          className="mb-6 p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-between gap-4">
+        <div className="mb-6 p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-yellow-400 flex-shrink-0" />
             <div>
@@ -43,7 +41,7 @@ export default function ServerDashboard() {
               Agregar Bot
             </Button>
           </a>
-        </motion.div>
+        </div>
       )}
 
       {/* Header */}

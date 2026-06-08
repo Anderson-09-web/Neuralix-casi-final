@@ -448,6 +448,15 @@ export const CloseTicketParams = zod.object({
 
 
 /**
+ * @summary Reopen a closed ticket
+ */
+export const ReopenTicketParams = zod.object({
+  "guildId": zod.coerce.string(),
+  "ticketId": zod.coerce.number()
+})
+
+
+/**
  * @summary Get AntiRaid configuration
  */
 export const GetAntiraidConfigParams = zod.object({
@@ -458,17 +467,28 @@ export const GetAntiraidConfigResponse = zod.object({
   "id": zod.number(),
   "guildId": zod.string(),
   "enabled": zod.boolean(),
+  "antiJoin": zod.boolean(),
+  "antiJoinThreshold": zod.number(),
+  "antiJoinInterval": zod.number(),
+  "antiJoinAction": zod.string(),
   "antiAlt": zod.boolean(),
   "antiAltMinAge": zod.number(),
   "antiBot": zod.boolean(),
   "antiBotWhitelist": zod.array(zod.string()),
   "antiSpam": zod.boolean(),
   "antiSpamLimit": zod.number(),
+  "antiSpamInterval": zod.number(),
+  "antiSpamAction": zod.string(),
   "antiLinks": zod.boolean(),
   "allowedDomains": zod.array(zod.string()),
   "blockedDomains": zod.array(zod.string()),
   "antiMassMention": zod.boolean(),
   "massMentionLimit": zod.number(),
+  "antiVpn": zod.boolean(),
+  "antiVpnAction": zod.string(),
+  "antiProxy": zod.boolean(),
+  "antiTor": zod.boolean(),
+  "vpnCheckLevel": zod.string(),
   "antiWebhook": zod.boolean(),
   "antiChannelCreate": zod.boolean(),
   "antiChannelDelete": zod.boolean(),
@@ -480,7 +500,9 @@ export const GetAntiraidConfigResponse = zod.object({
   "antiEmojiDelete": zod.boolean(),
   "antiBanMass": zod.boolean(),
   "antiKickMass": zod.boolean(),
-  "antiNuke": zod.boolean()
+  "antiNuke": zod.boolean(),
+  "nukeThreshold": zod.number(),
+  "nukeAction": zod.string()
 })
 
 
@@ -493,17 +515,28 @@ export const UpdateAntiraidConfigParams = zod.object({
 
 export const UpdateAntiraidConfigBody = zod.object({
   "enabled": zod.boolean().optional(),
+  "antiJoin": zod.boolean().optional(),
+  "antiJoinThreshold": zod.number().optional(),
+  "antiJoinInterval": zod.number().optional(),
+  "antiJoinAction": zod.string().optional(),
   "antiAlt": zod.boolean().optional(),
   "antiAltMinAge": zod.number().optional(),
   "antiBot": zod.boolean().optional(),
   "antiBotWhitelist": zod.array(zod.string()).optional(),
   "antiSpam": zod.boolean().optional(),
   "antiSpamLimit": zod.number().optional(),
+  "antiSpamInterval": zod.number().optional(),
+  "antiSpamAction": zod.string().optional(),
   "antiLinks": zod.boolean().optional(),
   "allowedDomains": zod.array(zod.string()).optional(),
   "blockedDomains": zod.array(zod.string()).optional(),
   "antiMassMention": zod.boolean().optional(),
   "massMentionLimit": zod.number().optional(),
+  "antiVpn": zod.boolean().optional(),
+  "antiVpnAction": zod.string().optional(),
+  "antiProxy": zod.boolean().optional(),
+  "antiTor": zod.boolean().optional(),
+  "vpnCheckLevel": zod.string().optional(),
   "antiWebhook": zod.boolean().optional(),
   "antiChannelCreate": zod.boolean().optional(),
   "antiChannelDelete": zod.boolean().optional(),
@@ -515,24 +548,37 @@ export const UpdateAntiraidConfigBody = zod.object({
   "antiEmojiDelete": zod.boolean().optional(),
   "antiBanMass": zod.boolean().optional(),
   "antiKickMass": zod.boolean().optional(),
-  "antiNuke": zod.boolean().optional()
+  "antiNuke": zod.boolean().optional(),
+  "nukeThreshold": zod.number().optional(),
+  "nukeAction": zod.string().optional()
 })
 
 export const UpdateAntiraidConfigResponse = zod.object({
   "id": zod.number(),
   "guildId": zod.string(),
   "enabled": zod.boolean(),
+  "antiJoin": zod.boolean(),
+  "antiJoinThreshold": zod.number(),
+  "antiJoinInterval": zod.number(),
+  "antiJoinAction": zod.string(),
   "antiAlt": zod.boolean(),
   "antiAltMinAge": zod.number(),
   "antiBot": zod.boolean(),
   "antiBotWhitelist": zod.array(zod.string()),
   "antiSpam": zod.boolean(),
   "antiSpamLimit": zod.number(),
+  "antiSpamInterval": zod.number(),
+  "antiSpamAction": zod.string(),
   "antiLinks": zod.boolean(),
   "allowedDomains": zod.array(zod.string()),
   "blockedDomains": zod.array(zod.string()),
   "antiMassMention": zod.boolean(),
   "massMentionLimit": zod.number(),
+  "antiVpn": zod.boolean(),
+  "antiVpnAction": zod.string(),
+  "antiProxy": zod.boolean(),
+  "antiTor": zod.boolean(),
+  "vpnCheckLevel": zod.string(),
   "antiWebhook": zod.boolean(),
   "antiChannelCreate": zod.boolean(),
   "antiChannelDelete": zod.boolean(),
@@ -544,7 +590,9 @@ export const UpdateAntiraidConfigResponse = zod.object({
   "antiEmojiDelete": zod.boolean(),
   "antiBanMass": zod.boolean(),
   "antiKickMass": zod.boolean(),
-  "antiNuke": zod.boolean()
+  "antiNuke": zod.boolean(),
+  "nukeThreshold": zod.number(),
+  "nukeAction": zod.string()
 })
 
 

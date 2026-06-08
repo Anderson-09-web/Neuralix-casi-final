@@ -111,43 +111,24 @@ export default function VerificationPage() {
           </div>
         </div>
 
-        {/* Portal link */}
-        <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 space-y-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <h3 className="font-semibold text-sm text-primary">Portal de Verificacion</h3>
-              <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full font-medium">Compartir este enlace</span>
-            </div>
-            <p className="text-xs text-muted-foreground mb-3">Este es el enlace que debes compartir con tus miembros para que se verifiquen. No compartas la URL del panel.</p>
-            <div className="flex gap-2">
-              <Input readOnly value={cfg.customVerifyUrl || `${window.location.origin}/verify?guild=${guildId}`} className="text-xs font-mono bg-background" />
-              <Button size="sm" variant="outline" onClick={() => {
-                const link = cfg.customVerifyUrl || `${window.location.origin}/verify?guild=${guildId}`;
-                navigator.clipboard.writeText(link);
-                toast({ title: "Enlace copiado", description: "Comparte este enlace con tus miembros, no la URL del panel." });
-              }}>Copiar</Button>
-            </div>
-            <p className="text-xs text-amber-400/80 mt-2 flex items-center gap-1">
-              No compartas la URL del navegador (panel). Comparte solo el enlace de arriba.
-            </p>
+        {/* Portal link — read-only. Manage custom URL from Admin Panel */}
+        <div className="bg-primary/5 border border-primary/20 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="font-semibold text-sm text-primary">Portal de Verificacion</h3>
+            <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full font-medium">Compartir este enlace</span>
           </div>
-          <div>
-            <Label className="text-sm mb-1.5 block">URL personalizada del portal <span className="text-xs text-primary ml-1">(opcional — solo si cambias de dominio)</span></Label>
-            <p className="text-xs text-muted-foreground mb-2">Cambia esto SOLO si tu dominio cambia. Mientras no cambies, deja este campo vacio.</p>
-            <div className="flex gap-2">
-              <Input
-                placeholder={`${window.location.origin}/verify?guild=${guildId}`}
-                value={cfg.customVerifyUrl || ""}
-                onChange={(e) => set("customVerifyUrl")(e.target.value)}
-                className="text-xs font-mono"
-              />
-              {cfg.customVerifyUrl && (
-                <Button size="sm" variant="ghost" onClick={() => set("customVerifyUrl")("")} className="text-muted-foreground hover:text-destructive">
-                  Resetear
-                </Button>
-              )}
-            </div>
+          <p className="text-xs text-muted-foreground mb-3">Comparte este enlace con tus miembros para que se verifiquen. No compartas la URL del panel.</p>
+          <div className="flex gap-2">
+            <Input readOnly value={cfg.customVerifyUrl || `${window.location.origin}/verify?guild=${guildId}`} className="text-xs font-mono bg-background" />
+            <Button size="sm" variant="outline" onClick={() => {
+              const link = cfg.customVerifyUrl || `${window.location.origin}/verify?guild=${guildId}`;
+              navigator.clipboard.writeText(link);
+              toast({ title: "Enlace copiado", description: "Comparte este enlace con tus miembros, no la URL del panel." });
+            }}>Copiar</Button>
           </div>
+          <p className="text-xs text-amber-400/80 mt-2">
+            Para cambiar la URL personalizada del portal, usa el Panel de Administracion.
+          </p>
         </div>
       </div>
     </Layout>

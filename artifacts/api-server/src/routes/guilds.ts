@@ -1,6 +1,6 @@
 import { Router } from "express";
 import axios from "axios";
-import { db, guildConfigsTable, antiraidStatsTable, ticketsTable, verificationConfigsTable, logEntriesTable, backupsTable } from "@workspace/db";
+import { db, guildConfigsTable, antiraidStatsTable, ticketsTable, verifiedUsersTable, logEntriesTable, backupsTable } from "@workspace/db";
 import { eq, count } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 
@@ -72,11 +72,16 @@ router.get("/guilds", requireAuth, async (req, res) => {
     for (const g of adminGuilds) {
       const present = botPresenceMap.get(g.id) ?? false;
       const memberCount = memberCountMap.get(g.id) ?? 0;
-      ensureGuildConfig(g.id, g.name, g.icon).catch(() => {});
       if (botToken) {
-        db.update(guildConfigsTable)
-          .set({ botPresent: present, ...(memberCount > 0 ? { memberCount } : {}) })
-          .where(eq(guildConfigsTable.guildId, g.id)).catch(() => {});
+        ensureGuildConfig(g.id, g.name, g.icon)
+          .then(() =>
+            db.update(guildConfigsTable)
+              .set({ botPresent: present, ...(memberCount > 0 ? { memberCount } : {}) })
+              .where(eq(guildConfigsTable.guildId, g.id))
+          )
+          .catch(() => {});
+      } else {
+        ensureGuildConfig(g.id, g.name, g.icon).catch(() => {});
       }
     }
 
@@ -112,19 +117,40 @@ router.get("/guilds/:guildId", requireAuth, async (req, res) => {
 router.get("/guilds/:guildId/stats", requireAuth, async (req, res) => {
   const guildId = req.params.guildId as string;
   try {
-    const [cfg] = await db.select().from(guildConfigsTable).where(eq(guildConfigsTable.guildId, guildId));
-    const [stats] = await db.select().from(antiraidStatsTable).where(eq(antiraidStatsTable.guildId, guildId));
-    const [openTickets] = await db.select({ count: count() }).from(ticketsTable).where(eq(ticketsTable.guildId, guildId));
-    const [backupsCount] = await db.select({ count: count() }).from(backupsTable).where(eq(backupsTable.guildId, guildId));
-    const [recentLogs] = await db.select({ count: count() }).from(logEntriesTable).where(eq(logEntriesTable.guildId, guildId));
+    const botToken = process.env.DISCORD_BOT_TOKEN;
+
+    const [cfg, stats, openTickets, closedTickets, verifiedMembers, backupsCount, recentLogs] = await Promise.all([
+      db.select().from(guildConfigsTable).where(eq(guildConfigsTable.guildId, guildId)).then((r) => r[0]),
+      db.select().from(antiraidStatsTable).where(eq(antiraidStatsTable.guildId, guildId)).then((r) => r[0]),
+      db.select({ count: count() }).from(ticketsTable).where(eq(ticketsTable.guildId, guildId)).then((r) => r[0]),
+      db.select({ count: count() }).from(ticketsTable).where(eq(ticketsTable.guildId, guildId)).then((r) => r[0]),
+      db.select({ count: count() }).from(verifiedUsersTable).where(eq(verifiedUsersTable.guildId, guildId)).then((r) => r[0]),
+      db.select({ count: count() }).from(backupsTable).where(eq(backupsTable.guildId, guildId)).then((r) => r[0]),
+      db.select({ count: count() }).from(logEntriesTable).where(eq(logEntriesTable.guildId, guildId)).then((r) => r[0]),
+    ]);
+
+    let memberCount = cfg?.memberCount || 0;
+
+    if (botToken) {
+      try {
+        const r = await axios.get(`${DISCORD_API}/guilds/${guildId}?with_counts=true`, {
+          headers: { Authorization: `Bot ${botToken}` },
+          validateStatus: () => true,
+        });
+        if (r.status === 200) {
+          memberCount = r.data.approximate_member_count ?? r.data.member_count ?? memberCount;
+          await db.update(guildConfigsTable).set({ memberCount, botPresent: true }).where(eq(guildConfigsTable.guildId, guildId)).catch(() => {});
+        }
+      } catch { /* use cached value */ }
+    }
 
     res.json({
       guildId,
-      memberCount: cfg?.memberCount || 0,
-      onlineCount: Math.floor((cfg?.memberCount || 0) * 0.3),
+      memberCount,
+      onlineCount: Math.floor(memberCount * 0.3),
       openTickets: openTickets?.count || 0,
-      closedTickets: 0,
-      verifiedMembers: 0,
+      closedTickets: closedTickets?.count || 0,
+      verifiedMembers: verifiedMembers?.count || 0,
       antiraidDetections: stats?.totalDetections || 0,
       recentLogs: recentLogs?.count || 0,
       backupsCount: backupsCount?.count || 0,
