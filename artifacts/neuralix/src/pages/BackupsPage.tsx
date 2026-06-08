@@ -1,7 +1,7 @@
 import { useParams } from "wouter";
 import { useState } from "react";
 import { Database, Plus, RotateCcw, Clock, Calendar, Send, Star, Shield, Zap, Download, AlertTriangle } from "lucide-react";
-import { useGetBackups, useCreateBackup, useRestoreBackup, useGetGuildPremium, getGetBackupsQueryKey } from "@workspace/api-client-react";
+import { useGetBackups, useCreateBackup, useRestoreBackup, useGetGuildPremium, getGetBackupsQueryKey, getGetGuildPremiumQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
@@ -33,7 +33,7 @@ export default function BackupsPage() {
   const [transferGuild, setTransferGuild] = useState("");
 
   const { data: backups, isLoading } = useGetBackups(guildId, { query: { queryKey: getGetBackupsQueryKey(guildId), enabled: !!guildId } });
-  const { data: premium } = useGetGuildPremium(guildId, { query: { enabled: !!guildId } });
+  const { data: premium } = useGetGuildPremium(guildId, { query: { enabled: !!guildId, queryKey: getGetGuildPremiumQueryKey(guildId) } });
   const createBackup = useCreateBackup();
   const restoreBackup = useRestoreBackup();
 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Bot, X, Send, Sparkles, AlertTriangle, CheckCircle, Info, ExternalLink, Crown, Zap, Settings } from "lucide-react";
-import { useAnalyzeGuild, useAiChat, useGetGuildPremium } from "@workspace/api-client-react";
+import { useAnalyzeGuild, useAiChat, useGetGuildPremium, getGetGuildPremiumQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -25,7 +25,7 @@ export default function AiAssistant({ guildId }: Props) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"chat" | "analysis">("chat");
 
-  const { data: premium, isLoading: premiumLoading } = useGetGuildPremium(guildId, { query: { enabled: !!guildId } });
+  const { data: premium, isLoading: premiumLoading } = useGetGuildPremium(guildId, { query: { enabled: !!guildId, queryKey: getGetGuildPremiumQueryKey(guildId) } });
   const plan: string | null = (premium as any)?.plan || null;
   const isFree = !plan;
   const isUltra = plan === "ultra";
@@ -51,7 +51,7 @@ export default function AiAssistant({ guildId }: Props) {
     const userMsg = input;
     setMessages((m) => [...m, { role: "user", content: userMsg }]);
     setInput("");
-    aiChat.mutate({ guildId, data: { message: userMsg, plan: plan || "free" } }, {
+    aiChat.mutate({ guildId, data: { message: userMsg, context: plan ? `plan:${plan}` : "plan:free" } }, {
       onSuccess: (res: any) => {
         setMessages((m) => [...m, { role: "ai", content: res.response, action: res.action }]);
       },
@@ -75,7 +75,7 @@ export default function AiAssistant({ guildId }: Props) {
     const msg = msgs[type];
     if (!msg) return;
     setMessages((m) => [...m, { role: "user", content: msg }]);
-    aiChat.mutate({ guildId, data: { message: msg, plan: "ultra" } }, {
+    aiChat.mutate({ guildId, data: { message: msg, context: "plan:ultra" } }, {
       onSuccess: (res: any) => {
         setMessages((m) => [...m, { role: "ai", content: res.response, action: res.action }]);
       },

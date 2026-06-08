@@ -1,6 +1,5 @@
 import { Link, useLocation } from "wouter";
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import {
   Shield, LayoutDashboard, Users, Ticket, ShieldAlert, FileText,
   Star, Database, Settings, ChevronLeft, ChevronRight, Sun, Moon,
@@ -49,14 +48,12 @@ export default function Layout({ children, guildId, guildName, guildIcon }: Layo
 
   const avatarUrl = user?.avatar ? `https://cdn.discordapp.com/avatars/${user.discordId}/${user.avatar}.png` : undefined;
 
-  // Auto-fetch del nombre del servidor para que TODAS las páginas del panel muestren el nombre
   const { data: guildData } = useGetGuild(guildId!, {
     query: { queryKey: getGetGuildQueryKey(guildId || ""), enabled: !!guildId }
   });
   const resolvedGuildName = guildName || guildData?.name;
   const resolvedGuildIcon = guildIcon ?? guildData?.icon;
 
-  // Guardar el ultimo servidor visitado para recuperarlo al volver del panel admin
   if (guildId) {
     try { sessionStorage.setItem("neuralix_last_guild", guildId); } catch {}
   }
@@ -64,7 +61,6 @@ export default function Layout({ children, guildId, guildName, guildIcon }: Layo
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
-      {/* Logo */}
       <div className={cn("flex items-center gap-3 px-4 py-5 border-b border-sidebar-border", collapsed && "justify-center px-2")}>
         <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center flex-shrink-0 glow-primary">
           <Bot className="w-5 h-5 text-primary-foreground" />
@@ -77,7 +73,6 @@ export default function Layout({ children, guildId, guildName, guildIcon }: Layo
         )}
       </div>
 
-      {/* Guild info */}
       {guildId && (
         <div className={cn("px-4 py-3 border-b border-sidebar-border", collapsed && "px-2 flex justify-center")}>
           {!collapsed ? (
@@ -99,7 +94,6 @@ export default function Layout({ children, guildId, guildName, guildIcon }: Layo
         </div>
       )}
 
-      {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
         {guildId ? navItems(guildId).map(({ href, icon: Icon, label }) => {
           const active = location === href;
@@ -127,7 +121,6 @@ export default function Layout({ children, guildId, guildName, guildIcon }: Layo
           </div>
         )}
 
-        {/* Back to servers list */}
         {guildId && (
           <Link
             href="/servers"
@@ -141,7 +134,6 @@ export default function Layout({ children, guildId, guildName, guildIcon }: Layo
           </Link>
         )}
 
-        {/* Back to server button when in Admin without guild context */}
         {!guildId && lastGuildId && (
           <Link
             href={`/servers/${lastGuildId}`}
@@ -155,7 +147,6 @@ export default function Layout({ children, guildId, guildName, guildIcon }: Layo
           </Link>
         )}
 
-        {/* Admin link */}
         {(user?.isOwner || (user as any)?.isSecondaryAdmin) && (
           <Link
             href="/admin"
@@ -171,14 +162,13 @@ export default function Layout({ children, guildId, guildName, guildIcon }: Layo
         )}
       </nav>
 
-      {/* User */}
       <div className={cn("px-2 py-3 border-t border-sidebar-border space-y-1", collapsed && "px-1")}>
         <button
           onClick={handleLogout}
           aria-label="Cerrar sesion"
           className={cn("flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-destructive", collapsed && "justify-center px-2")}
         >
-          <LogOut className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+          <LogOut className="w-4 h-4 flex-shrink-0" />
           {!collapsed && <span>Cerrar sesion</span>}
         </button>
         {!collapsed && user && (
@@ -199,56 +189,47 @@ export default function Layout({ children, guildId, guildName, guildIcon }: Layo
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
-      {/* Desktop sidebar */}
-      <motion.aside
-        animate={{ width: collapsed ? 56 : 220 }}
-        transition={{ duration: 0.2 }}
-        className="hidden md:flex flex-col bg-sidebar border-r border-sidebar-border relative flex-shrink-0"
+      {/* Desktop sidebar — CSS transition only, no framer-motion */}
+      <aside
+        style={{ width: collapsed ? 56 : 220, transition: "width 0.2s ease" }}
+        className="hidden md:flex flex-col bg-sidebar border-r border-sidebar-border relative flex-shrink-0 overflow-hidden"
       >
         <SidebarContent />
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="absolute -right-3 top-16 w-6 h-6 rounded-full bg-card border border-border flex items-center justify-center text-muted-foreground hover:text-foreground shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="absolute -right-3 top-16 w-6 h-6 rounded-full bg-card border border-border flex items-center justify-center text-muted-foreground hover:text-foreground shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary z-10"
           data-testid="toggle-sidebar"
           aria-label={collapsed ? "Expandir barra lateral" : "Colapsar barra lateral"}
           aria-expanded={!collapsed}
         >
           {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
         </button>
-      </motion.aside>
+      </aside>
 
-      {/* Mobile sidebar */}
-      <AnimatePresence>
-        {mobileOpen && (
-          <motion.div
-            key="mobile-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 z-40 md:hidden"
-            onClick={() => setMobileOpen(false)}
-            aria-hidden="true"
-          />
+      {/* Mobile overlay — CSS only */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 z-40 md:hidden"
+          onClick={() => setMobileOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Mobile sidebar — always mounted, CSS translate for animation */}
+      <aside
+        role="navigation"
+        aria-label="Menu de navegacion"
+        className={cn(
+          "fixed left-0 top-0 bottom-0 w-[220px] bg-sidebar border-r border-sidebar-border z-50 md:hidden flex flex-col",
+          "transition-transform duration-200 ease-in-out",
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
-        {mobileOpen && (
-          <motion.aside
-            key="mobile-sidebar"
-            role="navigation"
-            aria-label="Menu de navegacion"
-            initial={{ x: -220 }}
-            animate={{ x: 0 }}
-            exit={{ x: -220 }}
-            transition={{ type: "spring", damping: 25 }}
-            className="fixed left-0 top-0 bottom-0 w-[220px] bg-sidebar border-r border-sidebar-border z-50 md:hidden flex flex-col"
-          >
-            <SidebarContent />
-          </motion.aside>
-        )}
-      </AnimatePresence>
+      >
+        <SidebarContent />
+      </aside>
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Topbar */}
         <header className="h-14 border-b border-border flex items-center justify-between px-4 bg-card/50 backdrop-blur-sm flex-shrink-0">
           <div className="flex items-center gap-3">
             <button
@@ -257,7 +238,7 @@ export default function Layout({ children, guildId, guildName, guildIcon }: Layo
               aria-label="Abrir menu de navegacion"
               aria-expanded={mobileOpen}
             >
-              <Menu className="w-5 h-5" aria-hidden="true" />
+              <Menu className="w-5 h-5" />
             </button>
             <nav className="hidden md:flex items-center gap-1 text-sm text-muted-foreground">
               <Link href="/servers" className="hover:text-foreground transition-colors">Servidores</Link>
@@ -277,7 +258,7 @@ export default function Layout({ children, guildId, guildName, guildIcon }: Layo
               data-testid="toggle-theme"
               aria-label={theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
             >
-              {theme === "dark" ? <Sun className="w-4 h-4" aria-hidden="true" /> : <Moon className="w-4 h-4" aria-hidden="true" />}
+              {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
             {user && (
               <Avatar className="w-8 h-8">
@@ -288,13 +269,11 @@ export default function Layout({ children, guildId, guildName, guildIcon }: Layo
           </div>
         </header>
 
-        {/* Content */}
         <main className="flex-1 overflow-y-auto p-3 md:p-6">
           {children}
         </main>
       </div>
 
-      {/* AI Assistant (only in guild pages) */}
       {guildId && <AiAssistant guildId={guildId} />}
     </div>
   );

@@ -132,6 +132,7 @@ router.get("/guilds", requireAuth, async (req, res) => {
 });
 
 router.get("/guilds/:guildId", requireAuth, async (req, res) => {
+  res.set("Cache-Control", "no-store");
   const guildId = req.params.guildId as string;
   const botToken = process.env.DISCORD_BOT_TOKEN;
 
@@ -143,34 +144,36 @@ router.get("/guilds/:guildId", requireAuth, async (req, res) => {
 
   let memberCount = cfg?.memberCount || 0;
   let botPresent = cfg?.botPresent || false;
+  let guildName = cfg?.guildName || null;
+  let guildIcon = cfg?.guildIcon || null;
 
   if (botToken) {
     try {
       const r = await axios.get(`${DISCORD_API}/guilds/${guildId}?with_counts=true`, {
-        headers: { Authorization: `Bot ${botToken}` },
+        headers: { Authorization: `Bot ${botToken.trim()}` },
         validateStatus: () => true,
       });
       if (r.status === 200) {
         botPresent = true;
         memberCount = r.data.approximate_member_count ?? r.data.member_count ?? memberCount;
-        db.update(guildConfigsTable)
-          .set({ botPresent: true, memberCount, guildName: r.data.name || cfg?.guildName, guildIcon: r.data.icon || cfg?.guildIcon })
-          .where(eq(guildConfigsTable.guildId, guildId))
+        guildName = r.data.name || guildName;
+        guildIcon = r.data.icon || guildIcon;
+        ensureGuildConfig(guildId, guildName || guildId, guildIcon)
+          .then(() => db.update(guildConfigsTable)
+            .set({ botPresent: true, memberCount, guildName: guildName || undefined, guildIcon })
+            .where(eq(guildConfigsTable.guildId, guildId)))
           .catch(() => {});
       } else {
         botPresent = false;
-        db.update(guildConfigsTable)
-          .set({ botPresent: false })
-          .where(eq(guildConfigsTable.guildId, guildId))
-          .catch(() => {});
+        db.update(guildConfigsTable).set({ botPresent: false }).where(eq(guildConfigsTable.guildId, guildId)).catch(() => {});
       }
     } catch { /* use cached value */ }
   }
 
   res.json({
     id: guildId,
-    name: cfg?.guildName || "Servidor",
-    icon: cfg?.guildIcon || null,
+    name: guildName || "Servidor",
+    icon: guildIcon,
     memberCount,
     onlineMemberCount: Math.floor(memberCount * 0.3),
     botPresent,
@@ -183,6 +186,7 @@ router.get("/guilds/:guildId", requireAuth, async (req, res) => {
 });
 
 router.get("/guilds/:guildId/stats", requireAuth, async (req, res) => {
+  res.set("Cache-Control", "no-store");
   const guildId = req.params.guildId as string;
   try {
     const botToken = process.env.DISCORD_BOT_TOKEN;

@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { Link, useLocation } from "wouter";
 import {
   Lock, Eye, EyeOff, AlertTriangle, Search, ChevronRight, ChevronDown,
@@ -1144,7 +1143,7 @@ function PasswordGate({ onUnlock }: { onUnlock: () => void }) {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md">
+      <div className="w-full max-w-md animate-in fade-in zoom-in-95 duration-200">
         <div className="bg-card border border-card-border rounded-2xl p-8 shadow-2xl">
           <div className="flex flex-col items-center mb-8">
             <div className="w-16 h-16 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center mb-4">
@@ -1172,23 +1171,20 @@ function PasswordGate({ onUnlock }: { onUnlock: () => void }) {
               </button>
             </div>
 
-            <AnimatePresence>
-              {error && (
-                <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                  className="flex items-start gap-3 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
-                  <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-medium">{error}</p>
-                    {isLocked && timeLeft > 0 && (
-                      <p className="text-xs mt-1 text-destructive/70 flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        Tiempo restante: {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, "0")}
-                      </p>
-                    )}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {error && (
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm animate-in fade-in slide-in-from-top-1 duration-150">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium">{error}</p>
+                  {isLocked && timeLeft > 0 && (
+                    <p className="text-xs mt-1 text-destructive/70 flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      Tiempo restante: {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, "0")}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
 
             {!isLocked && attempts.count > 0 && attempts.count < MAX_ATTEMPTS && (
               <div className="flex gap-1">
@@ -1209,7 +1205,7 @@ function PasswordGate({ onUnlock }: { onUnlock: () => void }) {
             </button>
           </p>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }
@@ -1338,17 +1334,16 @@ export default function DocsPage() {
         <SidebarContent />
       </aside>
 
-      {/* Mobile sidebar */}
-      <AnimatePresence>
-        {sidebarOpen && (
-          <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 z-40 md:hidden" onClick={() => setSidebarOpen(false)} />
-            <motion.aside initial={{ x: -240 }} animate={{ x: 0 }} exit={{ x: -240 }} transition={{ type: "spring", damping: 25 }} className="fixed left-0 top-0 bottom-0 w-60 bg-sidebar border-r border-sidebar-border z-50 md:hidden flex flex-col">
-              <SidebarContent />
-            </motion.aside>
-          </>
-        )}
-      </AnimatePresence>
+      {/* Mobile sidebar overlay */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 bg-black/60 z-40 md:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
+      {/* Mobile sidebar — always mounted, CSS translate */}
+      <aside
+        className={`fixed left-0 top-0 bottom-0 w-60 bg-sidebar border-r border-sidebar-border z-50 md:hidden flex flex-col transition-transform duration-200 ease-in-out ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
+      >
+        <SidebarContent />
+      </aside>
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
