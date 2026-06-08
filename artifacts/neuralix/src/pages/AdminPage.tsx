@@ -19,7 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
-const ALL_TABS = ["stats", "licenses", "blacklist", "announcements", "admins", "soporte", "actividad"] as const;
+const ALL_TABS = ["stats", "licenses", "blacklist", "announcements", "admins", "soporte", "actividad", "links"] as const;
 type Tab = typeof ALL_TABS[number];
 
 const TAB_LABELS: Record<Tab, string> = {
@@ -30,6 +30,7 @@ const TAB_LABELS: Record<Tab, string> = {
   admins: "Administradores",
   soporte: "Soporte",
   actividad: "Actividad",
+  links: "Links",
 };
 
 const PERM_TO_TAB: Partial<Record<Tab, string>> = {
@@ -321,6 +322,30 @@ export default function AdminPage() {
   useEffect(() => {
     if (tab === "actividad" && isOwner && !activityLoaded) fetchActivityLogs();
   }, [tab, isOwner]);
+
+  /* Links */
+  const [linksData, setLinksData] = useState<any>(null);
+  const [linksLoading, setLinksLoading] = useState(false);
+  const [linksCopied, setLinksCopied] = useState<string | null>(null);
+
+  const fetchLinks = useCallback(async () => {
+    setLinksLoading(true);
+    try {
+      const res = await fetch("/api/admin/links", { credentials: "include" });
+      if (res.ok) setLinksData(await res.json());
+    } catch {} finally { setLinksLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (tab === "links" && isOwner) fetchLinks();
+  }, [tab, isOwner]);
+
+  const copyLink = (key: string, value: string) => {
+    navigator.clipboard.writeText(value).then(() => {
+      setLinksCopied(key);
+      setTimeout(() => setLinksCopied(null), 2000);
+    });
+  };
 
   const fetchAdminsList = useCallback(async () => {
     setAdminsLoading(true);
@@ -952,6 +977,92 @@ export default function AdminPage() {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Links ── */}
+      {tab === "links" && (
+        <div className="space-y-5 max-w-2xl">
+          <div className="bg-card border border-card-border rounded-xl p-5">
+            <h3 className="font-semibold text-sm mb-1">URLs de la aplicacion</h3>
+            <p className="text-xs text-muted-foreground mb-5">
+              Estas URLs se generan automaticamente segun el dominio activo. Cuando despliegues en un nuevo host, los links se actualizan solos. Copia el Redirect URI y pegalo en Discord Developer Portal.
+            </p>
+            {linksLoading ? (
+              <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
+            ) : !linksData ? (
+              <div className="text-center py-8 text-muted-foreground text-sm">No se pudieron cargar los links. <button onClick={fetchLinks} className="text-primary underline ml-1">Reintentar</button></div>
+            ) : (
+              <div className="space-y-4">
+                {/* Dominio activo */}
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary/40 border border-border">
+                  <span className="text-xs text-muted-foreground font-medium w-24 flex-shrink-0">Dominio activo</span>
+                  <span className="text-xs font-mono text-primary flex-1 truncate">{linksData.domain}</span>
+                </div>
+
+                {/* Credenciales */}
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: "CLIENT_ID", ok: linksData.clientIdConfigured },
+                    { label: "CLIENT_SECRET", ok: linksData.clientSecretConfigured },
+                    { label: "BOT_TOKEN", ok: linksData.botTokenConfigured },
+                  ].map(({ label, ok }) => (
+                    <div key={label} className={cn("flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium", ok ? "bg-green-500/10 border-green-500/20 text-green-400" : "bg-red-500/10 border-red-500/20 text-red-400")}>
+                      <div className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", ok ? "bg-green-400" : "bg-red-400")} />
+                      {label}
+                    </div>
+                  ))}
+                </div>
+
+                {/* URLs */}
+                {[
+                  {
+                    key: "redirectUri",
+                    label: "Redirect URI",
+                    sublabel: "Pega esto en Discord Developer Portal → OAuth2 → Redirects",
+                    value: linksData.redirectUri,
+                    highlight: true,
+                  },
+                  {
+                    key: "oauthUrl",
+                    label: "OAuth2 URL completa",
+                    sublabel: "URL que usa el boton Iniciar sesion con Discord",
+                    value: linksData.oauthUrl,
+                    highlight: false,
+                  },
+                  {
+                    key: "botInvite",
+                    label: "Invitar bot al servidor",
+                    sublabel: "Usa esta URL para agregar el bot a cualquier servidor",
+                    value: linksData.botInvite,
+                    highlight: false,
+                  },
+                ].map(({ key, label, sublabel, value, highlight }) => (
+                  <div key={key} className={cn("rounded-xl border p-4 space-y-2", highlight ? "border-primary/30 bg-primary/5" : "border-card-border bg-card")}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-semibold">{label}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{sublabel}</p>
+                      </div>
+                      <Button size="sm" variant="outline" className={cn("gap-1.5 text-xs h-7", linksCopied === key && "border-green-500/50 text-green-400")}
+                        onClick={() => copyLink(key, value)} disabled={!value}>
+                        {linksCopied === key ? <><Check className="w-3 h-3" /> Copiado</> : <><Copy className="w-3 h-3" /> Copiar</>}
+                      </Button>
+                    </div>
+                    <div className="bg-background rounded-lg px-3 py-2 border border-border">
+                      <p className="text-xs font-mono text-primary/80 break-all leading-relaxed">{value || "(no disponible)"}</p>
+                    </div>
+                  </div>
+                ))}
+
+                <div className="flex justify-end">
+                  <button onClick={fetchLinks} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors">
+                    <RefreshCw className="w-3 h-3" /> Actualizar links
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
