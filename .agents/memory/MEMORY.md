@@ -1,0 +1,1 @@
+- [Express 5 params typing](express5-params.md) — `req.params.x` is `string | string[]` in @types/express-serve-static-core@5.x; always cast with `as string`

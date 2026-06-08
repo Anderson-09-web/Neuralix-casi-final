@@ -1,0 +1,14 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "R7xnwRbvQwRvSzklaDaBY"
+uri = "file://redirect_uri.txt"
+type = "text"
+title = "Redirect URI — cópialo desde aquí"
+
+[[outputs]]
+id = "yu0AQ0WxMobm1B6HGTR3Q"
+uri = "file://oauth2_url.txt"
+type = "text"
+title = "OAuth2 URL — ábrelo y copia desde ahí"

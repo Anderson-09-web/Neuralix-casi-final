@@ -1,0 +1,38 @@
+import { Router, type IRouter } from "express";
+import healthRouter from "./health";
+import authRouter from "./auth";
+import guildsRouter from "./guilds";
+import announcementsRouter from "./announcements";
+import welcomeRouter from "./welcome";
+import verificationRouter from "./verification";
+import ticketsRouter from "./tickets";
+import antiraidRouter from "./antiraid";
+import logsRouter from "./logs";
+import blacklistRouter from "./blacklist";
+import backupsRouter from "./backups";
+import premiumRouter from "./premium";
+import adminRouter from "./admin";
+import supportRouter from "./support";
+import aiRouter from "./ai";
+import setupRouter from "./setup";
+
+const router: IRouter = Router();
+
+router.use(healthRouter);
+router.use(authRouter);
+router.use(guildsRouter);
+router.use(announcementsRouter);
+router.use(welcomeRouter);
+router.use(verificationRouter);
+router.use(ticketsRouter);
+router.use(antiraidRouter);
+router.use(logsRouter);
+router.use(blacklistRouter);
+router.use(backupsRouter);
+router.use(premiumRouter);
+router.use(adminRouter);
+router.use(supportRouter);
+router.use(aiRouter);
+router.use(setupRouter);
+
+export default router;

@@ -1,0 +1,1773 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 0.1.0
+  description: Neuralix Dashboard API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+  - name: auth
+  - name: guilds
+  - name: announcements
+  - name: welcome
+  - name: goodbye
+  - name: tickets
+  - name: antiraid
+  - name: logs
+  - name: blacklist
+  - name: backups
+  - name: premium
+  - name: admin
+  - name: support
+  - name: verification
+  - name: ai
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  # AUTH
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout
+      responses:
+        "200":
+          description: Logged out
+
+  /auth/discord/url:
+    get:
+      operationId: getDiscordAuthUrl
+      tags: [auth]
+      summary: Get Discord OAuth2 URL
+      responses:
+        "200":
+          description: Auth URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUrl"
+
+  # GUILDS
+  /guilds:
+    get:
+      operationId: getGuilds
+      tags: [guilds]
+      summary: Get user guilds (admin only)
+      responses:
+        "200":
+          description: List of guilds
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Guild"
+
+  /guilds/{guildId}:
+    get:
+      operationId: getGuild
+      tags: [guilds]
+      summary: Get guild details
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Guild details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuildDetail"
+        "404":
+          description: Not found
+
+  /guilds/{guildId}/stats:
+    get:
+      operationId: getGuildStats
+      tags: [guilds]
+      summary: Get guild statistics dashboard summary
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Guild stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuildStats"
+
+  /guilds/{guildId}/bot-status:
+    get:
+      operationId: getGuildBotStatus
+      tags: [guilds]
+      summary: Check if bot is in guild
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Bot status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotStatus"
+
+  # ANNOUNCEMENTS
+  /announcements:
+    get:
+      operationId: getAnnouncements
+      tags: [announcements]
+      summary: Get public announcements
+      responses:
+        "200":
+          description: List of announcements
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Announcement"
+    post:
+      operationId: createAnnouncement
+      tags: [announcements]
+      summary: Create announcement (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnnouncementInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Announcement"
+
+  /announcements/{id}:
+    patch:
+      operationId: updateAnnouncement
+      tags: [announcements]
+      summary: Update announcement
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnnouncementUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Announcement"
+    delete:
+      operationId: deleteAnnouncement
+      tags: [announcements]
+      summary: Delete announcement
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # WELCOME
+  /guilds/{guildId}/welcome:
+    get:
+      operationId: getWelcomeConfig
+      tags: [welcome]
+      summary: Get welcome configuration
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Welcome config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WelcomeConfig"
+    put:
+      operationId: updateWelcomeConfig
+      tags: [welcome]
+      summary: Update welcome configuration
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WelcomeConfigInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WelcomeConfig"
+
+  /guilds/{guildId}/welcome/test:
+    post:
+      operationId: testWelcome
+      tags: [welcome]
+      summary: Send test welcome message
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Test sent
+
+  # GOODBYE
+  /guilds/{guildId}/goodbye:
+    get:
+      operationId: getGoodbyeConfig
+      tags: [goodbye]
+      summary: Get goodbye configuration
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Goodbye config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GoodbyeConfig"
+    put:
+      operationId: updateGoodbyeConfig
+      tags: [goodbye]
+      summary: Update goodbye configuration
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GoodbyeConfigInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GoodbyeConfig"
+
+  /guilds/{guildId}/goodbye/test:
+    post:
+      operationId: testGoodbye
+      tags: [goodbye]
+      summary: Send test goodbye message
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Test sent
+
+  # VERIFICATION
+  /guilds/{guildId}/verification:
+    get:
+      operationId: getVerificationConfig
+      tags: [verification]
+      summary: Get verification config
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Verification config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationConfig"
+    put:
+      operationId: updateVerificationConfig
+      tags: [verification]
+      summary: Update verification config
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerificationConfigInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationConfig"
+
+  /verify/{guildId}:
+    post:
+      operationId: verifyUser
+      tags: [verification]
+      summary: Verify user for a guild
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationResult"
+
+  # TICKETS
+  /guilds/{guildId}/tickets/config:
+    get:
+      operationId: getTicketConfig
+      tags: [tickets]
+      summary: Get ticket system configuration
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Ticket config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketConfig"
+    put:
+      operationId: updateTicketConfig
+      tags: [tickets]
+      summary: Update ticket system configuration
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TicketConfigInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketConfig"
+
+  /guilds/{guildId}/tickets:
+    get:
+      operationId: getTickets
+      tags: [tickets]
+      summary: List tickets for a guild
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Tickets list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Ticket"
+
+  /guilds/{guildId}/tickets/{ticketId}/close:
+    post:
+      operationId: closeTicket
+      tags: [tickets]
+      summary: Close a ticket
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Closed
+
+  # ANTIRAID
+  /guilds/{guildId}/antiraid:
+    get:
+      operationId: getAntiraidConfig
+      tags: [antiraid]
+      summary: Get AntiRaid configuration
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: AntiRaid config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AntiraidConfig"
+    put:
+      operationId: updateAntiraidConfig
+      tags: [antiraid]
+      summary: Update AntiRaid configuration
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AntiraidConfigInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AntiraidConfig"
+
+  /guilds/{guildId}/antiraid/stats:
+    get:
+      operationId: getAntiraidStats
+      tags: [antiraid]
+      summary: Get AntiRaid statistics
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: AntiRaid stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AntiraidStats"
+
+  # LOGS
+  /guilds/{guildId}/logs/config:
+    get:
+      operationId: getLogsConfig
+      tags: [logs]
+      summary: Get logs configuration
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Logs config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogsConfig"
+    put:
+      operationId: updateLogsConfig
+      tags: [logs]
+      summary: Update logs configuration
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogsConfigInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogsConfig"
+
+  /guilds/{guildId}/logs:
+    get:
+      operationId: getGuildLogs
+      tags: [logs]
+      summary: Get logs for a guild
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LogEntry"
+
+  # BLACKLIST
+  /blacklist:
+    get:
+      operationId: getBlacklist
+      tags: [blacklist]
+      summary: Get global blacklist (owner only)
+      responses:
+        "200":
+          description: Blacklist entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BlacklistEntry"
+    post:
+      operationId: addToBlacklist
+      tags: [blacklist]
+      summary: Add user to blacklist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BlacklistInput"
+      responses:
+        "201":
+          description: Added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlacklistEntry"
+
+  /blacklist/{userId}:
+    delete:
+      operationId: removeFromBlacklist
+      tags: [blacklist]
+      summary: Remove user from blacklist
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Removed
+
+  # BACKUPS
+  /guilds/{guildId}/backups:
+    get:
+      operationId: getBackups
+      tags: [backups]
+      summary: Get backups for guild
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Backups list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Backup"
+    post:
+      operationId: createBackup
+      tags: [backups]
+      summary: Create a backup
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Backup created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Backup"
+
+  /guilds/{guildId}/backups/{backupId}/restore:
+    post:
+      operationId: restoreBackup
+      tags: [backups]
+      summary: Restore a backup
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: backupId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Restored
+
+  # PREMIUM
+  /guilds/{guildId}/premium:
+    get:
+      operationId: getGuildPremium
+      tags: [premium]
+      summary: Get guild premium status
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Premium status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PremiumStatus"
+
+  /premium/plans:
+    get:
+      operationId: getPremiumPlans
+      tags: [premium]
+      summary: Get available premium plans
+      responses:
+        "200":
+          description: Plans
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PremiumPlan"
+
+  # ADMIN
+  /admin/stats:
+    get:
+      operationId: getAdminStats
+      tags: [admin]
+      summary: Get global admin statistics (owner only)
+      responses:
+        "200":
+          description: Global stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStats"
+
+  /admin/licenses:
+    get:
+      operationId: getLicenses
+      tags: [admin]
+      summary: Get all licenses
+      responses:
+        "200":
+          description: Licenses list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/License"
+    post:
+      operationId: createLicense
+      tags: [admin]
+      summary: Create license
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LicenseInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/License"
+
+  /admin/licenses/{id}:
+    delete:
+      operationId: revokeLicense
+      tags: [admin]
+      summary: Revoke license
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Revoked
+
+  # SUPPORT
+  /support/tickets:
+    get:
+      operationId: getSupportTickets
+      tags: [support]
+      summary: Get web support tickets
+      responses:
+        "200":
+          description: Support tickets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SupportTicket"
+    post:
+      operationId: createSupportTicket
+      tags: [support]
+      summary: Create support ticket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SupportTicketInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportTicket"
+
+  /support/tickets/{id}/messages:
+    get:
+      operationId: getSupportMessages
+      tags: [support]
+      summary: Get messages for support ticket
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SupportMessage"
+    post:
+      operationId: sendSupportMessage
+      tags: [support]
+      summary: Send message in support ticket
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SupportMessageInput"
+      responses:
+        "201":
+          description: Sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportMessage"
+
+  # AI
+  /guilds/{guildId}/ai/analyze:
+    post:
+      operationId: analyzeGuild
+      tags: [ai]
+      summary: AI analysis of guild security and config
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: AI analysis result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiAnalysis"
+
+  /guilds/{guildId}/ai/chat:
+    post:
+      operationId: aiChat
+      tags: [ai]
+      summary: Chat with AI assistant
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiChatInput"
+      responses:
+        "200":
+          description: AI response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiChatReply"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required: [status]
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        discordId:
+          type: string
+        username:
+          type: string
+        discriminator:
+          type: string
+        avatar:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        isOwner:
+          type: boolean
+        isPremium:
+          type: boolean
+        premiumPlan:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required: [id, discordId, username, discriminator, isOwner, isPremium, createdAt]
+
+    AuthUrl:
+      type: object
+      properties:
+        url:
+          type: string
+      required: [url]
+
+    Guild:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        icon:
+          type: ["string", "null"]
+        memberCount:
+          type: integer
+        botPresent:
+          type: boolean
+        premiumTier:
+          type: integer
+        permissions:
+          type: string
+      required: [id, name, memberCount, botPresent, premiumTier, permissions]
+
+    GuildDetail:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        icon:
+          type: ["string", "null"]
+        memberCount:
+          type: integer
+        onlineMemberCount:
+          type: integer
+        botPresent:
+          type: boolean
+        premiumTier:
+          type: integer
+        openTickets:
+          type: integer
+        verifiedMembers:
+          type: integer
+        antiraidEnabled:
+          type: boolean
+        premiumActive:
+          type: boolean
+      required: [id, name, memberCount, onlineMemberCount, botPresent, premiumTier, openTickets, verifiedMembers, antiraidEnabled, premiumActive]
+
+    GuildStats:
+      type: object
+      properties:
+        guildId:
+          type: string
+        memberCount:
+          type: integer
+        onlineCount:
+          type: integer
+        openTickets:
+          type: integer
+        closedTickets:
+          type: integer
+        verifiedMembers:
+          type: integer
+        antiraidDetections:
+          type: integer
+        recentLogs:
+          type: integer
+        backupsCount:
+          type: integer
+      required: [guildId, memberCount, onlineCount, openTickets, closedTickets, verifiedMembers, antiraidDetections, recentLogs, backupsCount]
+
+    BotStatus:
+      type: object
+      properties:
+        present:
+          type: boolean
+        addBotUrl:
+          type: string
+      required: [present, addBotUrl]
+
+    Announcement:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        content:
+          type: string
+        type:
+          type: string
+        published:
+          type: boolean
+        scheduledAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required: [id, title, content, type, published, createdAt, updatedAt]
+
+    AnnouncementInput:
+      type: object
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+        type:
+          type: string
+        published:
+          type: boolean
+        scheduledAt:
+          type: ["string", "null"]
+      required: [title, content, type]
+
+    AnnouncementUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+        type:
+          type: string
+        published:
+          type: boolean
+        scheduledAt:
+          type: ["string", "null"]
+
+    WelcomeConfig:
+      type: object
+      properties:
+        id:
+          type: integer
+        guildId:
+          type: string
+        enabled:
+          type: boolean
+        channelId:
+          type: ["string", "null"]
+        message:
+          type: ["string", "null"]
+        embedEnabled:
+          type: boolean
+        embedColor:
+          type: ["string", "null"]
+        embedTitle:
+          type: ["string", "null"]
+        embedDescription:
+          type: ["string", "null"]
+        imageEnabled:
+          type: boolean
+        autoRoleIds:
+          type: array
+          items:
+            type: string
+        dmEnabled:
+          type: boolean
+        dmMessage:
+          type: ["string", "null"]
+      required: [id, guildId, enabled, embedEnabled, imageEnabled, autoRoleIds, dmEnabled]
+
+    WelcomeConfigInput:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        channelId:
+          type: ["string", "null"]
+        message:
+          type: ["string", "null"]
+        embedEnabled:
+          type: boolean
+        embedColor:
+          type: ["string", "null"]
+        embedTitle:
+          type: ["string", "null"]
+        embedDescription:
+          type: ["string", "null"]
+        imageEnabled:
+          type: boolean
+        autoRoleIds:
+          type: array
+          items:
+            type: string
+        dmEnabled:
+          type: boolean
+        dmMessage:
+          type: ["string", "null"]
+
+    GoodbyeConfig:
+      type: object
+      properties:
+        id:
+          type: integer
+        guildId:
+          type: string
+        enabled:
+          type: boolean
+        channelId:
+          type: ["string", "null"]
+        message:
+          type: ["string", "null"]
+        embedEnabled:
+          type: boolean
+        embedColor:
+          type: ["string", "null"]
+        embedTitle:
+          type: ["string", "null"]
+        embedDescription:
+          type: ["string", "null"]
+        imageEnabled:
+          type: boolean
+      required: [id, guildId, enabled, embedEnabled, imageEnabled]
+
+    GoodbyeConfigInput:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        channelId:
+          type: ["string", "null"]
+        message:
+          type: ["string", "null"]
+        embedEnabled:
+          type: boolean
+        embedColor:
+          type: ["string", "null"]
+        embedTitle:
+          type: ["string", "null"]
+        embedDescription:
+          type: ["string", "null"]
+        imageEnabled:
+          type: boolean
+
+    VerificationConfig:
+      type: object
+      properties:
+        id:
+          type: integer
+        guildId:
+          type: string
+        enabled:
+          type: boolean
+        roleId:
+          type: ["string", "null"]
+        minAccountAge:
+          type: integer
+        antiVpn:
+          type: boolean
+        antiAlt:
+          type: boolean
+        antiBot:
+          type: boolean
+      required: [id, guildId, enabled, minAccountAge, antiVpn, antiAlt, antiBot]
+
+    VerificationConfigInput:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        roleId:
+          type: ["string", "null"]
+        minAccountAge:
+          type: integer
+        antiVpn:
+          type: boolean
+        antiAlt:
+          type: boolean
+        antiBot:
+          type: boolean
+
+    VerificationResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        roleAssigned:
+          type: boolean
+      required: [success, message, roleAssigned]
+
+    TicketConfig:
+      type: object
+      properties:
+        id:
+          type: integer
+        guildId:
+          type: string
+        enabled:
+          type: boolean
+        categoryId:
+          type: ["string", "null"]
+        supportRoleId:
+          type: ["string", "null"]
+        transcriptChannelId:
+          type: ["string", "null"]
+        maxTicketsPerUser:
+          type: integer
+        panelMessage:
+          type: ["string", "null"]
+        panelChannelId:
+          type: ["string", "null"]
+      required: [id, guildId, enabled, maxTicketsPerUser]
+
+    TicketConfigInput:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        categoryId:
+          type: ["string", "null"]
+        supportRoleId:
+          type: ["string", "null"]
+        transcriptChannelId:
+          type: ["string", "null"]
+        maxTicketsPerUser:
+          type: integer
+        panelMessage:
+          type: ["string", "null"]
+        panelChannelId:
+          type: ["string", "null"]
+
+    Ticket:
+      type: object
+      properties:
+        id:
+          type: integer
+        guildId:
+          type: string
+        channelId:
+          type: string
+        userId:
+          type: string
+        username:
+          type: string
+        subject:
+          type: string
+        status:
+          type: string
+        claimedBy:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        closedAt:
+          type: ["string", "null"]
+      required: [id, guildId, channelId, userId, username, subject, status, createdAt]
+
+    AntiraidConfig:
+      type: object
+      properties:
+        id:
+          type: integer
+        guildId:
+          type: string
+        enabled:
+          type: boolean
+        antiAlt:
+          type: boolean
+        antiAltMinAge:
+          type: integer
+        antiBot:
+          type: boolean
+        antiBotWhitelist:
+          type: array
+          items:
+            type: string
+        antiSpam:
+          type: boolean
+        antiSpamLimit:
+          type: integer
+        antiLinks:
+          type: boolean
+        allowedDomains:
+          type: array
+          items:
+            type: string
+        blockedDomains:
+          type: array
+          items:
+            type: string
+        antiMassMention:
+          type: boolean
+        massMentionLimit:
+          type: integer
+        antiWebhook:
+          type: boolean
+        antiChannelCreate:
+          type: boolean
+        antiChannelDelete:
+          type: boolean
+        antiChannelUpdate:
+          type: boolean
+        antiRoleCreate:
+          type: boolean
+        antiRoleDelete:
+          type: boolean
+        antiRoleUpdate:
+          type: boolean
+        antiEmojiCreate:
+          type: boolean
+        antiEmojiDelete:
+          type: boolean
+        antiBanMass:
+          type: boolean
+        antiKickMass:
+          type: boolean
+        antiNuke:
+          type: boolean
+      required: [id, guildId, enabled, antiAlt, antiAltMinAge, antiBot, antiBotWhitelist, antiSpam, antiSpamLimit, antiLinks, allowedDomains, blockedDomains, antiMassMention, massMentionLimit, antiWebhook, antiChannelCreate, antiChannelDelete, antiChannelUpdate, antiRoleCreate, antiRoleDelete, antiRoleUpdate, antiEmojiCreate, antiEmojiDelete, antiBanMass, antiKickMass, antiNuke]
+
+    AntiraidConfigInput:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        antiAlt:
+          type: boolean
+        antiAltMinAge:
+          type: integer
+        antiBot:
+          type: boolean
+        antiBotWhitelist:
+          type: array
+          items:
+            type: string
+        antiSpam:
+          type: boolean
+        antiSpamLimit:
+          type: integer
+        antiLinks:
+          type: boolean
+        allowedDomains:
+          type: array
+          items:
+            type: string
+        blockedDomains:
+          type: array
+          items:
+            type: string
+        antiMassMention:
+          type: boolean
+        massMentionLimit:
+          type: integer
+        antiWebhook:
+          type: boolean
+        antiChannelCreate:
+          type: boolean
+        antiChannelDelete:
+          type: boolean
+        antiChannelUpdate:
+          type: boolean
+        antiRoleCreate:
+          type: boolean
+        antiRoleDelete:
+          type: boolean
+        antiRoleUpdate:
+          type: boolean
+        antiEmojiCreate:
+          type: boolean
+        antiEmojiDelete:
+          type: boolean
+        antiBanMass:
+          type: boolean
+        antiKickMass:
+          type: boolean
+        antiNuke:
+          type: boolean
+
+    AntiraidStats:
+      type: object
+      properties:
+        guildId:
+          type: string
+        detectedToday:
+          type: integer
+        blockedAlt:
+          type: integer
+        blockedVpn:
+          type: integer
+        blockedBot:
+          type: integer
+        blockedSpam:
+          type: integer
+        totalDetections:
+          type: integer
+      required: [guildId, detectedToday, blockedAlt, blockedVpn, blockedBot, blockedSpam, totalDetections]
+
+    LogsConfig:
+      type: object
+      properties:
+        id:
+          type: integer
+        guildId:
+          type: string
+        enabled:
+          type: boolean
+        channelId:
+          type: ["string", "null"]
+        logMembers:
+          type: boolean
+        logMessages:
+          type: boolean
+        logRoles:
+          type: boolean
+        logChannels:
+          type: boolean
+        logModeration:
+          type: boolean
+        logSecurity:
+          type: boolean
+      required: [id, guildId, enabled, logMembers, logMessages, logRoles, logChannels, logModeration, logSecurity]
+
+    LogsConfigInput:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        channelId:
+          type: ["string", "null"]
+        logMembers:
+          type: boolean
+        logMessages:
+          type: boolean
+        logRoles:
+          type: boolean
+        logChannels:
+          type: boolean
+        logModeration:
+          type: boolean
+        logSecurity:
+          type: boolean
+
+    LogEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        guildId:
+          type: string
+        userId:
+          type: ["string", "null"]
+        username:
+          type: ["string", "null"]
+        action:
+          type: string
+        category:
+          type: string
+        details:
+          type: ["string", "null"]
+        moderatorId:
+          type: ["string", "null"]
+        moderatorName:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required: [id, guildId, action, category, createdAt]
+
+    BlacklistEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: string
+        username:
+          type: string
+        reason:
+          type: string
+        addedBy:
+          type: string
+        createdAt:
+          type: string
+      required: [id, userId, username, reason, addedBy, createdAt]
+
+    BlacklistInput:
+      type: object
+      properties:
+        userId:
+          type: string
+        username:
+          type: string
+        reason:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+      required: [userId, username, reason]
+
+    Backup:
+      type: object
+      properties:
+        id:
+          type: integer
+        guildId:
+          type: string
+        label:
+          type: string
+        size:
+          type: integer
+        version:
+          type: integer
+        createdAt:
+          type: string
+      required: [id, guildId, label, size, version, createdAt]
+
+    PremiumStatus:
+      type: object
+      properties:
+        guildId:
+          type: string
+        active:
+          type: boolean
+        plan:
+          type: ["string", "null"]
+        expiresAt:
+          type: ["string", "null"]
+        features:
+          type: array
+          items:
+            type: string
+      required: [guildId, active, features]
+
+    PremiumPlan:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        price:
+          type: number
+        features:
+          type: array
+          items:
+            type: string
+      required: [id, name, price, features]
+
+    AdminStats:
+      type: object
+      properties:
+        totalGuilds:
+          type: integer
+        totalUsers:
+          type: integer
+        totalTickets:
+          type: integer
+        premiumGuilds:
+          type: integer
+        activeBlacklist:
+          type: integer
+        totalBackups:
+          type: integer
+      required: [totalGuilds, totalUsers, totalTickets, premiumGuilds, activeBlacklist, totalBackups]
+
+    License:
+      type: object
+      properties:
+        id:
+          type: integer
+        key:
+          type: string
+        plan:
+          type: string
+        guildId:
+          type: ["string", "null"]
+        active:
+          type: boolean
+        expiresAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required: [id, key, plan, active, createdAt]
+
+    LicenseInput:
+      type: object
+      properties:
+        plan:
+          type: string
+        guildId:
+          type: ["string", "null"]
+        expiresAt:
+          type: ["string", "null"]
+      required: [plan]
+
+    SupportTicket:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: string
+        username:
+          type: string
+        subject:
+          type: string
+        status:
+          type: string
+        priority:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required: [id, userId, username, subject, status, priority, createdAt, updatedAt]
+
+    SupportTicketInput:
+      type: object
+      properties:
+        subject:
+          type: string
+        message:
+          type: string
+        priority:
+          type: string
+      required: [subject, message]
+
+    SupportMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+        ticketId:
+          type: integer
+        userId:
+          type: string
+        username:
+          type: string
+        avatar:
+          type: ["string", "null"]
+        content:
+          type: string
+        isStaff:
+          type: boolean
+        createdAt:
+          type: string
+      required: [id, ticketId, userId, username, content, isStaff, createdAt]
+
+    SupportMessageInput:
+      type: object
+      properties:
+        content:
+          type: string
+      required: [content]
+
+    AiAnalysis:
+      type: object
+      properties:
+        guildId:
+          type: string
+        score:
+          type: integer
+        recommendations:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiRecommendation"
+        summary:
+          type: string
+        analyzedAt:
+          type: string
+      required: [guildId, score, recommendations, summary, analyzedAt]
+
+    AiRecommendation:
+      type: object
+      properties:
+        category:
+          type: string
+        severity:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+      required: [category, severity, title, description]
+
+    AiChatInput:
+      type: object
+      properties:
+        message:
+          type: string
+        context:
+          type: ["string", "null"]
+      required: [message]
+
+    AiChatReply:
+      type: object
+      properties:
+        response:
+          type: string
+        suggestions:
+          type: array
+          items:
+            type: string
+      required: [response, suggestions]
