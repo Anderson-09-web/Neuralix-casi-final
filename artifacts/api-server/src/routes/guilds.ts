@@ -37,21 +37,42 @@ router.get("/guilds", requireAuth, async (req, res) => {
     const botPresenceMap = new Map<string, boolean>();
     const memberCountMap = new Map<string, number>();
     if (botToken) {
-      await Promise.all(adminGuilds.map(async (g: any) => {
-        try {
-          const r = await axios.get(`${DISCORD_API}/guilds/${g.id}?with_counts=true`, {
-            headers: { Authorization: `Bot ${botToken}` },
-            validateStatus: () => true,
-          });
-          botPresenceMap.set(g.id, r.status === 200);
-          if (r.status === 200) {
-            const mc = r.data.approximate_member_count ?? r.data.member_count ?? 0;
-            memberCountMap.set(g.id, mc);
+      try {
+        // Single call: get all guilds the bot belongs to
+        const botGuildsRes = await axios.get(`${DISCORD_API}/users/@me/guilds`, {
+          headers: { Authorization: `Bot ${botToken}` },
+          validateStatus: () => true,
+        });
+        if (botGuildsRes.status === 200 && Array.isArray(botGuildsRes.data)) {
+          const botGuildIds = new Set(botGuildsRes.data.map((g: any) => g.id));
+          for (const g of adminGuilds) {
+            botPresenceMap.set(g.id, botGuildIds.has(g.id));
           }
-        } catch {
+          // For guilds where bot is present, fetch member count (batched, up to 5 at once)
+          const presentGuilds = adminGuilds.filter((g: any) => botGuildIds.has(g.id));
+          await Promise.all(presentGuilds.map(async (g: any) => {
+            try {
+              const r = await axios.get(`${DISCORD_API}/guilds/${g.id}?with_counts=true`, {
+                headers: { Authorization: `Bot ${botToken}` },
+                validateStatus: () => true,
+              });
+              if (r.status === 200) {
+                memberCountMap.set(g.id, r.data.approximate_member_count ?? r.data.member_count ?? 0);
+              }
+            } catch { /* ignore member count errors */ }
+          }));
+        } else {
+          // Fallback to DB cache if bot guilds call fails
+          for (const g of adminGuilds) {
+            botPresenceMap.set(g.id, configMap.get(g.id)?.botPresent || false);
+          }
+        }
+      } catch {
+        // Fallback to DB cache on any error
+        for (const g of adminGuilds) {
           botPresenceMap.set(g.id, configMap.get(g.id)?.botPresent || false);
         }
-      }));
+      }
     }
 
     const result = adminGuilds.map((g: any) => {
