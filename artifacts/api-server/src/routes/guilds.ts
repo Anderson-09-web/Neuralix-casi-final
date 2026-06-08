@@ -22,7 +22,29 @@ async function ensureGuildConfig(guildId: string, guildName: string, guildIcon: 
   }
 }
 
+router.get("/guilds/debug-bot", requireAuth, async (req, res) => {
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  if (!botToken) return res.json({ error: "DISCORD_BOT_TOKEN not set", tokenPresent: false });
+  try {
+    const r = await axios.get(`${DISCORD_API}/users/@me/guilds`, {
+      headers: { Authorization: `Bot ${botToken.trim()}` },
+      validateStatus: () => true,
+    });
+    res.json({
+      tokenPresent: true,
+      tokenLength: botToken.trim().length,
+      discordStatus: r.status,
+      discordGuildCount: Array.isArray(r.data) ? r.data.length : null,
+      discordGuildIds: Array.isArray(r.data) ? r.data.map((g: any) => ({ id: g.id, name: g.name })) : null,
+      discordError: r.status !== 200 ? r.data : null,
+    });
+  } catch (err: any) {
+    res.json({ tokenPresent: true, error: err?.message });
+  }
+});
+
 router.get("/guilds", requireAuth, async (req, res) => {
+  res.set("Cache-Control", "no-store");
   const user = (req as any).user;
   try {
     const guildsRes = await axios.get(`${DISCORD_API}/users/@me/guilds`, {
@@ -36,15 +58,19 @@ router.get("/guilds", requireAuth, async (req, res) => {
     const botToken = process.env.DISCORD_BOT_TOKEN;
     const botPresenceMap = new Map<string, boolean>();
     const memberCountMap = new Map<string, number>();
+    req.log.info({ hasBotToken: !!botToken, tokenLength: botToken?.length ?? 0 }, "Bot token check");
     if (botToken) {
       try {
         // Single call: get all guilds the bot belongs to
         const botGuildsRes = await axios.get(`${DISCORD_API}/users/@me/guilds`, {
-          headers: { Authorization: `Bot ${botToken}` },
+          headers: { Authorization: `Bot ${botToken.trim()}` },
           validateStatus: () => true,
         });
+        req.log.info({ status: botGuildsRes.status, count: Array.isArray(botGuildsRes.data) ? botGuildsRes.data.length : botGuildsRes.data }, "Bot guilds response");
         if (botGuildsRes.status === 200 && Array.isArray(botGuildsRes.data)) {
           const botGuildIds = new Set(botGuildsRes.data.map((g: any) => g.id));
+          const botGuildIdList = Array.from(botGuildIds);
+          req.log.info({ botGuildIds: botGuildIdList }, "Bot is in these guilds");
           for (const g of adminGuilds) {
             botPresenceMap.set(g.id, botGuildIds.has(g.id));
           }
@@ -53,7 +79,7 @@ router.get("/guilds", requireAuth, async (req, res) => {
           await Promise.all(presentGuilds.map(async (g: any) => {
             try {
               const r = await axios.get(`${DISCORD_API}/guilds/${g.id}?with_counts=true`, {
-                headers: { Authorization: `Bot ${botToken}` },
+                headers: { Authorization: `Bot ${botToken.trim()}` },
                 validateStatus: () => true,
               });
               if (r.status === 200) {
@@ -62,12 +88,14 @@ router.get("/guilds", requireAuth, async (req, res) => {
             } catch { /* ignore member count errors */ }
           }));
         } else {
+          req.log.warn({ status: botGuildsRes.status, data: botGuildsRes.data }, "Bot guilds call failed - using DB cache");
           // Fallback to DB cache if bot guilds call fails
           for (const g of adminGuilds) {
             botPresenceMap.set(g.id, configMap.get(g.id)?.botPresent || false);
           }
         }
-      } catch {
+      } catch (err: any) {
+        req.log.error({ err: err?.message }, "Bot guilds call threw - using DB cache");
         // Fallback to DB cache on any error
         for (const g of adminGuilds) {
           botPresenceMap.set(g.id, configMap.get(g.id)?.botPresent || false);
