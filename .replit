@@ -49,7 +49,7 @@ args = "PORT=23133 BASE_PATH=/ pnpm --filter @workspace/neuralix run dev"
 waitForPort = 23133
 
 [agent]
-stack = "PNPM_WORKSPACE"
+stack = "BEST_EFFORT_FALLBACK"
 expertMode = true
 
 [postMerge]
