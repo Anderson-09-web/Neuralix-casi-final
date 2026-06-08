@@ -60,24 +60,41 @@ router.get("/auth/login", (_req, res) => {
 
 router.get("/auth/discord/callback", async (req, res) => {
   const code = req.query.code as string;
+  const discordError = req.query.error as string | undefined;
   const frontend = getFrontendUrl();
+
+  if (discordError) {
+    req.log.warn({ discordError }, "Discord OAuth returned error");
+    res.redirect(`${frontend}/?error=${encodeURIComponent(discordError)}`);
+    return;
+  }
+
   if (!code) {
     res.redirect(`${frontend}/?error=no_code`);
     return;
   }
   try {
     const redirectUri = getRedirectUri();
-    const tokenRes = await axios.post(
-      "https://discord.com/api/oauth2/token",
-      new URLSearchParams({
-        client_id: DISCORD_CLIENT_ID,
-        client_secret: DISCORD_CLIENT_SECRET,
-        grant_type: "authorization_code",
-        code,
-        redirect_uri: redirectUri,
-      }),
-      { headers: { "Content-Type": "application/x-www-form-urlencoded" } },
-    );
+    req.log.info({ redirectUri, clientId: DISCORD_CLIENT_ID }, "Exchanging OAuth code");
+    let tokenRes: any;
+    try {
+      tokenRes = await axios.post(
+        "https://discord.com/api/oauth2/token",
+        new URLSearchParams({
+          client_id: DISCORD_CLIENT_ID,
+          client_secret: DISCORD_CLIENT_SECRET,
+          grant_type: "authorization_code",
+          code,
+          redirect_uri: redirectUri,
+        }),
+        { headers: { "Content-Type": "application/x-www-form-urlencoded" } },
+      );
+    } catch (tokenErr: any) {
+      const discordMsg = tokenErr?.response?.data?.error_description || tokenErr?.response?.data?.error || tokenErr?.message || "token_exchange_failed";
+      req.log.error({ discordMsg, status: tokenErr?.response?.status, data: tokenErr?.response?.data }, "Discord token exchange failed");
+      res.redirect(`${frontend}/?error=${encodeURIComponent(discordMsg)}`);
+      return;
+    }
     const { access_token, refresh_token } = tokenRes.data;
 
     const userRes = await axios.get("https://discord.com/api/users/@me", {

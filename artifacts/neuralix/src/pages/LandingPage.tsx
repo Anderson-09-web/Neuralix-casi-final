@@ -1,10 +1,11 @@
 import { useLocation } from "wouter";
 import { motion } from "framer-motion";
-import { Bot, Shield, Ticket, ShieldAlert, Star, Database, ArrowRight, CheckCircle, Zap } from "lucide-react";
+import { Bot, Shield, Ticket, ShieldAlert, Star, Database, ArrowRight, CheckCircle, Zap, AlertTriangle } from "lucide-react";
 import { useGetMe, useGetDiscordAuthUrl, useGetAnnouncements, getGetMeQueryKey, getGetAnnouncementsQueryKey, getGetDiscordAuthUrlQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/components/ThemeProvider";
 import { Sun, Moon } from "lucide-react";
+import { useEffect, useState } from "react";
 
 const features = [
   { icon: ShieldAlert, title: "AntiRaid Enterprise", desc: "20+ modulos de proteccion: AntiAlt, AntiBot, AntiSpam, AntiNuke y mucho mas.", color: "text-primary bg-primary/10" },
@@ -15,12 +16,30 @@ const features = [
   { icon: Star, title: "Premium", desc: "Planes Plus, Pro y Ultra con funciones exclusivas y soporte dedicado.", color: "text-accent bg-accent/10" },
 ];
 
+const ERROR_MESSAGES: Record<string, string> = {
+  no_code: "Discord no devolvio el codigo de autorizacion.",
+  access_denied: "Cancelaste el inicio de sesion en Discord.",
+  oauth_failed: "Error al iniciar sesion con Discord. Verifica que el Redirect URI este configurado correctamente.",
+  invalid_redirect_uri: "La URL de redireccion no esta configurada en Discord Developer Portal.",
+  invalid_client_id: "El Client ID de Discord es incorrecto.",
+};
+
 export default function LandingPage() {
   const [, setLocation] = useLocation();
   const { theme, toggleTheme } = useTheme();
   const { data: user } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
   const { data: authUrl } = useGetDiscordAuthUrl({ query: { queryKey: getGetDiscordAuthUrlQueryKey() } });
   const { data: announcements } = useGetAnnouncements({ query: { queryKey: getGetAnnouncementsQueryKey() } });
+  const [oauthError, setOauthError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const err = params.get("error");
+    if (err) {
+      setOauthError(ERROR_MESSAGES[err] || `Error: ${decodeURIComponent(err)}`);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
 
   const handleLogin = () => {
     if (user) { setLocation("/servers"); return; }
@@ -31,8 +50,18 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      {/* OAuth Error Banner */}
+      {oauthError && (
+        <div className="fixed top-0 left-0 right-0 z-[60] bg-red-500/90 backdrop-blur-sm text-white px-4 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>{oauthError}</span>
+          </div>
+          <button onClick={() => setOauthError(null)} className="shrink-0 text-white/80 hover:text-white text-lg leading-none">✕</button>
+        </div>
+      )}
       {/* Navbar */}
-      <header className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-sm">
+      <header className={`fixed left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-sm transition-all ${oauthError ? "top-12" : "top-0"}`}>
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center glow-primary">
