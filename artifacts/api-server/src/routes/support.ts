@@ -132,9 +132,11 @@ router.get("/support/tickets/:id/messages", requireAuth, async (req, res) => {
 router.post("/support/tickets/:id/messages", requireAuth, async (req, res) => {
   const user = (req as any).user;
   const secondaryAdmin = (req as any).secondaryAdmin;
-  const isStaff = user.isOwner || (secondaryAdmin && (secondaryAdmin.permissions as string[]).includes("manage_support"));
+  const { content, fromUserPage } = req.body;
+  // When fromUserPage is true the sender is explicitly acting as a regular user,
+  // not as staff — this prevents owner accounts from showing messages on the staff side.
+  const isStaff = !fromUserPage && (user.isOwner || (secondaryAdmin && (secondaryAdmin.permissions as string[]).includes("manage_support")));
   const id = Number(req.params.id as string);
-  const { content } = req.body;
 
   if (!content?.trim()) {
     res.status(400).json({ error: "El mensaje no puede estar vacio" });

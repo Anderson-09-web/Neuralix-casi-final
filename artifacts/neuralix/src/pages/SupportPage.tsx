@@ -36,7 +36,7 @@ export default function SupportPage() {
     if (!chatMsg || !selectedId) return;
     const msgContent = chatMsg;
     setChatMsg("");
-    sendMessage.mutate({ id: selectedId, data: { content: msgContent } }, {
+    sendMessage.mutate({ id: selectedId, data: { content: msgContent, fromUserPage: true } as any }, {
       onSuccess: () => {
         qc.invalidateQueries({ queryKey: getGetSupportMessagesQueryKey(selectedId!) });
         setTimeout(() => refetchMessages(), 1500);

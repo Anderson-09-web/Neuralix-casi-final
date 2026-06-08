@@ -11,9 +11,9 @@ export default function ServerDashboard() {
   const { guildId } = useParams<{ guildId: string }>();
   const [, setLocation] = useLocation();
 
-  const { data: guild, isLoading: guildLoading } = useGetGuild(guildId, { query: { queryKey: getGetGuildQueryKey(guildId), enabled: !!guildId } });
-  const { data: stats } = useGetGuildStats(guildId, { query: { queryKey: getGetGuildStatsQueryKey(guildId), enabled: !!guildId } });
-  const { data: botStatus } = useGetGuildBotStatus(guildId, { query: { queryKey: getGetGuildBotStatusQueryKey(guildId), enabled: !!guildId } });
+  const { data: guild, isLoading: guildLoading } = useGetGuild(guildId, { query: { queryKey: getGetGuildQueryKey(guildId), enabled: !!guildId, staleTime: 0 } });
+  const { data: stats } = useGetGuildStats(guildId, { query: { queryKey: getGetGuildStatsQueryKey(guildId), enabled: !!guildId, staleTime: 0, refetchOnMount: true } });
+  const { data: botStatus } = useGetGuildBotStatus(guildId, { query: { queryKey: getGetGuildBotStatusQueryKey(guildId), enabled: !!guildId, staleTime: 0 } });
   const { data: announcements } = useGetAnnouncements({ query: { queryKey: getGetAnnouncementsQueryKey(), enabled: true } });
 
   if (guildLoading && !guild) return (
