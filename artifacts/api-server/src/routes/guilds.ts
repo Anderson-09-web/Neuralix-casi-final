@@ -1,7 +1,7 @@
 import { Router } from "express";
 import axios from "axios";
 import { db, guildConfigsTable, antiraidStatsTable, ticketsTable, verifiedUsersTable, logEntriesTable, backupsTable } from "@workspace/db";
-import { eq, count } from "drizzle-orm";
+import { eq, count, and } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 
 const router = Router();
@@ -94,18 +94,47 @@ router.get("/guilds", requireAuth, async (req, res) => {
 
 router.get("/guilds/:guildId", requireAuth, async (req, res) => {
   const guildId = req.params.guildId as string;
-  const [cfg] = await db.select().from(guildConfigsTable).where(eq(guildConfigsTable.guildId, guildId));
+  const botToken = process.env.DISCORD_BOT_TOKEN;
 
-  const [openTicketsResult] = await db.select({ count: count() }).from(ticketsTable).where(eq(ticketsTable.guildId, guildId));
-  const [verifiedResult] = await db.select({ count: count() }).from(verificationConfigsTable).where(eq(verificationConfigsTable.guildId, guildId));
+  const [[cfg], [openTicketsResult], [verifiedResult]] = await Promise.all([
+    db.select().from(guildConfigsTable).where(eq(guildConfigsTable.guildId, guildId)),
+    db.select({ count: count() }).from(ticketsTable).where(and(eq(ticketsTable.guildId, guildId), eq(ticketsTable.status, "open"))),
+    db.select({ count: count() }).from(verifiedUsersTable).where(eq(verifiedUsersTable.guildId, guildId)),
+  ]);
+
+  let memberCount = cfg?.memberCount || 0;
+  let botPresent = cfg?.botPresent || false;
+
+  if (botToken) {
+    try {
+      const r = await axios.get(`${DISCORD_API}/guilds/${guildId}?with_counts=true`, {
+        headers: { Authorization: `Bot ${botToken}` },
+        validateStatus: () => true,
+      });
+      if (r.status === 200) {
+        botPresent = true;
+        memberCount = r.data.approximate_member_count ?? r.data.member_count ?? memberCount;
+        db.update(guildConfigsTable)
+          .set({ botPresent: true, memberCount, guildName: r.data.name || cfg?.guildName, guildIcon: r.data.icon || cfg?.guildIcon })
+          .where(eq(guildConfigsTable.guildId, guildId))
+          .catch(() => {});
+      } else {
+        botPresent = false;
+        db.update(guildConfigsTable)
+          .set({ botPresent: false })
+          .where(eq(guildConfigsTable.guildId, guildId))
+          .catch(() => {});
+      }
+    } catch { /* use cached value */ }
+  }
 
   res.json({
     id: guildId,
     name: cfg?.guildName || "Servidor",
     icon: cfg?.guildIcon || null,
-    memberCount: cfg?.memberCount || 0,
-    onlineMemberCount: Math.floor((cfg?.memberCount || 0) * 0.3),
-    botPresent: cfg?.botPresent || false,
+    memberCount,
+    onlineMemberCount: Math.floor(memberCount * 0.3),
+    botPresent,
     premiumTier: 0,
     openTickets: openTicketsResult?.count || 0,
     verifiedMembers: verifiedResult?.count || 0,
@@ -122,8 +151,8 @@ router.get("/guilds/:guildId/stats", requireAuth, async (req, res) => {
     const [cfg, stats, openTickets, closedTickets, verifiedMembers, backupsCount, recentLogs] = await Promise.all([
       db.select().from(guildConfigsTable).where(eq(guildConfigsTable.guildId, guildId)).then((r) => r[0]),
       db.select().from(antiraidStatsTable).where(eq(antiraidStatsTable.guildId, guildId)).then((r) => r[0]),
-      db.select({ count: count() }).from(ticketsTable).where(eq(ticketsTable.guildId, guildId)).then((r) => r[0]),
-      db.select({ count: count() }).from(ticketsTable).where(eq(ticketsTable.guildId, guildId)).then((r) => r[0]),
+      db.select({ count: count() }).from(ticketsTable).where(and(eq(ticketsTable.guildId, guildId), eq(ticketsTable.status, "open"))).then((r) => r[0]),
+      db.select({ count: count() }).from(ticketsTable).where(and(eq(ticketsTable.guildId, guildId), eq(ticketsTable.status, "closed"))).then((r) => r[0]),
       db.select({ count: count() }).from(verifiedUsersTable).where(eq(verifiedUsersTable.guildId, guildId)).then((r) => r[0]),
       db.select({ count: count() }).from(backupsTable).where(eq(backupsTable.guildId, guildId)).then((r) => r[0]),
       db.select({ count: count() }).from(logEntriesTable).where(eq(logEntriesTable.guildId, guildId)).then((r) => r[0]),
