@@ -127,6 +127,20 @@ export default function Layout({ children, guildId, guildName, guildIcon }: Layo
           </div>
         )}
 
+        {/* Back to servers list */}
+        {guildId && (
+          <Link
+            href="/servers"
+            className={cn(
+              "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all cursor-pointer mt-1 text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground border border-transparent",
+              collapsed && "justify-center px-2"
+            )}
+          >
+            <ChevronRight className="w-4 h-4 flex-shrink-0 rotate-180" />
+            {!collapsed && <span>Volver a servidores</span>}
+          </Link>
+        )}
+
         {/* Back to server button when in Admin without guild context */}
         {!guildId && lastGuildId && (
           <Link

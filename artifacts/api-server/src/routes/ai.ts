@@ -10,10 +10,65 @@ const RESPONSES = {
   free: {
     soporte: "Para soporte tecnico puedes crear un ticket en el Centro de Soporte del dashboard o unirte a nuestro Discord: discord.gg/wukr8apdQq",
     premium: "Neuralix Premium ofrece IA avanzada, backups ilimitados y proteccion AntiNuke. Activa tu licencia en la seccion Premium del dashboard o contactanos en discord.gg/wukr8apdQq",
-    ticket: "Puedes abrir un ticket de soporte desde el boton 'Soporte' en la barra superior del dashboard. Describe tu problema y el equipo te respondera.",
+    ticket: "Puedes abrir un ticket de soporte desde la seccion 'Soporte' del menu lateral del dashboard. Escribe tu asunto y descripcion y el equipo te respondera.",
     dashboard: "El dashboard te permite gestionar todos los sistemas de tu servidor. Inicia sesion con Discord y selecciona tu servidor para comenzar.",
-    default: "Soy el asistente de soporte de Neuralix (plan Free). Puedo ayudarte con preguntas basicas del dashboard. Para configuracion avanzada necesitas plan Plus o superior. Soporte en discord.gg/wukr8apdQq",
-    restrict: "Esta funcion requiere plan Plus o superior. Para obtener Premium activa tu licencia en la seccion Premium del dashboard o contacta al equipo en discord.gg/wukr8apdQq",
+    antiraid: `Para configurar AntiRaid (gratis):
+
+1. Ve a la seccion "AntiRaid" en el menu lateral izquierdo
+2. Activa el interruptor principal "AntiRaid Global"
+3. Activa los modulos que necesites: AntiJoin, AntiAlt, AntiBot, AntiSpam
+4. Configura los umbrales en cada modulo
+5. Haz clic en "Guardar todo"
+
+Para funciones avanzadas como AntiNuke o configuracion automatica, necesitas plan Plus o superior.`,
+    verification: `Para configurar Verificacion (gratis):
+
+1. Ve a "Verificacion" en el menu lateral
+2. Activa "Verificacion activa"
+3. Ingresa el ID del rol que se asignara al verificarse
+4. Activa AntiVPN y AntiAlt si quieres filtros adicionales
+5. Copia el enlace del "Portal de Verificacion" al final de la pagina
+6. Comparte ese enlace con tus miembros (no compartas la URL del panel)
+7. Haz clic en "Guardar"`,
+    tickets: `Para configurar Tickets (gratis):
+
+1. Ve a "Tickets" en el menu lateral
+2. Activa el sistema de tickets
+3. Configura el ID de la categoria donde se crearan los tickets
+4. Ingresa el ID del rol de soporte
+5. En la tab "Panel": personaliza el embed del canal
+6. Haz clic en "Guardar"`,
+    logs: `Para configurar Logs (gratis):
+
+1. Ve a "Logs" en el menu lateral
+2. Activa el interruptor "Logs activos"
+3. Ingresa el ID del canal de Discord para los logs
+4. Selecciona los eventos a registrar
+5. Haz clic en "Guardar"`,
+    backups: `Para crear un Backup (gratis):
+
+1. Ve a "Backups" en el menu lateral
+2. Haz clic en "Crear backup"
+3. El backup guarda toda la configuracion: AntiRaid, Verificacion, Tickets, Logs, Bienvenidas
+4. Para restaurar: haz clic en "Restaurar" en el backup deseado
+
+Plan Free: 1 backup maximo. Para mas backups necesitas plan Plus o superior.`,
+    welcome: `Para configurar Bienvenidas (gratis):
+
+1. Ve a "Bienvenidas" en el menu lateral
+2. Activa "Sistema de bienvenidas"
+3. Ingresa el ID del canal de bienvenidas
+4. Personaliza el mensaje usando variables: {user}, {server}, {membercount}
+5. Haz clic en "Guardar"`,
+    goodbye: `Para configurar Despedidas (gratis):
+
+1. Ve a "Despedidas" en el menu lateral
+2. Activa "Sistema de despedidas"
+3. Ingresa el ID del canal
+4. Personaliza el mensaje
+5. Haz clic en "Guardar"`,
+    default: "Hola! Soy el asistente de Neuralix. Puedo ayudarte a configurar cualquier sistema del dashboard. Pregunta sobre: AntiRaid, Verificacion, Tickets, Logs, Backups, Bienvenidas o cualquier funcion. Para configuracion automatica necesitas plan Plus o superior.",
+    restrict: "Esta funcion de configuracion automatica requiere plan Plus o superior. Sin embargo puedo explicarte como configurarlo manualmente. Pregunta 'como configuro [modulo]' y te explico paso a paso.",
   },
   plus: {
     antiraid: `Para activar AntiRaid paso a paso:
@@ -290,13 +345,8 @@ router.post("/guilds/:guildId/ai/chat", requireAuth, async (req, res) => {
   } else if (effectivePlan === "plus") {
     response = (RESPONSES.plus as any)[intent] || RESPONSES.plus.default;
   } else {
-    // Free plan: only support questions
-    const supportIntents = ["soporte", "ticket", "dashboard", "premium", "default"];
-    if (supportIntents.includes(intent)) {
-      response = (RESPONSES.free as any)[intent] || RESPONSES.free.default;
-    } else {
-      response = RESPONSES.free.restrict;
-    }
+    // Free plan: guide on configuration + basic support
+    response = (RESPONSES.free as any)[intent] || RESPONSES.free.default;
   }
 
   res.json({ response, action, plan: effectivePlan });

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, backupsTable, welcomeConfigsTable, goodbyeConfigsTable, antiraidConfigsTable, ticketConfigsTable, verificationConfigsTable, logsConfigsTable } from "@workspace/db";
+import { db, backupsTable, welcomeConfigsTable, goodbyeConfigsTable, antiraidConfigsTable, ticketConfigsTable, verificationConfigsTable, logsConfigsTable, guildConfigsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 
@@ -19,8 +19,45 @@ router.post("/guilds/:guildId/backups", requireAuth, async (req, res) => {
   const [tickets] = await db.select().from(ticketConfigsTable).where(eq(ticketConfigsTable.guildId, guildId));
   const [verification] = await db.select().from(verificationConfigsTable).where(eq(verificationConfigsTable.guildId, guildId));
   const [logs] = await db.select().from(logsConfigsTable).where(eq(logsConfigsTable.guildId, guildId));
+  const [guildCfg] = await db.select().from(guildConfigsTable).where(eq(guildConfigsTable.guildId, guildId));
 
-  const data = { welcome, goodbye, antiraid, tickets, verification, logs };
+  // Build a structured snapshot including all configured channels, categories and roles
+  const data = {
+    welcome,
+    goodbye,
+    antiraid,
+    tickets,
+    verification,
+    logs,
+    guildConfig: guildCfg,
+    configuredChannelsAndRoles: {
+      welcomeChannel: welcome?.channelId || null,
+      goodbyeChannel: goodbye?.channelId || null,
+      verificationRole: verification?.roleId || null,
+      verificationLogChannel: verification?.logChannelId || null,
+      ticketCategory: tickets?.categoryId || null,
+      ticketSupportRole: tickets?.supportRoleId || null,
+      ticketTranscriptChannel: tickets?.transcriptChannelId || null,
+      ticketLogsChannel: tickets?.logsChannelId || null,
+      ticketPanelChannel: tickets?.panelChannelId || null,
+      logsChannel: logs?.channelId || null,
+    },
+    antiraidModules: antiraid ? {
+      antiJoin: antiraid.antiJoin,
+      antiAlt: antiraid.antiAlt,
+      antiBot: antiraid.antiBot,
+      antiSpam: antiraid.antiSpam,
+      antiLinks: antiraid.antiLinks,
+      antiVpn: antiraid.antiVpn,
+      antiNuke: antiraid.antiNuke,
+      antiBanMass: antiraid.antiBanMass,
+      antiKickMass: antiraid.antiKickMass,
+      antiChannelCreate: antiraid.antiChannelCreate,
+      antiChannelDelete: antiraid.antiChannelDelete,
+      antiRoleCreate: antiraid.antiRoleCreate,
+      antiRoleDelete: antiraid.antiRoleDelete,
+    } : null,
+  };
   const dataStr = JSON.stringify(data);
   const existingCount = (await db.select().from(backupsTable).where(eq(backupsTable.guildId, guildId))).length;
 

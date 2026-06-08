@@ -14,7 +14,7 @@ export default function ServersPage() {
   const { theme, toggleTheme } = useTheme();
   const qc = useQueryClient();
   const { data: user, isLoading: userLoading } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
-  const { data: guilds, isLoading: guildsLoading, refetch, isError: guildsError } = useGetGuilds({ query: { queryKey: getGetGuildsQueryKey(), enabled: !!user } });
+  const { data: guilds, isLoading: guildsLoading, refetch, isError: guildsError } = useGetGuilds({ query: { queryKey: getGetGuildsQueryKey(), enabled: !!user, refetchOnMount: true, staleTime: 0 } });
   const logout = useLogout();
   const [botInviteUrl, setBotInviteUrl] = useState<string>("#");
 

@@ -26,7 +26,16 @@ export default function ToggleModule({ title, description, enabled, onToggle, ch
         </div>
         <Switch checked={enabled} onCheckedChange={onToggle} data-testid={`toggle-${title.toLowerCase().replace(/\s+/g, "-")}`} />
       </div>
-      {enabled && children && <div className="mt-4 pt-4 border-t border-border space-y-3">{children}</div>}
+      {children && (
+        <div
+          className={cn(
+            "mt-4 pt-4 border-t border-border space-y-3 overflow-hidden transition-all duration-200",
+            enabled ? "max-h-[600px] opacity-100" : "max-h-0 opacity-0 border-t-0 mt-0 pt-0 pointer-events-none"
+          )}
+        >
+          {children}
+        </div>
+      )}
     </div>
   );
 }

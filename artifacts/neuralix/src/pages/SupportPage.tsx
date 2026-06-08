@@ -22,7 +22,7 @@ export default function SupportPage() {
 
   const { data: tickets, isLoading } = useGetSupportTickets({ query: { queryKey: getGetSupportTicketsQueryKey() } });
   const createTicket = useCreateSupportTicket();
-  const { data: messages } = useGetSupportMessages(selectedId!, { query: { enabled: !!selectedId, queryKey: getGetSupportMessagesQueryKey(selectedId!) } });
+  const { data: messages, refetch: refetchMessages } = useGetSupportMessages(selectedId!, { query: { enabled: !!selectedId, queryKey: getGetSupportMessagesQueryKey(selectedId!), refetchInterval: view === "chat" ? 4000 : false } });
   const sendMessage = useSendSupportMessage();
 
   const handleCreate = () => {
@@ -34,8 +34,13 @@ export default function SupportPage() {
 
   const handleSend = () => {
     if (!chatMsg || !selectedId) return;
-    sendMessage.mutate({ id: selectedId, data: { content: chatMsg } }, {
-      onSuccess: () => { setChatMsg(""); qc.invalidateQueries(); }
+    const msgContent = chatMsg;
+    setChatMsg("");
+    sendMessage.mutate({ id: selectedId, data: { content: msgContent } }, {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetSupportMessagesQueryKey(selectedId!) });
+        setTimeout(() => refetchMessages(), 1500);
+      }
     });
   };
 
