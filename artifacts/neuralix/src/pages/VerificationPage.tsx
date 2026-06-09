@@ -1,6 +1,6 @@
 import { useParams } from "wouter";
 import { useState, useEffect } from "react";
-import { useGetVerificationConfig, useUpdateVerificationConfig, getGetVerificationConfigQueryKey } from "@workspace/api-client-react";
+import { useGetVerificationConfig, useUpdateVerificationConfig, useGetGuildPremium, getGetVerificationConfigQueryKey, getGetGuildPremiumQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import Layout from "@/components/Layout";
 import ToggleModule from "@/components/ToggleModule";
@@ -11,14 +11,19 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { VariablesModal, VERIFICATION_VARIABLES } from "@/components/VariablesModal";
+import { Lock, Crown } from "lucide-react";
+import { Link } from "wouter";
 
 export default function VerificationPage() {
   const { guildId } = useParams<{ guildId: string }>();
   const qc = useQueryClient();
   const { toast } = useToast();
   const { data: config, isLoading, isError } = useGetVerificationConfig(guildId, { query: { queryKey: getGetVerificationConfigQueryKey(guildId), enabled: !!guildId } });
+  const { data: premium } = useGetGuildPremium(guildId, { query: { enabled: !!guildId, queryKey: getGetGuildPremiumQueryKey(guildId) } });
   const update = useUpdateVerificationConfig();
   const [cfg, setCfg] = useState<any>(null);
+  const plan = (premium as any)?.plan || null;
+  const isPlus = !!plan;
 
   useEffect(() => { if (config) setCfg(config); }, [config]);
 
@@ -77,10 +82,29 @@ export default function VerificationPage() {
           </div>
         </div>
 
-        {/* Filters */}
-        <ToggleModule title="AntiVPN" description="Bloquea usuarios conectados via VPN o proxy" enabled={cfg.antiVpn} onToggle={set("antiVpn")} badge="Recomendado" />
-        <ToggleModule title="AntiAlt" description="Bloquea cuentas que parecen ser alternativas (edad < minima)" enabled={cfg.antiAlt} onToggle={set("antiAlt")} badge="Recomendado" />
-        <ToggleModule title="AntiBot" description="Bloquea cuentas identificadas como bots no autorizados" enabled={cfg.antiBot} onToggle={set("antiBot")} />
+        {/* Filters — require Plus plan */}
+        {isPlus ? (
+          <>
+            <ToggleModule title="AntiVPN" description="Bloquea usuarios conectados via VPN o proxy" enabled={cfg.antiVpn} onToggle={set("antiVpn")} badge="Plus" />
+            <ToggleModule title="AntiAlt" description="Bloquea cuentas que parecen ser alternativas (edad < minima)" enabled={cfg.antiAlt} onToggle={set("antiAlt")} badge="Plus" />
+            <ToggleModule title="AntiBot" description="Bloquea cuentas identificadas como bots no autorizados" enabled={cfg.antiBot} onToggle={set("antiBot")} badge="Plus" />
+          </>
+        ) : (
+          <div className="bg-card border border-card-border rounded-xl p-5 flex items-center gap-4">
+            <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
+              <Lock className="w-4 h-4 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm mb-0.5">AntiVPN · AntiAlt · AntiBot</p>
+              <p className="text-xs text-muted-foreground">Estos filtros avanzados estan disponibles a partir del plan Plus.</p>
+            </div>
+            <Link href={`/servers/${guildId}/premium`}>
+              <Button size="sm" className="gap-1.5 text-xs flex-shrink-0">
+                <Crown className="w-3.5 h-3.5" /> Activar Plus
+              </Button>
+            </Link>
+          </div>
+        )}
 
         {/* Custom messages */}
         <div className="bg-card border border-card-border rounded-xl p-6 space-y-5">

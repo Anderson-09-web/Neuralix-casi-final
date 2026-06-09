@@ -1,7 +1,8 @@
 import { useParams } from "wouter";
 import { useState, useEffect } from "react";
-import { ShieldAlert, TrendingDown, Zap, Shield, Network } from "lucide-react";
-import { useGetAntiraidConfig, useUpdateAntiraidConfig, useGetAntiraidStats, getGetAntiraidConfigQueryKey, getGetAntiraidStatsQueryKey } from "@workspace/api-client-react";
+import { ShieldAlert, TrendingDown, Zap, Shield, Network, Lock, Crown } from "lucide-react";
+import { useGetAntiraidConfig, useUpdateAntiraidConfig, useGetAntiraidStats, useGetGuildPremium, getGetAntiraidConfigQueryKey, getGetAntiraidStatsQueryKey, getGetGuildPremiumQueryKey } from "@workspace/api-client-react";
+import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import Layout from "@/components/Layout";
 import ToggleModule from "@/components/ToggleModule";
@@ -41,7 +42,11 @@ export default function AntiraidPage() {
 
   const { data: config, isLoading, isError } = useGetAntiraidConfig(guildId, { query: { queryKey: getGetAntiraidConfigQueryKey(guildId), enabled: !!guildId } });
   const { data: stats } = useGetAntiraidStats(guildId, { query: { queryKey: getGetAntiraidStatsQueryKey(guildId), enabled: !!guildId } });
+  const { data: premium } = useGetGuildPremium(guildId, { query: { enabled: !!guildId, queryKey: getGetGuildPremiumQueryKey(guildId) } });
   const update = useUpdateAntiraidConfig();
+
+  const plan = (premium as any)?.plan || null;
+  const isPlus = !!plan;
 
   const [cfg, setCfg] = useState<any>(null);
 
@@ -277,44 +282,80 @@ export default function AntiraidPage() {
         <div className="flex items-center gap-2 mb-4">
           <Network className="w-4 h-4 text-orange-400" />
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Deteccion de Red</h2>
+          <span className="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded font-medium">Plus</span>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {modules.filter(m => ["antiVpn"].includes(m.key)).map(({ key, title, desc, badge, children }) => (
-            <ToggleModule
-              key={key}
-              title={title}
-              description={desc}
-              enabled={!!cfg[key]}
-              onToggle={toggle(key)}
-              badge={badge}
-              badgeColor="bg-orange-500/20 text-orange-400"
-            >
-              {children}
-            </ToggleModule>
-          ))}
-        </div>
+        {isPlus ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {modules.filter(m => ["antiVpn"].includes(m.key)).map(({ key, title, desc, badge, children }) => (
+              <ToggleModule
+                key={key}
+                title={title}
+                description={desc}
+                enabled={!!cfg[key]}
+                onToggle={toggle(key)}
+                badge={badge}
+                badgeColor="bg-orange-500/20 text-orange-400"
+              >
+                {children}
+              </ToggleModule>
+            ))}
+          </div>
+        ) : (
+          <div className="bg-card border border-card-border rounded-xl p-5 flex items-center gap-4">
+            <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
+              <Lock className="w-4 h-4 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm mb-0.5">AntiVPN — Deteccion de Red</p>
+              <p className="text-xs text-muted-foreground">Detecta y bloquea VPN, Proxy y Tor. Disponible con plan Plus o superior.</p>
+            </div>
+            <Link href={`/servers/${guildId}/premium`}>
+              <Button size="sm" className="gap-1.5 text-xs flex-shrink-0">
+                <Crown className="w-3.5 h-3.5" /> Activar Plus
+              </Button>
+            </Link>
+          </div>
+        )}
       </div>
 
       <div>
         <div className="flex items-center gap-2 mb-4">
           <ShieldAlert className="w-4 h-4 text-yellow-400" />
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Proteccion AntiNuke</h2>
+          <span className="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded font-medium">Plus</span>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {modules.filter(m => !["antiJoin","antiAlt","antiBot","antiSpam","antiLinks","antiMassMention","antiVpn"].includes(m.key)).map(({ key, title, desc, badge, children }) => (
-            <ToggleModule
-              key={key}
-              title={title}
-              description={desc}
-              enabled={!!cfg[key]}
-              onToggle={toggle(key)}
-              badge={badge}
-              badgeColor={badge === "Premium" ? "bg-yellow-500/20 text-yellow-400" : "bg-primary/20 text-primary"}
-            >
-              {children}
-            </ToggleModule>
-          ))}
-        </div>
+        {isPlus ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {modules.filter(m => !["antiJoin","antiAlt","antiBot","antiSpam","antiLinks","antiMassMention","antiVpn"].includes(m.key)).map(({ key, title, desc, badge, children }) => (
+              <ToggleModule
+                key={key}
+                title={title}
+                description={desc}
+                enabled={!!cfg[key]}
+                onToggle={toggle(key)}
+                badge={badge}
+                badgeColor={badge === "Premium" ? "bg-yellow-500/20 text-yellow-400" : "bg-primary/20 text-primary"}
+              >
+                {children}
+              </ToggleModule>
+            ))}
+          </div>
+        ) : (
+          <div className="bg-card border border-card-border rounded-xl p-5 flex items-center gap-4">
+            <div className="w-10 h-10 rounded-full bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center flex-shrink-0">
+              <Lock className="w-4 h-4 text-yellow-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm mb-0.5">Proteccion AntiNuke — 12 modulos</p>
+              <p className="text-xs text-muted-foreground">Protege contra nukes, baneos masivos, eliminacion de canales y roles. Disponible con plan Plus o superior.</p>
+            </div>
+            <Link href={`/servers/${guildId}/premium`}>
+              <Button size="sm" className="gap-1.5 text-xs flex-shrink-0">
+                <Crown className="w-3.5 h-3.5" /> Activar Plus
+              </Button>
+            </Link>
+          </div>
+        )}
       </div>
     </Layout>
   );
