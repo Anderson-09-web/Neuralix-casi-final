@@ -9,8 +9,30 @@ import StatCard from "@/components/StatCard";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
+
+function NativeSelect({ value, onChange, children, className }: {
+  value: string; onChange: (v: string) => void; children: React.ReactNode; className?: string;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={cn(
+        "h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-ring appearance-none pr-8 cursor-pointer",
+        className
+      )}
+      style={{
+        backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")",
+        backgroundRepeat: "no-repeat",
+        backgroundPosition: "right 10px center",
+      }}
+    >
+      {children}
+    </select>
+  );
+}
 
 export default function AntiraidPage() {
   const { guildId } = useParams<{ guildId: string }>();
@@ -74,18 +96,13 @@ export default function AntiraidPage() {
             </div>
           </div>
           <div>
-            <Label className="text-xs text-muted-foreground">Accion automatica</Label>
-            <Select value={cfg.antiJoinAction ?? "ban"} onValueChange={setField("antiJoinAction")}>
-              <SelectTrigger className="mt-1 h-8 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ban">Banear</SelectItem>
-                <SelectItem value="kick">Expulsar</SelectItem>
-                <SelectItem value="timeout">Silenciar (timeout)</SelectItem>
-                <SelectItem value="notify">Solo notificar</SelectItem>
-              </SelectContent>
-            </Select>
+            <Label className="text-xs text-muted-foreground mb-1 block">Accion automatica</Label>
+            <NativeSelect value={cfg.antiJoinAction ?? "ban"} onChange={setField("antiJoinAction")}>
+              <option value="ban">Banear</option>
+              <option value="kick">Expulsar</option>
+              <option value="timeout">Silenciar (timeout)</option>
+              <option value="notify">Solo notificar</option>
+            </NativeSelect>
           </div>
         </div>
       ),
@@ -115,16 +132,13 @@ export default function AntiraidPage() {
             </div>
           </div>
           <div>
-            <Label className="text-xs text-muted-foreground">Accion</Label>
-            <Select value={cfg.antiSpamAction ?? "mute"} onValueChange={setField("antiSpamAction")}>
-              <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="mute">Silenciar</SelectItem>
-                <SelectItem value="kick">Expulsar</SelectItem>
-                <SelectItem value="ban">Banear</SelectItem>
-                <SelectItem value="delete">Solo borrar mensajes</SelectItem>
-              </SelectContent>
-            </Select>
+            <Label className="text-xs text-muted-foreground mb-1 block">Accion</Label>
+            <NativeSelect value={cfg.antiSpamAction ?? "mute"} onChange={setField("antiSpamAction")}>
+              <option value="mute">Silenciar</option>
+              <option value="kick">Expulsar</option>
+              <option value="ban">Banear</option>
+              <option value="delete">Solo borrar mensajes</option>
+            </NativeSelect>
           </div>
         </div>
       ),
@@ -152,26 +166,20 @@ export default function AntiraidPage() {
       children: (
         <div className="space-y-3">
           <div>
-            <Label className="text-xs text-muted-foreground">Nivel de deteccion</Label>
-            <Select value={cfg.vpnCheckLevel ?? "standard"} onValueChange={setField("vpnCheckLevel")}>
-              <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="basic">Basico (solo VPNs conocidas)</SelectItem>
-                <SelectItem value="standard">Estandar (VPN + Proxy)</SelectItem>
-                <SelectItem value="strict">Estricto (VPN + Proxy + Tor + Datacenter IPs)</SelectItem>
-              </SelectContent>
-            </Select>
+            <Label className="text-xs text-muted-foreground mb-1 block">Nivel de deteccion</Label>
+            <NativeSelect value={cfg.vpnCheckLevel ?? "standard"} onChange={setField("vpnCheckLevel")}>
+              <option value="basic">Basico (solo VPNs conocidas)</option>
+              <option value="standard">Estandar (VPN + Proxy)</option>
+              <option value="strict">Estricto (VPN + Proxy + Tor + Datacenter IPs)</option>
+            </NativeSelect>
           </div>
           <div>
-            <Label className="text-xs text-muted-foreground">Accion</Label>
-            <Select value={cfg.antiVpnAction ?? "ban"} onValueChange={setField("antiVpnAction")}>
-              <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ban">Banear</SelectItem>
-                <SelectItem value="kick">Expulsar</SelectItem>
-                <SelectItem value="notify">Solo notificar al staff</SelectItem>
-              </SelectContent>
-            </Select>
+            <Label className="text-xs text-muted-foreground mb-1 block">Accion</Label>
+            <NativeSelect value={cfg.antiVpnAction ?? "ban"} onChange={setField("antiVpnAction")}>
+              <option value="ban">Banear</option>
+              <option value="kick">Expulsar</option>
+              <option value="notify">Solo notificar al staff</option>
+            </NativeSelect>
           </div>
           <div className="flex gap-4">
             <label className="flex items-center gap-2 text-xs cursor-pointer">
@@ -206,16 +214,13 @@ export default function AntiraidPage() {
             <Input type="number" className="mt-1 w-32" value={cfg.nukeThreshold ?? 10} onChange={(e) => setField("nukeThreshold")(Number(e.target.value))} min={3} max={50} />
           </div>
           <div>
-            <Label className="text-xs text-muted-foreground">Accion al detectar nuke</Label>
-            <Select value={cfg.nukeAction ?? "strip_permissions"} onValueChange={setField("nukeAction")}>
-              <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="strip_permissions">Revocar permisos del admin</SelectItem>
-                <SelectItem value="ban">Banear al admin</SelectItem>
-                <SelectItem value="kick">Expulsar al admin</SelectItem>
-                <SelectItem value="notify">Solo notificar al owner</SelectItem>
-              </SelectContent>
-            </Select>
+            <Label className="text-xs text-muted-foreground mb-1 block">Accion al detectar nuke</Label>
+            <NativeSelect value={cfg.nukeAction ?? "strip_permissions"} onChange={setField("nukeAction")}>
+              <option value="strip_permissions">Revocar permisos del admin</option>
+              <option value="ban">Banear al admin</option>
+              <option value="kick">Expulsar al admin</option>
+              <option value="notify">Solo notificar al owner</option>
+            </NativeSelect>
           </div>
         </div>
       ),
@@ -246,7 +251,6 @@ export default function AntiraidPage() {
         </div>
       )}
 
-      {/* Section: Proteccion de raids */}
       <div className="mb-6">
         <div className="flex items-center gap-2 mb-4">
           <Shield className="w-4 h-4 text-primary" />
@@ -269,7 +273,6 @@ export default function AntiraidPage() {
         </div>
       </div>
 
-      {/* Section: AntiVPN */}
       <div className="mb-6">
         <div className="flex items-center gap-2 mb-4">
           <Network className="w-4 h-4 text-orange-400" />
@@ -292,7 +295,6 @@ export default function AntiraidPage() {
         </div>
       </div>
 
-      {/* Section: AntiNuke (Admin actions) */}
       <div>
         <div className="flex items-center gap-2 mb-4">
           <ShieldAlert className="w-4 h-4 text-yellow-400" />

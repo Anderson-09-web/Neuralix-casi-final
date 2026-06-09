@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { X, Copy, Check, Hash } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -85,85 +84,75 @@ export function VariablesModal({ variables, onInsert }: VariablesModalProps) {
         Ver Variables
       </Button>
 
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            key="variables-backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 z-50"
-            onClick={() => setOpen(false)}
-            aria-hidden="true"
-          />
-        )}
-        {open && (
-          <motion.div
-            key="variables-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Variables disponibles"
-            initial={{ opacity: 0, scale: 0.95, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 8 }}
-            transition={{ duration: 0.15 }}
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md px-4"
-          >
-            <div className="bg-card border border-card-border rounded-2xl shadow-2xl overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-                <div>
-                  <h3 className="font-bold text-sm">Variables disponibles</h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Copia cualquier variable para usarla en tu mensaje
-                  </p>
-                </div>
-                <button
-                  onClick={() => setOpen(false)}
-                  aria-label="Cerrar modal de variables"
-                  className="text-muted-foreground hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
-                >
-                  <X className="w-4 h-4" aria-hidden="true" />
-                </button>
-              </div>
-              <ul className="p-3 max-h-80 overflow-y-auto space-y-1" role="list">
-                {variables.map((v) => (
-                  <li key={v.key}>
-                    <button
-                      onClick={() => copy(v.key)}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-secondary transition-colors text-left group focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      aria-label={`Copiar variable ${v.key}: ${v.desc}`}
-                    >
-                      <code className={cn(
-                        "font-mono text-xs px-2 py-1 rounded border flex-shrink-0 transition-colors",
-                        copied === v.key
-                          ? "bg-green-500/20 text-green-400 border-green-500/30"
-                          : "bg-primary/10 text-primary border-primary/20"
-                      )}>
-                        {v.key}
-                      </code>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-foreground truncate">{v.desc}</p>
-                        <p className="text-xs text-muted-foreground truncate">Ej: {v.example}</p>
-                      </div>
-                      <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden="true">
-                        {copied === v.key
-                          ? <Check className="w-3.5 h-3.5 text-green-400" />
-                          : <Copy className="w-3.5 h-3.5 text-muted-foreground" />
-                        }
-                      </div>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <div className="px-4 py-3 border-t border-border bg-secondary/30">
-                <p className="text-xs text-muted-foreground">
-                  Haz click en una variable para copiarla al portapapeles e insertarla
+      {open && (
+        <div
+          className="fixed inset-0 bg-black/60 z-50"
+          onClick={() => setOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {open && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Variables disponibles"
+          className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md px-4"
+        >
+          <div className="bg-card border border-card-border rounded-2xl shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <div>
+                <h3 className="font-bold text-sm">Variables disponibles</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Copia cualquier variable para usarla en tu mensaje
                 </p>
               </div>
+              <button
+                onClick={() => setOpen(false)}
+                aria-label="Cerrar modal de variables"
+                className="text-muted-foreground hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+              >
+                <X className="w-4 h-4" aria-hidden="true" />
+              </button>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            <ul className="p-3 max-h-80 overflow-y-auto space-y-1" role="list">
+              {variables.map((v) => (
+                <li key={v.key}>
+                  <button
+                    onClick={() => copy(v.key)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-secondary transition-colors text-left group focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    aria-label={`Copiar variable ${v.key}: ${v.desc}`}
+                  >
+                    <code className={cn(
+                      "font-mono text-xs px-2 py-1 rounded border flex-shrink-0 transition-colors",
+                      copied === v.key
+                        ? "bg-green-500/20 text-green-400 border-green-500/30"
+                        : "bg-primary/10 text-primary border-primary/20"
+                    )}>
+                      {v.key}
+                    </code>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-foreground truncate">{v.desc}</p>
+                      <p className="text-xs text-muted-foreground truncate">Ej: {v.example}</p>
+                    </div>
+                    <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden="true">
+                      {copied === v.key
+                        ? <Check className="w-3.5 h-3.5 text-green-400" />
+                        : <Copy className="w-3.5 h-3.5 text-muted-foreground" />
+                      }
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div className="px-4 py-3 border-t border-border bg-secondary/30">
+              <p className="text-xs text-muted-foreground">
+                Haz click en una variable para copiarla al portapapeles e insertarla
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

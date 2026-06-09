@@ -1,4 +1,3 @@
-import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 interface StatCardProps {
@@ -19,11 +18,7 @@ const colors = {
 
 export default function StatCard({ label, value, icon, color = "primary", trend }: StatCardProps) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="bg-card border border-card-border rounded-xl p-5 hover:border-primary/30 transition-all"
-    >
+    <div className="bg-card border border-card-border rounded-xl p-5 hover:border-primary/30 transition-all">
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">{label}</p>
@@ -34,6 +29,6 @@ export default function StatCard({ label, value, icon, color = "primary", trend 
           {icon}
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }
