@@ -59,16 +59,20 @@ export default function SupportWidget() {
   };
 
   const handleSend = async () => {
-    if (!chatMsg.trim() || !selectedTicketId) return;
+    if (!chatMsg.trim() || !selectedTicketId || sending) return;
+    const msgContent = chatMsg.trim();
+    const ticketId = selectedTicketId;
+    setChatMsg("");
     setSending(true);
-    sendMessage.mutate({ id: selectedTicketId, data: { content: chatMsg.trim() } }, {
-      onSuccess: () => {
-        setChatMsg("");
-        setTimeout(() => qc.invalidateQueries({ queryKey: getGetSupportMessagesQueryKey(selectedTicketId!) }), 800);
-        setSending(false);
-      },
-      onError: () => setSending(false),
-    });
+    try {
+      await sendMessage.mutateAsync({ id: ticketId, data: { content: msgContent, fromUserPage: true } as any });
+      sendMessage.reset();
+      setTimeout(() => qc.invalidateQueries({ queryKey: getGetSupportMessagesQueryKey(ticketId) }), 500);
+    } catch {
+      // silently fail — message stays cleared to avoid double-send
+    } finally {
+      setSending(false);
+    }
   };
 
   const selectedTicket = tickets?.find((t) => t.id === selectedTicketId);

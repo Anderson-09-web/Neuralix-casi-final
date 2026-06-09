@@ -199,4 +199,11 @@ router.post("/auth/logout", (_req, res) => {
   res.json({ ok: true });
 });
 
+// Returns the raw JWT so external tools can use it as a Bearer token.
+// Example: Authorization: Bearer <token>
+router.get("/auth/token", requireAuth, (req, res) => {
+  const token = req.cookies?.token || req.headers.authorization?.replace("Bearer ", "");
+  res.json({ token });
+});
+
 export default router;

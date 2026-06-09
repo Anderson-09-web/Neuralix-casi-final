@@ -545,6 +545,10 @@ export interface BotSettingsInput {
   ownerDiscordIds?: string | null;
 }
 
+export type GetAuthToken200 = {
+  token: string;
+};
+
 export type GetBotStatus200 = {
   botTokenConfigured?: boolean;
   clientIdConfigured?: boolean;

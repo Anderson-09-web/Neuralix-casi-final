@@ -37,6 +37,7 @@ import type {
   BotSettings,
   BotSettingsInput,
   BotStatus,
+  GetAuthToken200,
   GetBotStatus200,
   GoodbyeConfig,
   GoodbyeConfigInput,
@@ -301,6 +302,83 @@ export const useLogout = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getLogoutMutationOptions(options));
     }
+
+export const getGetAuthTokenUrl = () => {
+
+
+
+
+  return `/api/auth/token`
+}
+
+/**
+ * @summary Get current JWT token (for use as Bearer in external tools)
+ */
+export const getAuthToken = async ( options?: RequestInit): Promise<GetAuthToken200> => {
+
+  return customFetch<GetAuthToken200>(getGetAuthTokenUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAuthTokenQueryKey = () => {
+    return [
+    `/api/auth/token`
+    ] as const;
+    }
+
+
+export const getGetAuthTokenQueryOptions = <TData = Awaited<ReturnType<typeof getAuthToken>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAuthToken>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAuthTokenQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAuthToken>>> = ({ signal }) => getAuthToken({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAuthToken>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAuthTokenQueryResult = NonNullable<Awaited<ReturnType<typeof getAuthToken>>>
+export type GetAuthTokenQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get current JWT token (for use as Bearer in external tools)
+ */
+
+export function useGetAuthToken<TData = Awaited<ReturnType<typeof getAuthToken>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAuthToken>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAuthTokenQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getGetDiscordAuthUrlUrl = () => {
 

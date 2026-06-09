@@ -24,6 +24,7 @@ export * from './blacklistInput';
 export * from './botSettings';
 export * from './botSettingsInput';
 export * from './botStatus';
+export * from './getAuthToken200';
 export * from './getBotStatus200';
 export * from './goodbyeConfig';
 export * from './goodbyeConfigInput';

@@ -63,6 +63,25 @@ paths:
         "200":
           description: Logged out
 
+  /auth/token:
+    get:
+      operationId: getAuthToken
+      tags: [auth]
+      summary: Get current JWT token (for use as Bearer in external tools)
+      responses:
+        "200":
+          description: JWT token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                required: [token]
+        "401":
+          description: Unauthorized
+
   /auth/discord/url:
     get:
       operationId: getDiscordAuthUrl

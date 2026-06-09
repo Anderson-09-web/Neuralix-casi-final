@@ -32,16 +32,23 @@ export default function SupportPage() {
     });
   };
 
-  const handleSend = () => {
-    if (!chatMsg || !selectedId) return;
-    const msgContent = chatMsg;
+  const [sending, setSending] = useState(false);
+
+  const handleSend = async () => {
+    if (!chatMsg.trim() || !selectedId || sending) return;
+    const msgContent = chatMsg.trim();
     setChatMsg("");
-    sendMessage.mutate({ id: selectedId, data: { content: msgContent, fromUserPage: true } as any }, {
-      onSuccess: () => {
-        qc.invalidateQueries({ queryKey: getGetSupportMessagesQueryKey(selectedId!) });
-        setTimeout(() => refetchMessages(), 1500);
-      }
-    });
+    setSending(true);
+    try {
+      await sendMessage.mutateAsync({ id: selectedId, data: { content: msgContent, fromUserPage: true } as any });
+      sendMessage.reset();
+      qc.invalidateQueries({ queryKey: getGetSupportMessagesQueryKey(selectedId!) });
+      setTimeout(() => refetchMessages(), 1200);
+    } catch {
+      toast({ title: "Error al enviar el mensaje", variant: "destructive" });
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -137,7 +144,7 @@ export default function SupportPage() {
             </div>
             <div className="p-4 border-t border-border flex gap-3">
               <Input placeholder="Escribe un mensaje..." value={chatMsg} onChange={(e) => setChatMsg(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSend()} data-testid="input-support-message" />
-              <Button onClick={handleSend} disabled={sendMessage.isPending} data-testid="btn-send-message">
+              <Button onClick={handleSend} disabled={sending} data-testid="btn-send-message">
                 <Send className="w-4 h-4" />
               </Button>
             </div>

@@ -34,6 +34,14 @@ export const GetMeResponse = zod.object({
 
 
 /**
+ * @summary Get current JWT token (for use as Bearer in external tools)
+ */
+export const GetAuthTokenResponse = zod.object({
+  "token": zod.string()
+})
+
+
+/**
  * @summary Get Discord OAuth2 URL
  */
 export const GetDiscordAuthUrlResponse = zod.object({
