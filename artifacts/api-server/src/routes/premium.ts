@@ -94,6 +94,7 @@ router.post("/guilds/:guildId/premium/activate", requireAuth, async (req, res) =
   } else {
     await db.insert(guildConfigsTable).values({
       guildId,
+      guildName: guildId,
       premiumActive: true,
       premiumPlan: license.plan,
       premiumExpiresAt: license.expiresAt,

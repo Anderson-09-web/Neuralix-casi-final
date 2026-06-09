@@ -773,6 +773,50 @@ paths:
                   $ref: "#/components/schemas/PremiumPlan"
 
   # ADMIN
+  /admin/bot-settings:
+    get:
+      operationId: getBotSettings
+      tags: [admin]
+      summary: Get bot credential settings (owner only, values masked)
+      responses:
+        "200":
+          description: Bot settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotSettings"
+    put:
+      operationId: updateBotSettings
+      tags: [admin]
+      summary: Update bot credential settings (owner only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BotSettingsInput"
+      responses:
+        "200":
+          description: Updated
+
+  /settings/bot-status:
+    get:
+      operationId: getBotStatus
+      tags: [admin]
+      summary: Check if bot credentials are configured
+      responses:
+        "200":
+          description: Bot credential status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  botTokenConfigured: { type: boolean }
+                  clientIdConfigured: { type: boolean }
+                  clientSecretConfigured: { type: boolean }
+                  sessionSecretConfigured: { type: boolean }
+
   /admin/stats:
     get:
       operationId: getAdminStats
@@ -1843,3 +1887,40 @@ components:
           items:
             type: string
       required: [response, suggestions]
+
+    BotSettings:
+      type: object
+      properties:
+        botTokenConfigured:
+          type: boolean
+        clientIdConfigured:
+          type: boolean
+        clientSecretConfigured:
+          type: boolean
+        sessionSecretConfigured:
+          type: boolean
+        ownerDiscordIds:
+          type: string
+        botTokenMask:
+          type: string
+        clientIdMask:
+          type: string
+        fromEnv:
+          type: boolean
+        updatedAt:
+          type: ["string", "null"]
+      required: [botTokenConfigured, clientIdConfigured, clientSecretConfigured, sessionSecretConfigured]
+
+    BotSettingsInput:
+      type: object
+      properties:
+        botToken:
+          type: ["string", "null"]
+        clientId:
+          type: ["string", "null"]
+        clientSecret:
+          type: ["string", "null"]
+        sessionSecret:
+          type: ["string", "null"]
+        ownerDiscordIds:
+          type: ["string", "null"]

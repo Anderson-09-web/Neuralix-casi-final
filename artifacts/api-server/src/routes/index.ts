@@ -15,6 +15,7 @@ import adminRouter from "./admin";
 import supportRouter from "./support";
 import aiRouter from "./ai";
 import setupRouter from "./setup";
+import botSettingsRouter from "./bot-settings";
 
 const router: IRouter = Router();
 
@@ -34,5 +35,6 @@ router.use(adminRouter);
 router.use(supportRouter);
 router.use(aiRouter);
 router.use(setupRouter);
+router.use(botSettingsRouter);
 
 export default router;

@@ -24,7 +24,7 @@ async function ensureGuildConfig(guildId: string, guildName: string, guildIcon: 
 
 router.get("/guilds/debug-bot", requireAuth, async (req, res) => {
   const botToken = process.env.DISCORD_BOT_TOKEN;
-  if (!botToken) return res.json({ error: "DISCORD_BOT_TOKEN not set", tokenPresent: false });
+  if (!botToken) { res.json({ error: "DISCORD_BOT_TOKEN not set", tokenPresent: false }); return; }
   try {
     const r = await axios.get(`${DISCORD_API}/users/@me/guilds`, {
       headers: { Authorization: `Bot ${botToken.trim()}` },

@@ -519,3 +519,36 @@ export interface AiChatReply {
   suggestions: string[];
 }
 
+export interface BotSettings {
+  botTokenConfigured: boolean;
+  clientIdConfigured: boolean;
+  clientSecretConfigured: boolean;
+  sessionSecretConfigured: boolean;
+  ownerDiscordIds?: string;
+  botTokenMask?: string;
+  clientIdMask?: string;
+  fromEnv?: boolean;
+  /** @nullable */
+  updatedAt?: string | null;
+}
+
+export interface BotSettingsInput {
+  /** @nullable */
+  botToken?: string | null;
+  /** @nullable */
+  clientId?: string | null;
+  /** @nullable */
+  clientSecret?: string | null;
+  /** @nullable */
+  sessionSecret?: string | null;
+  /** @nullable */
+  ownerDiscordIds?: string | null;
+}
+
+export type GetBotStatus200 = {
+  botTokenConfigured?: boolean;
+  clientIdConfigured?: boolean;
+  clientSecretConfigured?: boolean;
+  sessionSecretConfigured?: boolean;
+};
+

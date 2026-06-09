@@ -5,9 +5,9 @@ import {
   useGetBlacklist, useAddToBlacklist, useRemoveFromBlacklist,
   useGetAnnouncements, useCreateAnnouncement, useDeleteAnnouncement,
   useGetSupportTickets, useGetSupportMessages, useSendSupportMessage,
-  useGetMe,
+  useGetMe, useGetBotSettings, useUpdateBotSettings,
   getGetAdminStatsQueryKey, getGetLicensesQueryKey, getGetBlacklistQueryKey, getGetAnnouncementsQueryKey,
-  getGetSupportTicketsQueryKey, getGetSupportMessagesQueryKey, getGetMeQueryKey,
+  getGetSupportTicketsQueryKey, getGetSupportMessagesQueryKey, getGetMeQueryKey, getGetBotSettingsQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import Layout from "@/components/Layout";
@@ -19,7 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
-const ALL_TABS = ["stats", "licenses", "blacklist", "announcements", "admins", "soporte", "actividad", "links"] as const;
+const ALL_TABS = ["stats", "licenses", "blacklist", "announcements", "admins", "soporte", "actividad", "links", "bot"] as const;
 type Tab = typeof ALL_TABS[number];
 
 const TAB_LABELS: Record<Tab, string> = {
@@ -31,6 +31,7 @@ const TAB_LABELS: Record<Tab, string> = {
   soporte: "Soporte",
   actividad: "Actividad",
   links: "Links",
+  bot: "Credenciales Bot",
 };
 
 const PERM_TO_TAB: Partial<Record<Tab, string>> = {
@@ -321,6 +322,42 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (tab === "actividad" && isOwner && !activityLoaded) fetchActivityLogs();
+  }, [tab, isOwner]);
+
+  /* Bot Settings */
+  const { data: botSettings, refetch: refetchBotSettings } = useGetBotSettings({
+    query: { queryKey: getGetBotSettingsQueryKey(), enabled: isOwner && tab === "bot" },
+  });
+  const updateBotSettings = useUpdateBotSettings();
+  const [botToken, setBotToken] = useState("");
+  const [botClientId, setBotClientId] = useState("");
+  const [botClientSecret, setBotClientSecret] = useState("");
+  const [botSessionSecret, setBotSessionSecret] = useState("");
+  const [botOwnerIds, setBotOwnerIds] = useState("");
+  const [botSaving, setBotSaving] = useState(false);
+
+  const handleSaveBotSettings = async () => {
+    setBotSaving(true);
+    try {
+      await updateBotSettings.mutateAsync({
+        data: {
+          botToken: botToken || null,
+          clientId: botClientId || null,
+          clientSecret: botClientSecret || null,
+          sessionSecret: botSessionSecret || null,
+          ownerDiscordIds: botOwnerIds || null,
+        },
+      });
+      toast({ title: "Credenciales del bot guardadas correctamente" });
+      setBotToken(""); setBotClientId(""); setBotClientSecret(""); setBotSessionSecret(""); setBotOwnerIds("");
+      qc.invalidateQueries({ queryKey: getGetBotSettingsQueryKey() });
+    } catch (err: any) {
+      toast({ title: `Error: ${err?.data?.error || err?.message || "Error al guardar"}`, variant: "destructive" });
+    } finally { setBotSaving(false); }
+  };
+
+  useEffect(() => {
+    if (tab === "bot" && isOwner) refetchBotSettings();
   }, [tab, isOwner]);
 
   /* Links */
@@ -1063,6 +1100,125 @@ export default function AdminPage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ── Bot Credentials ── */}
+      {tab === "bot" && isOwner && (
+        <div className="space-y-6">
+          {/* Status cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { label: "Bot Token", ok: !!(botSettings as any)?.botTokenConfigured, mask: (botSettings as any)?.botTokenMask },
+              { label: "Client ID", ok: !!(botSettings as any)?.clientIdConfigured, mask: (botSettings as any)?.clientIdMask },
+              { label: "Client Secret", ok: !!(botSettings as any)?.clientSecretConfigured },
+              { label: "Session Secret", ok: !!(botSettings as any)?.sessionSecretConfigured },
+            ].map(({ label, ok, mask }) => (
+              <div key={label} className="bg-card border border-card-border rounded-xl p-4">
+                <p className="text-xs text-muted-foreground mb-1">{label}</p>
+                <div className="flex items-center gap-2">
+                  {ok
+                    ? <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
+                    : <X className="w-4 h-4 text-red-400 flex-shrink-0" />}
+                  <span className={cn("text-sm font-semibold", ok ? "text-green-400" : "text-red-400")}>
+                    {ok ? "Configurado" : "No configurado"}
+                  </span>
+                </div>
+                {mask && <p className="text-xs text-muted-foreground mt-1 font-mono">{mask}</p>}
+              </div>
+            ))}
+          </div>
+
+          {(botSettings as any)?.fromEnv && (
+            <div className="flex items-start gap-3 bg-primary/10 border border-primary/20 rounded-xl p-4">
+              <Shield className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-primary">
+                Las credenciales activas provienen de variables de entorno del sistema. Los valores guardados en DB se usan solo como fallback.
+              </p>
+            </div>
+          )}
+
+          {/* Update form */}
+          <div className="bg-card border border-card-border rounded-xl p-5">
+            <h3 className="font-semibold text-sm mb-1 flex items-center gap-2">
+              <KeyRound className="w-4 h-4 text-primary" /> Actualizar credenciales
+            </h3>
+            <p className="text-xs text-muted-foreground mb-5">
+              Deja en blanco los campos que no quieras modificar. Los valores se almacenan cifrados en la base de datos.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Bot Token</Label>
+                <Input
+                  type="password"
+                  placeholder="Nuevo token del bot (opcional)"
+                  value={botToken}
+                  onChange={(e) => setBotToken(e.target.value)}
+                  className="font-mono text-sm"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Client ID</Label>
+                <Input
+                  type="text"
+                  placeholder="Discord Client ID (opcional)"
+                  value={botClientId}
+                  onChange={(e) => setBotClientId(e.target.value)}
+                  className="font-mono text-sm"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Client Secret</Label>
+                <Input
+                  type="password"
+                  placeholder="Discord Client Secret (opcional)"
+                  value={botClientSecret}
+                  onChange={(e) => setBotClientSecret(e.target.value)}
+                  className="font-mono text-sm"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Session Secret</Label>
+                <Input
+                  type="password"
+                  placeholder="Session secret JWT (opcional)"
+                  value={botSessionSecret}
+                  onChange={(e) => setBotSessionSecret(e.target.value)}
+                  className="font-mono text-sm"
+                />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label className="text-xs">Owner Discord IDs</Label>
+                <Input
+                  type="text"
+                  placeholder="IDs separados por comas: 123456789,987654321"
+                  value={botOwnerIds}
+                  onChange={(e) => setBotOwnerIds(e.target.value)}
+                  className="font-mono text-sm"
+                />
+                <p className="text-xs text-muted-foreground">
+                  IDs de Discord de los owners con acceso total al panel de administracion.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end mt-5">
+              <Button
+                onClick={handleSaveBotSettings}
+                disabled={botSaving || (!botToken && !botClientId && !botClientSecret && !botSessionSecret && !botOwnerIds)}
+                className="gap-2"
+              >
+                {botSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
+                {botSaving ? "Guardando..." : "Guardar credenciales"}
+              </Button>
+            </div>
+          </div>
+
+          {(botSettings as any)?.updatedAt && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <Clock className="w-3 h-3" />
+              Ultima actualizacion: {new Date((botSettings as any).updatedAt).toLocaleString("es")}
+            </p>
+          )}
         </div>
       )}
 

@@ -12,3 +12,4 @@ export * from "./premium";
 export * from "./support";
 export * from "./admins";
 export * from "./admin-logs";
+export * from "./bot-settings";

@@ -5,193 +5,151 @@ import { requireAuth } from "../lib/auth";
 
 const router = Router();
 
-// ─── Spanish responses by plan (step-by-step) ────────────────────────────────
-const RESPONSES = {
+const DISCORD_SUPPORT = "discord.gg/wukr8apdQq";
+const ADMIN_FALLBACK = `Para esto necesitas ayuda de un administrador. Puedes contactar soporte en ${DISCORD_SUPPORT} o abrir un ticket desde el panel de soporte del dashboard.`;
+
+// ─── Respuestas por plan ─────────────────────────────────────────────────────
+const RESPONSES: Record<string, Record<string, string>> = {
   free: {
-    soporte: "Para soporte tecnico puedes crear un ticket en el Centro de Soporte del dashboard o unirte a nuestro Discord: discord.gg/wukr8apdQq",
-    premium: "Neuralix Premium ofrece IA avanzada, backups ilimitados y proteccion AntiNuke. Activa tu licencia en la seccion Premium del dashboard o contactanos en discord.gg/wukr8apdQq",
-    ticket: "Puedes abrir un ticket de soporte desde la seccion 'Soporte' del menu lateral del dashboard. Escribe tu asunto y descripcion y el equipo te respondera.",
-    dashboard: "El dashboard te permite gestionar todos los sistemas de tu servidor. Inicia sesion con Discord y selecciona tu servidor para comenzar.",
-    antiraid: `Para configurar AntiRaid (gratis):
-
-1. Ve a la seccion "AntiRaid" en el menu lateral izquierdo
+    soporte: `Para soporte tecnico crea un ticket desde la seccion "Soporte" del dashboard o unete a ${DISCORD_SUPPORT}`,
+    premium: `Neuralix Premium incluye IA avanzada, backups ilimitados y proteccion AntiNuke. Activa tu licencia en la seccion Premium o contactanos en ${DISCORD_SUPPORT}`,
+    ticket: `Abre un ticket desde la seccion "Soporte" del menu lateral. Escribe tu asunto y el equipo te respondera.`,
+    dashboard: "El dashboard te permite gestionar todos los sistemas de tu servidor. Inicia sesion con Discord y selecciona tu servidor.",
+    antiraid: `Para configurar AntiRaid:
+1. Ve a la seccion "AntiRaid" en el menu lateral
 2. Activa el interruptor principal "AntiRaid Global"
-3. Activa los modulos que necesites: AntiJoin, AntiAlt, AntiBot, AntiSpam
+3. Activa los modulos: AntiJoin, AntiAlt, AntiBot, AntiSpam
 4. Configura los umbrales en cada modulo
-5. Haz clic en "Guardar todo"
-
-Para funciones avanzadas como AntiNuke o configuracion automatica, necesitas plan Plus o superior.`,
-    verification: `Para configurar Verificacion (gratis):
-
+5. Haz clic en "Guardar todo"`,
+    verification: `Para configurar Verificacion:
 1. Ve a "Verificacion" en el menu lateral
 2. Activa "Verificacion activa"
 3. Ingresa el ID del rol que se asignara al verificarse
 4. Activa AntiVPN y AntiAlt si quieres filtros adicionales
-5. Copia el enlace del "Portal de Verificacion" al final de la pagina
-6. Comparte ese enlace con tus miembros (no compartas la URL del panel)
-7. Haz clic en "Guardar"`,
-    tickets: `Para configurar Tickets (gratis):
-
+5. Copia el enlace del "Portal de Verificacion" y compartelo con tus miembros
+6. Haz clic en "Guardar"`,
+    tickets: `Para configurar Tickets:
 1. Ve a "Tickets" en el menu lateral
 2. Activa el sistema de tickets
 3. Configura el ID de la categoria donde se crearan los tickets
 4. Ingresa el ID del rol de soporte
 5. En la tab "Panel": personaliza el embed del canal
 6. Haz clic en "Guardar"`,
-    logs: `Para configurar Logs (gratis):
-
+    logs: `Para configurar Logs:
 1. Ve a "Logs" en el menu lateral
-2. Activa el interruptor "Logs activos"
+2. Activa "Logs activos"
 3. Ingresa el ID del canal de Discord para los logs
 4. Selecciona los eventos a registrar
 5. Haz clic en "Guardar"`,
-    backups: `Para crear un Backup (gratis):
-
+    backups: `Para crear un Backup:
 1. Ve a "Backups" en el menu lateral
 2. Haz clic en "Crear backup"
-3. El backup guarda toda la configuracion: AntiRaid, Verificacion, Tickets, Logs, Bienvenidas
-4. Para restaurar: haz clic en "Restaurar" en el backup deseado
-
-Plan Free: 1 backup maximo. Para mas backups necesitas plan Plus o superior.`,
-    welcome: `Para configurar Bienvenidas (gratis):
-
+3. Para restaurar: haz clic en "Restaurar" en el backup deseado
+Plan Free: 1 backup maximo.`,
+    welcome: `Para configurar Bienvenidas:
 1. Ve a "Bienvenidas" en el menu lateral
 2. Activa "Sistema de bienvenidas"
 3. Ingresa el ID del canal de bienvenidas
-4. Personaliza el mensaje usando variables: {user}, {server}, {membercount}
+4. Personaliza el mensaje con variables: {user}, {server}, {membercount}
 5. Haz clic en "Guardar"`,
-    goodbye: `Para configurar Despedidas (gratis):
-
+    goodbye: `Para configurar Despedidas:
 1. Ve a "Despedidas" en el menu lateral
 2. Activa "Sistema de despedidas"
 3. Ingresa el ID del canal
 4. Personaliza el mensaje
 5. Haz clic en "Guardar"`,
-    default: "Hola! Soy el asistente de Neuralix. Puedo ayudarte a configurar cualquier sistema del dashboard. Pregunta sobre: AntiRaid, Verificacion, Tickets, Logs, Backups, Bienvenidas o cualquier funcion. Para configuracion automatica necesitas plan Plus o superior.",
-    restrict: "Esta funcion de configuracion automatica requiere plan Plus o superior. Sin embargo puedo explicarte como configurarlo manualmente. Pregunta 'como configuro [modulo]' y te explico paso a paso.",
+    default: `Soy el asistente de Neuralix. Puedo ayudarte a configurar: AntiRaid, Verificacion, Tickets, Logs, Backups, Bienvenidas.
+Si necesitas ayuda mas avanzada o algo que no pueda resolver, un administrador puede asistirte en ${DISCORD_SUPPORT}`,
+    restrict: `Esta funcion requiere plan Plus o superior. Puedo explicarte como configurarlo manualmente — pregunta "como configuro [modulo]".
+Si necesitas asistencia adicional, un administrador puede ayudarte en ${DISCORD_SUPPORT}`,
+    admin: ADMIN_FALLBACK,
   },
   plus: {
-    antiraid: `Para activar AntiRaid paso a paso:
-
-1. Ve al panel "AntiRaid" en el menu lateral izquierdo
+    antiraid: `Para activar AntiRaid (plan Plus):
+1. Ve al panel "AntiRaid" en el menu lateral
 2. Activa el interruptor principal "AntiRaid activo"
 3. Configura AntiJoin: umbral de 5 usuarios en 10 segundos
 4. Activa AntiAlt: minimo 7 dias de antiguedad de cuenta
 5. Activa AntiBot para bloquear bots no autorizados
 6. Activa AntiSpam en modo "estricto"
-7. Haz clic en "Guardar" en la parte superior
-
-Recomendado: activa tambien AntiNuke (plan Pro) para proteccion maxima contra administradores comprometidos.`,
+7. Haz clic en "Guardar"`,
     antijoin: `Para configurar AntiJoin:
-
 1. Ve al panel "AntiRaid" en el sidebar
 2. Activa el modulo "AntiJoin"
 3. Umbral recomendado: 5 uniones en 10 segundos
-4. Accion automatica: selecciona "Banear" para maxima seguridad
-5. Guarda los cambios
-
-Cuando se supere el umbral, se activara una alerta de raid automaticamente.`,
-    verification: `Para configurar Verificacion paso a paso:
-
-1. Ve al panel "Verificacion" en el menu lateral
-2. Activa "Verificacion activa"
-3. Ingresa el ID del rol que se asignara al verificarse
-4. Activa "AntiVPN" para bloquear conexiones via proxy
-5. Activa "AntiAlt" para bloquear cuentas nuevas
-6. Establece edad minima de cuenta: 7 dias (recomendado)
-7. Personaliza el mensaje de verificacion exitosa
-8. Copia el enlace del Portal de Verificacion y compartelo con tus miembros
-9. Guarda los cambios`,
-    tickets: `Para configurar el sistema de Tickets:
-
-1. Ve al panel "Tickets" en el sidebar
-2. Activa el sistema de tickets
-3. Configura el ID de la categoria de Discord donde se crearan los tickets
-4. Asigna el ID del rol de soporte que podra ver los tickets
-5. (Opcional) Configura el canal de transcripciones
-6. En la tab "Panel": personaliza el embed y el boton del canal
-7. En "Configuracion": ajusta nombre de canal, mensaje de bienvenida y limite de tickets
-8. Guarda los cambios`,
-    logs: `Para activar Logs paso a paso:
-
-1. Ve al panel "Logs" en el sidebar
-2. Activa el interruptor "Logs activos"
-3. Ingresa el ID del canal de Discord para los logs
-4. Selecciona que eventos registrar:
-   - Mensajes (ediciones y eliminaciones)
-   - Miembros (entradas y salidas)
-   - Roles y canales
-   - Moderacion (bans, kicks, mutes)
-   - Invitaciones
+4. Accion: "Banear" para maxima seguridad
 5. Guarda los cambios`,
-    backups: `Para crear y gestionar Backups:
-
-1. Ve al panel "Backups" (tab "Mis Backups")
-2. Haz clic en "Crear backup ahora"
-3. El backup guarda: estructura de canales, roles y configuraciones
-4. Para restaurar: selecciona el backup y haz clic en "Restaurar"
-5. Para exportar como JSON: haz clic en el boton de exportar (plan Plus+)
-
-Con plan Pro+ puedes programar backups automaticos en la tab "Programados".`,
-    welcome: `Para configurar Bienvenidas:
-
-1. Ve al panel "Bienvenidas" en el sidebar
-2. Activa "Sistema de bienvenidas"
-3. Ingresa el ID del canal donde se enviaran los mensajes
-4. Personaliza el mensaje usando variables:
-   - {user} → nombre del usuario
-   - {server} → nombre del servidor
-   - {membercount} → numero de miembros
-5. (Opcional) Activa el embed personalizado y configura color y footer
-6. (Opcional) Activa "Mensaje privado" para enviar un DM al nuevo miembro
+    verification: `Para configurar Verificacion (Plus):
+1. Ve al panel "Verificacion"
+2. Activa y configura el rol verificado
+3. Activa AntiVPN para bloquear proxies
+4. Activa AntiAlt con minimo 7 dias de cuenta
+5. Personaliza el mensaje de exito
+6. Copia y comparte el enlace del Portal
 7. Guarda los cambios`,
-    goodbye: `Para configurar Despedidas:
-
-1. Ve al panel "Despedidas" en el sidebar
-2. Activa "Sistema de despedidas"
-3. Ingresa el ID del canal
-4. Personaliza el mensaje con variables: {user}, {server}, {membercount}
-5. (Opcional) Configura el embed con color e imagen
+    tickets: `Para configurar Tickets:
+1. Ve al panel "Tickets"
+2. Activa el sistema
+3. Configura la categoria de Discord y el rol de soporte
+4. Configura el canal de transcripciones (opcional)
+5. En la tab "Panel": personaliza el embed y el boton
 6. Guarda los cambios`,
-    premium: "Tienes plan Plus activo. Incluye: IA avanzada, configuracion completa de todos los sistemas, hasta 5 backups, exportar JSON, soporte prioritario y todas las funciones premium basicas. Para funciones avanzadas como AntiNuke o CAPTCHA, considera el plan Pro.",
-    default: "Soy Neuralix AI (plan Plus). Puedo guiarte paso a paso para configurar cualquier sistema. Pregunta sobre: AntiRaid, Verificacion, Tickets, Logs, Backups, Bienvenidas o cualquier funcion del dashboard.",
+    logs: `Para activar Logs:
+1. Ve al panel "Logs"
+2. Activa el interruptor
+3. Ingresa el ID del canal de Discord
+4. Selecciona los eventos a registrar
+5. Guarda los cambios`,
+    backups: `Para gestionar Backups (Plus):
+1. Ve a "Backups" tab "Mis Backups"
+2. Haz clic en "Crear backup ahora"
+3. Para restaurar: selecciona el backup y haz clic en "Restaurar"
+4. Para exportar JSON: boton de exportar`,
+    welcome: `Para configurar Bienvenidas (Plus):
+1. Activa el sistema y configura el canal
+2. Usa variables: {user}, {server}, {membercount}
+3. Activa el embed con color y footer personalizados
+4. Activa DM para enviar mensaje privado al nuevo miembro
+5. Guarda los cambios`,
+    goodbye: `Para configurar Despedidas:
+1. Activa el sistema y configura el canal
+2. Personaliza con variables: {user}, {server}, {membercount}
+3. Configura el embed con color e imagen (opcional)
+4. Guarda los cambios`,
+    premium: "Tienes plan Plus activo. Incluye: IA avanzada, hasta 5 backups, exportar JSON, soporte prioritario.",
+    default: `Soy Neuralix AI (plan Plus). Pregunta sobre: AntiRaid, Verificacion, Tickets, Logs, Backups, Bienvenidas.
+Si hay algo que no puedo resolver, un administrador puede ayudarte en ${DISCORD_SUPPORT}`,
+    admin: ADMIN_FALLBACK,
   },
   pro: {
-    antiraid: `Con plan Pro tienes AntiNuke completo y todos los modulos AntiRaid avanzados:
-
-1. Ve al panel "AntiRaid" en el sidebar
+    antiraid: `Con plan Pro tienes AntiNuke completo:
+1. Ve al panel "AntiRaid"
 2. Activa el modulo principal
 3. Activa AntiNuke: protege contra borrado masivo de canales/roles
-4. Activa AntiJoin: umbral recomendado 5 usuarios/10s
-5. Activa AntiAlt con 14 dias de minimo de cuenta
-6. Activa AntiBot y AntiSpam en modo "estricto"
-7. Configura los umbrales avanzados segun el tamano de tu servidor
-8. Guarda los cambios`,
-    verification: `Con plan Pro tienes verificacion CAPTCHA avanzada:
-
+4. Configura umbral de nuke: 10 acciones destructivas
+5. Activa AntiJoin con 5 usuarios/10s
+6. Activa AntiAlt con 14 dias de minimo
+7. Guarda los cambios`,
+    verification: `Con plan Pro tienes verificacion avanzada:
 1. Ve al panel "Verificacion"
-2. Activa el sistema y configura el rol verificado
-3. Activa "Verificacion CAPTCHA" para mayor seguridad
-4. Configura AntiVPN y AntiProxy con deteccion mejorada
-5. Establece edad minima de cuenta en 14 dias
-6. Activa AntiAlt con historial de sanciones
-7. Configura la URL personalizada del portal si tienes dominio propio
-8. Guarda y comparte el enlace del portal`,
-    backups: `Con plan Pro tienes hasta 25 backups y backups automaticos:
-
-1. Ve al panel "Backups" tab "Mis Backups": crea backups manuales
-2. Tab "Programados": configura backup automatico semanal
-3. Selecciona el dia y hora del backup automatico
-4. Los backups se guardan y puedes restaurarlos en cualquier momento
-5. Con plan Ultra puedes transferir la config entre servidores`,
-    default: "Soy Neuralix AI Pro. Tengo acceso a todas las funciones avanzadas: AntiRaid completo, verificacion CAPTCHA, multi-panel de tickets, analitica del servidor y mucho mas. Pregunta lo que necesites y te guio paso a paso.",
+2. Activa el sistema y configura el rol
+3. Activa AntiVPN y AntiProxy con deteccion mejorada
+4. Establece edad minima de 14 dias
+5. Configura la URL personalizada del portal (si tienes dominio)
+6. Guarda y comparte el enlace`,
+    backups: `Con plan Pro tienes hasta 25 backups:
+1. Ve a "Backups" tab "Mis Backups"
+2. Crea backups manuales o automaticos semanales
+3. Configura backup automatico en tab "Programados"`,
+    default: "Soy Neuralix AI Pro. Tengo acceso a todas las funciones avanzadas. Pregunta lo que necesites.",
+    admin: ADMIN_FALLBACK,
   },
   ultra: {
-    default: "Soy Neuralix AI Ultra. Puedo configurar automaticamente los sistemas de tu servidor al instante. Escribe 'activa el antiraid', 'configura la verificacion', 'activa los logs' o 'activa los tickets' y lo aplico en segundos. Tambien puedo analizar tu servidor y darte recomendaciones.",
-  }
+    default: "Soy Neuralix AI Ultra. Puedo configurar automaticamente los sistemas de tu servidor. Escribe 'activa el antiraid', 'configura la verificacion', 'activa los logs' o 'activa los tickets'.",
+    admin: ADMIN_FALLBACK,
+  },
 };
 
-// ─── Detect intent from message ─────────────────────────────────────────────
 function detectIntent(msg: string): string {
   const lower = msg.toLowerCase();
   if (lower.includes("antiraid") || lower.includes("raid") || lower.includes("ataque") || lower.includes("anti raid")) return "antiraid";
@@ -206,47 +164,56 @@ function detectIntent(msg: string): string {
   if (lower.includes("soport") || lower.includes("ayuda") || lower.includes("problema")) return "soporte";
   if (lower.includes("ticket") && lower.includes("soport")) return "ticket";
   if (lower.includes("dashboard") || lower.includes("panel")) return "dashboard";
+  if (lower.includes("admin") || lower.includes("ayuda") || lower.includes("no puedo") || lower.includes("no funciona") || lower.includes("error")) return "admin";
   return "default";
 }
 
-// ─── Upsert helper usando patron seguro (check-then-update) ──────────────────
-async function upsertEnabled(table: any, guildId: string, extraFields: Record<string, any> = {}) {
-  const existing = await db.select().from(table).where(eq(table.guildId, guildId));
-  if (existing.length > 0) {
+function isOutOfScope(msg: string): boolean {
+  const lower = msg.toLowerCase();
+  const outOfScopePatterns = [
+    "politica", "gobierno", "guerra", "sexo", "drogas",
+    "hack", "estafar", "phishing", "contraseña de otro",
+    "programar un bot diferente", "codigo python",
+  ];
+  return outOfScopePatterns.some((p) => lower.includes(p));
+}
+
+async function upsertEnabled(table: any, guildId: string, extraFields: Record<string, unknown> = {}) {
+  const [existing] = await db.select().from(table).where(eq(table.guildId, guildId));
+  if (existing) {
     await db.update(table).set({ enabled: true, ...extraFields }).where(eq(table.guildId, guildId));
   } else {
     await db.insert(table).values({ guildId, enabled: true, ...extraFields });
   }
 }
 
-// ─── Ultra: apply configuration to DB ───────────────────────────────────────
 async function applyConfig(guildId: string, intent: string): Promise<{ action: string; steps: string } | null> {
   if (intent === "antiraid") {
-    await upsertEnabled(antiraidConfigsTable, guildId, { antiJoin: true, antiBot: true, antiAlt: true });
+    await upsertEnabled(antiraidConfigsTable, guildId, { antiJoin: true, antiBot: true, antiAlt: true, antiSpam: true });
     return {
-      action: "AntiRaid activado automaticamente",
-      steps: `✅ AntiRaid activado en la base de datos.\n\nPasos siguientes para completar la configuracion:\n1. Ve al panel "AntiRaid" en el sidebar (ya vera el modulo encendido)\n2. Ajusta el umbral de AntiJoin: recomendado 5 usuarios en 10 segundos\n3. Verifica AntiAlt: minimo 7 dias de antiguedad de cuenta\n4. Activa AntiNuke si quieres proteccion contra admins comprometidos\n5. Haz clic en "Guardar" para confirmar tus ajustes\n\nEl sistema ya esta registrando eventos de seguridad.`,
+      action: "AntiRaid activado",
+      steps: `AntiRaid activado con AntiJoin, AntiBot, AntiAlt y AntiSpam.\n\nPasos siguientes:\n1. Ve al panel "AntiRaid" para ajustar los umbrales\n2. Recomendado: AntiJoin en 5 usuarios/10s, AntiAlt con 7 dias minimo\n3. Haz clic en "Guardar" para confirmar`,
     };
   }
   if (intent === "verification") {
     await upsertEnabled(verificationConfigsTable, guildId, { antiVpn: true, antiAlt: true, minAccountAge: 7 });
     return {
-      action: "Verificacion activada automaticamente",
-      steps: `✅ Verificacion activada con AntiVPN, AntiAlt y edad minima 7 dias.\n\nPasos siguientes:\n1. Ve al panel "Verificacion" en el sidebar\n2. Ingresa el ID del rol que se asignara al verificarse (campo "ID del rol verificado")\n3. (Opcional) Ingresa el ID del canal de logs de verificacion\n4. Copia el enlace del Portal de Verificacion y compartelo en tu servidor\n5. Haz clic en "Guardar"\n\nLos miembros nuevos veran el portal y deben verificarse para acceder.`,
+      action: "Verificacion activada",
+      steps: `Verificacion activada con AntiVPN, AntiAlt y edad minima 7 dias.\n\nPasos siguientes:\n1. Ve al panel "Verificacion"\n2. Ingresa el ID del rol verificado\n3. Copia el enlace del Portal y compartelo en tu servidor\n4. Haz clic en "Guardar"`,
     };
   }
   if (intent === "logs") {
     await upsertEnabled(logsConfigsTable, guildId);
     return {
-      action: "Logs activados automaticamente",
-      steps: `✅ Logs activados.\n\nPasos siguientes:\n1. Ve al panel "Logs" en el sidebar\n2. Ingresa el ID del canal de Discord donde quieres recibir los logs\n3. Selecciona los eventos que quieres registrar (mensajes, miembros, roles, etc.)\n4. Haz clic en "Guardar"\n\nDesde ese momento, todos los eventos del servidor quedaran registrados en ese canal.`,
+      action: "Logs activados",
+      steps: `Logs activados.\n\nPasos siguientes:\n1. Ve al panel "Logs"\n2. Ingresa el ID del canal de Discord\n3. Selecciona los eventos a registrar\n4. Haz clic en "Guardar"`,
     };
   }
   if (intent === "tickets") {
     await upsertEnabled(ticketConfigsTable, guildId);
     return {
-      action: "Sistema de tickets activado automaticamente",
-      steps: `✅ Sistema de Tickets activado.\n\nPasos siguientes:\n1. Ve al panel "Tickets" en el sidebar\n2. Ingresa el ID de la categoria de Discord donde se crearan los tickets\n3. Ingresa el ID del rol de soporte que podra gestionar los tickets\n4. (Opcional) Configura el canal de transcripciones\n5. En la tab "Panel": personaliza el embed del canal publico y el boton\n6. Haz clic en "Guardar"\n\nTus miembros podran abrir tickets haciendo clic en el boton del canal configurado.`,
+      action: "Sistema de tickets activado",
+      steps: `Tickets activados.\n\nPasos siguientes:\n1. Ve al panel "Tickets"\n2. Ingresa el ID de la categoria y el rol de soporte\n3. Personaliza el panel en la tab "Panel"\n4. Haz clic en "Guardar"`,
     };
   }
   return null;
@@ -255,101 +222,130 @@ async function applyConfig(guildId: string, intent: string): Promise<{ action: s
 // ─── Server Analysis ─────────────────────────────────────────────────────────
 router.post("/guilds/:guildId/ai/analyze", requireAuth, async (req, res) => {
   const guildId = req.params.guildId as string;
-  const [antiraid] = await db.select().from(antiraidConfigsTable).where(eq(antiraidConfigsTable.guildId, guildId));
-  const [verification] = await db.select().from(verificationConfigsTable).where(eq(verificationConfigsTable.guildId, guildId));
-  const [tickets] = await db.select().from(ticketConfigsTable).where(eq(ticketConfigsTable.guildId, guildId));
-  const [logs] = await db.select().from(logsConfigsTable).where(eq(logsConfigsTable.guildId, guildId));
+  try {
+    const [[antiraid], [verification], [tickets], [logs]] = await Promise.all([
+      db.select().from(antiraidConfigsTable).where(eq(antiraidConfigsTable.guildId, guildId)),
+      db.select().from(verificationConfigsTable).where(eq(verificationConfigsTable.guildId, guildId)),
+      db.select().from(ticketConfigsTable).where(eq(ticketConfigsTable.guildId, guildId)),
+      db.select().from(logsConfigsTable).where(eq(logsConfigsTable.guildId, guildId)),
+    ]);
 
-  const recommendations: { category: string; severity: string; title: string; description: string }[] = [];
-  let score = 100;
+    const recommendations: { category: string; severity: string; title: string; description: string }[] = [];
+    let score = 100;
 
-  if (!antiraid?.enabled) {
-    recommendations.push({ category: "AntiRaid", severity: "high", title: "AntiRaid desactivado", description: "Activa AntiRaid para proteger tu servidor de ataques masivos. Ve al panel AntiRaid y activa el modulo principal." });
-    score -= 20;
-  }
-  if (!antiraid?.antiNuke) {
-    recommendations.push({ category: "AntiRaid", severity: "medium", title: "AntiNuke no configurado", description: "AntiNuke evita danos catastroficos por admins comprometidos. Activa AntiNuke en el panel AntiRaid (requiere plan Pro)." });
-    score -= 10;
-  }
-  if (!verification?.enabled) {
-    recommendations.push({ category: "Verificacion", severity: "medium", title: "Verificacion desactivada", description: "Activa la verificacion en el panel Verificacion para filtrar bots y alts automaticamente." });
-    score -= 10;
-  }
-  if (!verification?.antiVpn) {
-    recommendations.push({ category: "Seguridad", severity: "low", title: "AntiVPN desactivado", description: "Activa AntiVPN en el panel Verificacion para bloquear usuarios que usen proxies o VPNs." });
-    score -= 5;
-  }
-  if (!tickets?.enabled) {
-    recommendations.push({ category: "Soporte", severity: "low", title: "Sistema de tickets desactivado", description: "Configura el sistema de tickets en el panel Tickets para gestionar solicitudes de tus miembros." });
-    score -= 5;
-  }
-  if (!logs?.enabled) {
-    recommendations.push({ category: "Logs", severity: "medium", title: "Logs desactivados", description: "Activa los logs en el panel Logs y configura el canal para registrar toda la actividad del servidor." });
-    score -= 10;
-  }
-  if (recommendations.length === 0) {
-    recommendations.push({ category: "General", severity: "info", title: "Servidor bien configurado", description: "La configuracion de seguridad se ve excelente. Sigue monitoreando regularmente con el analisis de IA." });
-  }
+    if (!antiraid?.enabled) {
+      recommendations.push({ category: "AntiRaid", severity: "high", title: "AntiRaid desactivado", description: "Activa AntiRaid para proteger tu servidor de ataques masivos." });
+      score -= 25;
+    } else {
+      if (!antiraid.antiJoin) { recommendations.push({ category: "AntiRaid", severity: "medium", title: "AntiJoin desactivado", description: "Activa AntiJoin para bloquear raids de union masiva." }); score -= 5; }
+      if (!antiraid.antiAlt) { recommendations.push({ category: "AntiRaid", severity: "medium", title: "AntiAlt desactivado", description: "Activa AntiAlt para bloquear cuentas nuevas en raids." }); score -= 5; }
+      if (!antiraid.antiSpam) { recommendations.push({ category: "AntiRaid", severity: "low", title: "AntiSpam desactivado", description: "Activa AntiSpam para limitar mensajes masivos." }); score -= 3; }
+    }
+    if (!antiraid?.antiNuke) {
+      recommendations.push({ category: "AntiRaid", severity: "medium", title: "AntiNuke no configurado", description: "AntiNuke evita danos catastroficos. Requiere plan Pro." });
+      score -= 10;
+    }
+    if (!verification?.enabled) {
+      recommendations.push({ category: "Verificacion", severity: "medium", title: "Verificacion desactivada", description: "Activa la verificacion para filtrar bots y alts." });
+      score -= 10;
+    }
+    if (!verification?.antiVpn) {
+      recommendations.push({ category: "Seguridad", severity: "low", title: "AntiVPN desactivado", description: "Activa AntiVPN en el panel Verificacion." });
+      score -= 5;
+    }
+    if (!tickets?.enabled) {
+      recommendations.push({ category: "Soporte", severity: "low", title: "Tickets desactivados", description: "Configura tickets para gestionar solicitudes." });
+      score -= 5;
+    }
+    if (!logs?.enabled) {
+      recommendations.push({ category: "Logs", severity: "medium", title: "Logs desactivados", description: "Activa logs para registrar la actividad del servidor." });
+      score -= 10;
+    }
 
-  res.json({
-    guildId,
-    score: Math.max(0, score),
-    recommendations,
-    summary: `Puntuacion: ${Math.max(0, score)}/100. Se encontraron ${recommendations.length} recomendacion(es).`,
-    analyzedAt: new Date().toISOString(),
-  });
+    if (recommendations.length === 0) {
+      recommendations.push({ category: "General", severity: "info", title: "Servidor bien configurado", description: "La configuracion de seguridad se ve excelente." });
+    }
+
+    res.json({
+      guildId,
+      score: Math.max(0, score),
+      recommendations,
+      summary: `Puntuacion: ${Math.max(0, score)}/100. Se encontraron ${recommendations.length} recomendacion(es).`,
+      analyzedAt: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "Error al analizar servidor" });
+  }
 });
 
 // ─── AI Chat ─────────────────────────────────────────────────────────────────
 router.post("/guilds/:guildId/ai/chat", requireAuth, async (req, res) => {
   const guildId = req.params.guildId as string;
-  const { message } = req.body as { message: string; plan?: string };
+  try {
+    const { message } = req.body as { message: string };
 
-  // SIEMPRE leer el plan real desde la DB (no confiar en lo que manda el cliente)
-  const [cfg] = await db.select().from(guildConfigsTable).where(eq(guildConfigsTable.guildId, guildId));
-  const effectivePlan: string = cfg?.premiumActive && cfg?.premiumPlan ? cfg.premiumPlan : "free";
+    if (!message || typeof message !== "string" || !message.trim()) {
+      res.status(400).json({ error: "Mensaje requerido" });
+      return;
+    }
 
-  const intent = detectIntent(message);
-  const lower = message.toLowerCase();
+    if (isOutOfScope(message)) {
+      res.json({
+        response: `No puedo ayudarte con ese tema. Estoy especializado en la configuracion del dashboard de Neuralix. Si necesitas ayuda adicional, un administrador puede asistirte en ${DISCORD_SUPPORT}`,
+        action: undefined,
+        plan: "free",
+      });
+      return;
+    }
 
-  let response: string;
-  let action: string | undefined;
+    const [cfg] = await db.select().from(guildConfigsTable).where(eq(guildConfigsTable.guildId, guildId));
+    const effectivePlan: string = cfg?.premiumActive && cfg?.premiumPlan ? cfg.premiumPlan : "free";
 
-  if (effectivePlan === "ultra") {
-    const isConfigureCmd = lower.includes("activa") || lower.includes("configura") || lower.includes("pon") || lower.includes("haz") || lower.includes("setup") || lower.includes("instala") || lower.includes("enable") || lower.includes("quiero");
-    const configIntent = ["antiraid", "verification", "logs", "tickets"].includes(intent) ? intent : null;
+    const intent = detectIntent(message);
+    const lower = message.toLowerCase();
 
-    if (isConfigureCmd && configIntent) {
-      try {
-        const result = await applyConfig(guildId, configIntent);
-        if (result) {
-          action = result.action;
-          response = result.steps;
-        } else {
-          response = RESPONSES.ultra.default;
+    let response: string;
+    let action: string | undefined;
+
+    const planResponses = RESPONSES[effectivePlan] || RESPONSES.free;
+    const plusResponses = RESPONSES.plus;
+    const proResponses = RESPONSES.pro;
+
+    if (effectivePlan === "ultra") {
+      const isConfigureCmd = lower.includes("activa") || lower.includes("configura") || lower.includes("pon") || lower.includes("haz") || lower.includes("setup") || lower.includes("instala") || lower.includes("enable") || lower.includes("quiero");
+      const configIntent = ["antiraid", "verification", "logs", "tickets"].includes(intent) ? intent : null;
+
+      if (isConfigureCmd && configIntent) {
+        try {
+          const result = await applyConfig(guildId, configIntent);
+          if (result) {
+            action = result.action;
+            response = result.steps;
+          } else {
+            response = planResponses.default;
+          }
+        } catch {
+          response = `Hubo un error al aplicar la configuracion. Intenta configurar manualmente desde el panel correspondiente. Si el problema persiste, un administrador puede ayudarte en ${DISCORD_SUPPORT}`;
         }
-      } catch (err) {
-        console.error("AI Ultra config error:", err);
-        response = "Hubo un error al aplicar la configuracion. Intenta configurar manualmente desde el panel correspondiente en el sidebar.";
-      }
-    } else if (intent !== "default") {
-      response = (RESPONSES.pro as any)[intent] || (RESPONSES.plus as any)[intent] || RESPONSES.plus.default;
-      if (!isConfigureCmd) {
-        response += `\n\nCon plan Ultra puedo hacer esto automaticamente. Escribe "activa el ${intent}" y lo configuro al instante.`;
+      } else if (intent === "admin") {
+        response = ADMIN_FALLBACK;
+      } else if (intent !== "default") {
+        response = proResponses[intent] || plusResponses[intent] || planResponses.default;
+      } else {
+        response = planResponses.default;
       }
     } else {
-      response = RESPONSES.ultra.default;
+      if (intent === "admin") {
+        response = ADMIN_FALLBACK;
+      } else {
+        response = planResponses[intent] || plusResponses[intent] || planResponses.default || ADMIN_FALLBACK;
+      }
     }
-  } else if (effectivePlan === "pro") {
-    response = (RESPONSES.pro as any)[intent] || (RESPONSES.plus as any)[intent] || RESPONSES.pro.default;
-  } else if (effectivePlan === "plus") {
-    response = (RESPONSES.plus as any)[intent] || RESPONSES.plus.default;
-  } else {
-    // Free plan: guide on configuration + basic support
-    response = (RESPONSES.free as any)[intent] || RESPONSES.free.default;
-  }
 
-  res.json({ response, action, plan: effectivePlan });
+    res.json({ response, action, plan: effectivePlan });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "Error en el asistente IA" });
+  }
 });
 
 export default router;

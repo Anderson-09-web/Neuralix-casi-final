@@ -786,6 +786,45 @@ export const GetPremiumPlansResponse = zod.array(GetPremiumPlansResponseItem)
 
 
 /**
+ * @summary Get bot credential settings (owner only, values masked)
+ */
+export const GetBotSettingsResponse = zod.object({
+  "botTokenConfigured": zod.boolean(),
+  "clientIdConfigured": zod.boolean(),
+  "clientSecretConfigured": zod.boolean(),
+  "sessionSecretConfigured": zod.boolean(),
+  "ownerDiscordIds": zod.string().optional(),
+  "botTokenMask": zod.string().optional(),
+  "clientIdMask": zod.string().optional(),
+  "fromEnv": zod.boolean().optional(),
+  "updatedAt": zod.string().nullish()
+})
+
+
+/**
+ * @summary Update bot credential settings (owner only)
+ */
+export const UpdateBotSettingsBody = zod.object({
+  "botToken": zod.string().nullish(),
+  "clientId": zod.string().nullish(),
+  "clientSecret": zod.string().nullish(),
+  "sessionSecret": zod.string().nullish(),
+  "ownerDiscordIds": zod.string().nullish()
+})
+
+
+/**
+ * @summary Check if bot credentials are configured
+ */
+export const GetBotStatusResponse = zod.object({
+  "botTokenConfigured": zod.boolean().optional(),
+  "clientIdConfigured": zod.boolean().optional(),
+  "clientSecretConfigured": zod.boolean().optional(),
+  "sessionSecretConfigured": zod.boolean().optional()
+})
+
+
+/**
  * @summary Get global admin statistics (owner only)
  */
 export const GetAdminStatsResponse = zod.object({
