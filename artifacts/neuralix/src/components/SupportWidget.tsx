@@ -91,14 +91,12 @@ export default function SupportWidget() {
       </button>
 
       {open && (
+        <>
         <div
           className="fixed inset-0 z-40 bg-black/40"
           onClick={() => setOpen(false)}
           aria-hidden="true"
         />
-      )}
-
-      {open && (
         <div
           role="dialog"
           aria-modal="true"
@@ -266,6 +264,7 @@ export default function SupportWidget() {
             )}
           </div>
         </div>
+        </>
       )}
     </>
   );

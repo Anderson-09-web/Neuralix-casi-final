@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, jsonb, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -13,6 +13,8 @@ export const blacklistTable = pgTable("blacklist", {
   addedByAvatar: text("added_by_avatar"),
   evidence: jsonb("evidence").$type<string[]>().default([]),
   sanctionHistory: jsonb("sanction_history").$type<{ action: string; reason: string; by: string; at: string }[]>().default([]),
+  durationDays: integer("duration_days"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

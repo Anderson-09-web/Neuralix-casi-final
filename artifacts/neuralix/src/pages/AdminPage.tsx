@@ -286,6 +286,7 @@ export default function AdminPage() {
   const [blUsername, setBlUsername] = useState("");
   const [blReason, setBlReason] = useState("");
   const [blEvidence, setBlEvidence] = useState("");
+  const [blDuration, setBlDuration] = useState("0");
   const [selectedBl, setSelectedBl] = useState<any>(null);
 
   /* Announcements form */
@@ -430,13 +431,14 @@ export default function AdminPage() {
   const handleBlacklist = () => {
     if (!blUserId || !blReason) { toast({ title: "ID y motivo son obligatorios", variant: "destructive" }); return; }
     const evidenceArr = blEvidence ? blEvidence.split("\n").map((s) => s.trim()).filter(Boolean) : [];
+    const durationDays = blDuration !== "0" ? parseInt(blDuration, 10) : undefined;
     addBlacklist.mutate(
-      { data: { userId: blUserId, username: blUsername || blUserId, reason: blReason, evidence: evidenceArr } },
+      { data: { userId: blUserId, username: blUsername || blUserId, reason: blReason, evidence: evidenceArr, ...(durationDays ? { durationDays } : {}) } as any },
       {
         onSuccess: () => {
           toast({ title: "Anadido a blacklist" });
           qc.invalidateQueries({ queryKey: getGetBlacklistQueryKey() });
-          setBlUserId(""); setBlUsername(""); setBlReason(""); setBlEvidence("");
+          setBlUserId(""); setBlUsername(""); setBlReason(""); setBlEvidence(""); setBlDuration("0");
         },
         onError: onErr("Error al agregar a blacklist"),
       }
@@ -675,6 +677,21 @@ export default function AdminPage() {
               <Label className="text-xs mb-1.5 block">Evidencias (una por linea)</Label>
               <Textarea placeholder="https://cdn.discord.com/..." value={blEvidence} onChange={(e) => setBlEvidence(e.target.value)} rows={3} />
             </div>
+            <div>
+              <Label className="text-xs mb-1.5 block">Duracion del ban</Label>
+              <NativeSelect value={blDuration} onChange={setBlDuration} className="w-full">
+                <option value="0">Permanente</option>
+                <option value="1">1 dia</option>
+                <option value="3">3 dias</option>
+                <option value="7">7 dias</option>
+                <option value="14">14 dias</option>
+                <option value="30">30 dias</option>
+                <option value="60">60 dias</option>
+                <option value="90">90 dias</option>
+                <option value="180">180 dias</option>
+                <option value="365">1 año</option>
+              </NativeSelect>
+            </div>
             <Button onClick={handleBlacklist} disabled={addBlacklist.isPending} className="gap-2">
               <Shield className="w-4 h-4" /> Agregar a blacklist
             </Button>
@@ -719,6 +736,20 @@ export default function AdminPage() {
                         <p className="text-sm">{b.addedByUsername}</p>
                       </div>
                     )}
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Duracion</p>
+                      <p className="text-sm">
+                        {b.expiresAt
+                          ? (() => {
+                              const expDate = new Date(b.expiresAt);
+                              const expired = expDate < new Date();
+                              return expired
+                                ? <span className="text-orange-400">Expirado el {expDate.toLocaleDateString("es")}</span>
+                                : <span className="text-yellow-400">{b.durationDays} dias — expira el {expDate.toLocaleDateString("es")}</span>;
+                            })()
+                          : <span className="text-red-400 font-medium">Permanente</span>}
+                      </p>
+                    </div>
                     {b.evidence?.length > 0 && (
                       <div>
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Evidencias</p>

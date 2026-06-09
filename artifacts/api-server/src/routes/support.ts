@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, supportTicketsTable, supportMessagesTable } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, ne } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 
 const router = Router();
@@ -152,28 +152,40 @@ router.post("/support/tickets/:id/messages", requireAuth, async (req, res) => {
     isStaff,
   }).returning();
 
-  // AI auto-reply only for non-staff messages
+  // AI auto-reply only for non-staff messages AND only when no human staff has replied yet
   if (!isStaff) {
-    const [ticket] = await db.select().from(supportTicketsTable).where(eq(supportTicketsTable.id, id));
-    const aiReply = generateAiReply(ticket?.subject || "", content);
+    // Check if any human (non-AI) staff message exists in this ticket
+    const humanStaffMessages = await db.select().from(supportMessagesTable)
+      .where(and(
+        eq(supportMessagesTable.ticketId, id),
+        eq(supportMessagesTable.isStaff, true),
+        ne(supportMessagesTable.userId, "neuralix-ai")
+      ));
 
-    // Only auto-reply if not a report (report tickets get escalated directly)
-    if (aiReply.priority !== "urgent") {
-      const followUps = [
-        "Gracias por los detalles adicionales. Nuestro equipo revisara tu mensaje y te respondera en breve.",
-        "Entendido. El equipo de soporte esta revisando tu caso. En unos instantes alguien te ayudara.",
-        "Hemos recibido tu mensaje. Mientras esperas, puedes revisar la documentacion del dashboard para informacion adicional.",
-      ];
-      const randomFollowUp = followUps[Math.floor(Math.random() * followUps.length)];
+    const hasHumanStaff = humanStaffMessages.length > 0;
 
-      await db.insert(supportMessagesTable).values({
-        ticketId: id,
-        userId: "neuralix-ai",
-        username: "Neuralix AI",
-        avatar: null,
-        content: randomFollowUp,
-        isStaff: true,
-      });
+    if (!hasHumanStaff) {
+      const [ticket] = await db.select().from(supportTicketsTable).where(eq(supportTicketsTable.id, id));
+      const aiReply = generateAiReply(ticket?.subject || "", content);
+
+      // Only auto-reply if not a report (report tickets get escalated directly)
+      if (aiReply.priority !== "urgent") {
+        const followUps = [
+          "Gracias por los detalles adicionales. Nuestro equipo revisara tu mensaje y te respondera en breve.",
+          "Entendido. El equipo de soporte esta revisando tu caso. En unos instantes alguien te ayudara.",
+          "Hemos recibido tu mensaje. Mientras esperas, puedes revisar la documentacion del dashboard para informacion adicional.",
+        ];
+        const randomFollowUp = followUps[Math.floor(Math.random() * followUps.length)];
+
+        await db.insert(supportMessagesTable).values({
+          ticketId: id,
+          userId: "neuralix-ai",
+          username: "Neuralix AI",
+          avatar: null,
+          content: randomFollowUp,
+          isStaff: true,
+        });
+      }
     }
   }
 

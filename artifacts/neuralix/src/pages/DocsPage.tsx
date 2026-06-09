@@ -682,18 +682,34 @@ function DocsContent({ activeSection }: { activeSection: string }) {
             <strong>¿Que es un JWT?</strong> Es un token de seguridad que identifica quien eres. Es como tu "llave de acceso" a la API. Se genera al iniciar sesion con Discord y no necesitas crearlo manualmente.
           </Alert>
 
-          <H3>Como obtener tu API Key (JWT)</H3>
-          <p className="text-muted-foreground mb-2">El JWT se llama <code className="font-mono text-xs bg-secondary px-1 py-0.5 rounded">token</code> y esta guardado en una cookie de tu navegador despues de iniciar sesion. Para usarlo en tu bot:</p>
+          <H3>Como obtener tu JWT (metodo recomendado)</H3>
+          <p className="text-muted-foreground mb-3">Usa el endpoint <code className="font-mono text-xs bg-secondary px-1 py-0.5 rounded">GET /api/auth/token</code> para obtener el JWT directamente — sin inspeccionar cookies ni el navegador. Requiere que ya hayas iniciado sesion:</p>
+          <ol className="space-y-2 text-muted-foreground mt-3 mb-4">
+            {[
+              "Inicia sesion en el dashboard con Discord (https://tu-dominio.replit.app).",
+              "Abre tu terminal o Postman.",
+              'Ejecuta: curl -b "token=TU_COOKIE" https://tu-dominio.replit.app/api/auth/token',
+              'La respuesta incluye: { "token": "eyJ...", "expiresIn": "7d", "userId": "..." }',
+              'Guarda ese token y usalo en el header Authorization: Bearer <token> en todas las peticiones.',
+            ].map((step, i) => (
+              <li key={i} className="flex items-start gap-2.5">
+                <span className="w-5 h-5 rounded-full bg-primary/20 text-primary text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{i + 1}</span>
+                <span className="text-sm">{step}</span>
+              </li>
+            ))}
+          </ol>
+
+          <H3>Metodo alternativo — Extraer cookie manualmente</H3>
+          <p className="text-muted-foreground mb-2">Si prefieres obtener el token desde el navegador:</p>
           <ol className="space-y-2 text-muted-foreground mt-3 mb-4">
             {[
               "Inicia sesion en el dashboard con Discord.",
               "Abre las herramientas de desarrollador del navegador (F12).",
               'Ve a Aplicacion → Cookies → busca la cookie llamada "token".',
               "Copia el valor — ese es tu JWT / API Key.",
-              'Usalo en el header Authorization: Bearer <tu_token> en todas las peticiones.',
             ].map((step, i) => (
               <li key={i} className="flex items-start gap-2.5">
-                <span className="w-5 h-5 rounded-full bg-primary/20 text-primary text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{i + 1}</span>
+                <span className="w-5 h-5 rounded-full bg-secondary text-muted-foreground text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{i + 1}</span>
                 <span className="text-sm">{step}</span>
               </li>
             ))}
@@ -714,7 +730,19 @@ function DocsContent({ activeSection }: { activeSection: string }) {
 
           <H3>Ejemplo completo — Node.js / Discord.js</H3>
           <CodeBlock lang="javascript" code={`const API_BASE = "https://tu-dominio.replit.app/api";
-const API_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."; // tu JWT
+
+// Paso 1: Obtener el JWT usando el endpoint /api/auth/token
+// (debes enviar tu cookie de sesion)
+async function getApiToken(sessionCookie) {
+  const res = await fetch(\`\${API_BASE}/auth/token\`, {
+    headers: { "Cookie": \`token=\${sessionCookie}\` }
+  });
+  const data = await res.json();
+  return data.token; // eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+}
+
+// Paso 2: Usar el token para llamar a la API
+const API_TOKEN = await getApiToken("TU_COOKIE_DE_SESION");
 
 // Ejemplo: obtener stats de un servidor
 async function getServerStats(guildId) {
@@ -726,6 +754,15 @@ async function getServerStats(guildId) {
   });
   if (!res.ok) throw new Error(\`HTTP \${res.status}\`);
   return res.json();
+}
+
+// Ejemplo: verificar si un usuario esta en la blacklist
+async function checkBlacklist(discordId) {
+  const res = await fetch(\`\${API_BASE}/blacklist/check/\${discordId}\`, {
+    headers: { "Authorization": \`Bearer \${API_TOKEN}\` }
+  });
+  return res.json();
+  // { blacklisted: true, reason: "...", expiresAt: "2026-12-01T...", permanent: false }
 }
 
 // Ejemplo: activar AntiRaid
@@ -742,7 +779,7 @@ async function enableAntiRaid(guildId) {
 }`} />
 
           <Alert type="warning">
-            <strong>Seguridad:</strong> Nunca compartas tu JWT publicamente ni lo pongas en codigo que subas a GitHub. Si crees que fue comprometido, cierra sesion y vuelve a iniciar sesion para obtener uno nuevo.
+            <strong>Seguridad:</strong> Nunca compartas tu JWT publicamente ni lo pongas en codigo que subas a GitHub. Si crees que fue comprometido, cierra sesion y vuelve a iniciar sesion para obtener uno nuevo. El token expira a los 7 dias.
           </Alert>
 
           <Alert type="tip">
@@ -771,6 +808,16 @@ async function enableAntiRaid(guildId) {
   "isPremium": false,
   "premiumPlan": null,
   "createdAt": "2026-06-06T00:00:00.000Z"
+}`}
+            errors={[{ code: 401, msg: "Unauthorized — no hay sesion activa" }]}
+          />
+          <EndpointCard method="GET" url="/api/auth/token" auth={true} desc="Devuelve el JWT activo del usuario autenticado. Util para que bots externos obtengan el token sin inspeccionar cookies manualmente."
+            res={`{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "expiresIn": "7d",
+  "userId": "user_123456789",
+  "discordId": "123456789",
+  "username": "usuario"
 }`}
             errors={[{ code: 401, msg: "Unauthorized — no hay sesion activa" }]}
           />

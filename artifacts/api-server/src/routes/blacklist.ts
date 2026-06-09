@@ -25,6 +25,15 @@ router.get("/blacklist/check/:discordId", async (req, res) => {
     res.json({ blacklisted: false });
     return;
   }
+
+  // Check if the entry has expired
+  if (entry.expiresAt && new Date() > new Date(entry.expiresAt)) {
+    // Auto-remove expired entry
+    await db.delete(blacklistTable).where(eq(blacklistTable.userId, discordId));
+    res.json({ blacklisted: false, expired: true });
+    return;
+  }
+
   res.json({
     blacklisted: true,
     userId: entry.userId,
@@ -33,6 +42,9 @@ router.get("/blacklist/check/:discordId", async (req, res) => {
     evidence: entry.evidence || [],
     addedAt: entry.createdAt,
     addedBy: entry.addedByUsername,
+    durationDays: entry.durationDays ?? null,
+    expiresAt: entry.expiresAt ?? null,
+    permanent: !entry.expiresAt,
   });
 });
 
@@ -42,17 +54,27 @@ router.get("/blacklist", requireAdminAccess("manage_blacklist"), async (_req, re
 });
 
 router.post("/blacklist", requireAdminAccess("manage_blacklist"), async (req, res) => {
-  const { userId, username, avatarHash, reason, evidence } = req.body;
+  const { userId, username, avatarHash, reason, evidence, durationDays } = req.body;
   const actor = (req as any).user;
+
+  // Calculate expiresAt if durationDays is provided and > 0
+  const parsedDuration = durationDays && Number(durationDays) > 0 ? Number(durationDays) : null;
+  const expiresAt = parsedDuration
+    ? new Date(Date.now() + parsedDuration * 24 * 60 * 60 * 1000)
+    : null;
 
   const existing = await db.select().from(blacklistTable).where(eq(blacklistTable.userId, userId as string));
   if (existing.length > 0) {
     const prev = existing[0];
     const history = [...(prev.sanctionHistory || []), { action: "update", reason, by: actor.username, at: new Date().toISOString() }];
     const [updated] = await db.update(blacklistTable)
-      .set({ username, avatarHash: avatarHash || null, reason, evidence: evidence || [], sanctionHistory: history, addedByUsername: actor.username })
+      .set({
+        username, avatarHash: avatarHash || null, reason, evidence: evidence || [],
+        sanctionHistory: history, addedByUsername: actor.username,
+        durationDays: parsedDuration, expiresAt,
+      })
       .where(eq(blacklistTable.userId, userId as string)).returning();
-    await log(actor, "update_blacklist", username, { userId, reason });
+    await log(actor, "update_blacklist", username, { userId, reason, durationDays: parsedDuration });
     res.json(updated);
     return;
   }
@@ -61,9 +83,11 @@ router.post("/blacklist", requireAdminAccess("manage_blacklist"), async (req, re
     userId: userId as string, username, avatarHash: avatarHash || null, reason,
     addedBy: actor.discordId, addedByUsername: actor.username,
     evidence: evidence || [],
+    durationDays: parsedDuration,
+    expiresAt,
     sanctionHistory: [{ action: "blacklist", reason, by: actor.username, at: new Date().toISOString() }],
   }).returning();
-  await log(actor, "add_blacklist", username, { userId, reason });
+  await log(actor, "add_blacklist", username, { userId, reason, durationDays: parsedDuration });
   res.status(201).json(entry);
 });
 
