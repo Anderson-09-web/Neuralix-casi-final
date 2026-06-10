@@ -13,7 +13,7 @@ export interface JwtPayload {
 }
 
 export function signToken(payload: JwtPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: "365d" });
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: "30d" });
 }
 
 export function verifyToken(token: string): JwtPayload | null {
@@ -25,17 +25,32 @@ export function verifyToken(token: string): JwtPayload | null {
 }
 
 /**
- * Extracts the auth token from the request using multiple methods (in order):
- * 1. httpOnly cookie `token`  (browser login via Discord OAuth)
- * 2. Authorization header     `Bearer <token>` or just `<token>`
- * 3. X-API-Key header         `<token>`
- * 4. Query parameter          `?token=<token>`
+ * Extracts the auth token using multiple methods (in priority order):
+ *
+ *  1. Cookie `token`             — browser login via Discord OAuth
+ *  2. Authorization header       — `Bearer <token>` or just `<token>`
+ *  3. X-API-Key header           — `<token>`
+ *  4. Query parameter ?token=    — easiest for testing / curl
+ *  5. JSON body field `token`    — POST/PUT body `{ "token": "...", ... }`
+ *
+ * Python examples:
+ *   import requests
+ *   TOKEN = "your_jwt_token"
+ *
+ *   # Option A — header
+ *   resp = requests.get(url, headers={"Authorization": f"Bearer {TOKEN}"})
+ *
+ *   # Option B — query param
+ *   resp = requests.get(f"{url}?token={TOKEN}")
+ *
+ *   # Option C — POST body
+ *   resp = requests.post(url, json={"token": TOKEN, "enabled": True})
  */
 function extractToken(req: Request): string | null {
   // 1. Cookie (browser)
   if (req.cookies?.token) return req.cookies.token as string;
 
-  // 2. Authorization header
+  // 2. Authorization header — accepts `Bearer <token>` or bare `<token>`
   const authHeader = req.headers.authorization;
   if (authHeader) {
     return authHeader.startsWith("Bearer ")
@@ -47,9 +62,13 @@ function extractToken(req: Request): string | null {
   const apiKey = req.headers["x-api-key"];
   if (apiKey && typeof apiKey === "string") return apiKey.trim();
 
-  // 4. Query param ?token=
+  // 4. ?token= query parameter
   const queryToken = req.query.token;
   if (queryToken && typeof queryToken === "string") return queryToken.trim();
+
+  // 5. JSON body field (for POST/PUT requests where body has { "token": "..." })
+  const bodyToken = (req as any).body?.token;
+  if (bodyToken && typeof bodyToken === "string") return bodyToken.trim();
 
   return null;
 }
@@ -57,12 +76,15 @@ function extractToken(req: Request): string | null {
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token = extractToken(req);
   if (!token) {
-    res.status(401).json({ error: "No autorizado. Incluye el token via cookie, header Authorization: Bearer <token>, X-API-Key: <token>, o ?token=<token>" });
+    res.status(401).json({
+      error: "No autorizado",
+      hint: "Incluye tu token via: Authorization: Bearer <token> | X-API-Key: <token> | ?token=<token> | body: { token: '...' }",
+    });
     return;
   }
   const payload = verifyToken(token);
   if (!payload) {
-    res.status(401).json({ error: "Token invalido o expirado" });
+    res.status(401).json({ error: "Token invalido o expirado. Visita /api/auth/token para obtener uno nuevo." });
     return;
   }
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId));

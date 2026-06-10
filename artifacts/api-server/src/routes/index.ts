@@ -16,11 +16,13 @@ import supportRouter from "./support";
 import aiRouter from "./ai";
 import setupRouter from "./setup";
 import botSettingsRouter from "./bot-settings";
+import examplesRouter from "./examples";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(authRouter);
+router.use(examplesRouter);
 router.use(guildsRouter);
 router.use(announcementsRouter);
 router.use(welcomeRouter);
