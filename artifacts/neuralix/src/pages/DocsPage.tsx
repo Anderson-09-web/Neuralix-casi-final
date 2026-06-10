@@ -98,7 +98,8 @@ const SECTIONS = [
       "Autenticacion", "Endpoints de Auth", "Endpoints de Guilds", "Endpoints de Bienvenidas",
       "Endpoints de Verificacion", "Endpoints de Tickets", "Endpoints de AntiRaid",
       "Endpoints de Logs", "Endpoints de Backups", "Endpoints de Premium",
-      "Endpoints de Soporte", "Endpoints de AI", "Endpoints de Admin", "Rate Limits"
+      "Endpoints de Soporte", "Endpoints de AI", "Endpoints de Admin",
+      "Endpoints de Anuncios", "Endpoints de Blacklist", "Endpoints de Sistema", "Rate Limits"
     ]
   },
 ];
@@ -821,6 +822,12 @@ async function enableAntiRaid(guildId) {
 }`}
             errors={[{ code: 401, msg: "Unauthorized — no hay sesion activa" }]}
           />
+          <EndpointCard method="GET" url="/api/auth/bot-invite" auth={false} desc="Devuelve la URL de invitacion del bot de Discord con los permisos necesarios."
+            res={`{ "url": "https://discord.com/api/oauth2/authorize?client_id=...&permissions=8&scope=bot%20applications.commands" }`}
+          />
+          <EndpointCard method="GET" url="/api/auth/login" auth={false} desc="Redireccion directa al OAuth2 de Discord. Equivalente a redirigir al resultado de /api/auth/discord/url."
+            errors={[{ code: 302, msg: "Redirige a la URL de autorizacion de Discord" }]}
+          />
           <EndpointCard method="POST" url="/api/auth/logout" auth={true} desc="Cierra la sesion del usuario (limpia la cookie JWT)."
             res={`{ "ok": true }`}
             errors={[{ code: 401, msg: "Unauthorized" }]}
@@ -933,13 +940,30 @@ async function enableAntiRaid(guildId) {
   "antiBot": false
 }`}
           />
-          <EndpointCard method="POST" url="/api/verify/:guildId" auth={true} desc="Verifica al usuario autenticado en el servidor especificado."
+          <EndpointCard method="POST" url="/api/verify/:guildId" auth={true} desc="Verifica al usuario autenticado en el servidor especificado. Endpoint publico usado por el portal de verificacion."
             res={`{
   "success": true,
   "message": "Verificacion exitosa! Tu rol ha sido asignado.",
   "roleAssigned": true
 }`}
-            errors={[{ code: 200, msg: "success: false si la verificacion esta desactivada" }]}
+            errors={[{ code: 200, msg: "success: false si la verificacion esta desactivada o el usuario no pasa los filtros" }]}
+          />
+          <EndpointCard method="GET" url="/api/guilds/:guildId/verification/verified-users" auth={true} desc="Lista todos los usuarios verificados en el servidor."
+            res={`[
+  {
+    "id": 1,
+    "guildId": "987654321",
+    "discordId": "123456789",
+    "username": "usuario",
+    "verifiedAt": "2026-06-06T00:00:00.000Z",
+    "ip": null
+  }
+]`}
+          />
+          <EndpointCard method="DELETE" url="/api/guilds/:guildId/verification/verified-users/:discordId" auth={true} desc="Elimina la verificacion de un usuario especifico, forzandolo a verificarse de nuevo."
+            params={[{ name: "discordId", type: "path param", required: true, desc: "Discord ID del usuario a des-verificar" }]}
+            res={`{ "ok": true }`}
+            errors={[{ code: 404, msg: "Usuario verificado no encontrado" }]}
           />
 
           <H2 id="endpoints-tickets">Endpoints de Tickets</H2>
@@ -961,6 +985,10 @@ async function enableAntiRaid(guildId) {
 ]`}
           />
           <EndpointCard method="POST" url="/api/guilds/:guildId/tickets/:ticketId/close" auth={true} desc="Cierra un ticket especifico." res={`{ "ok": true }`} />
+          <EndpointCard method="POST" url="/api/guilds/:guildId/tickets/:ticketId/reopen" auth={true} desc="Reabre un ticket previamente cerrado."
+            res={`{ "ok": true }`}
+            errors={[{ code: 404, msg: "Ticket no encontrado" }, { code: 400, msg: "El ticket ya esta abierto" }]}
+          />
 
           <H2 id="endpoints-antiraid">Endpoints de AntiRaid</H2>
           <EndpointCard method="GET" url="/api/guilds/:guildId/antiraid" auth={true} desc="Obtiene la configuracion completa de AntiRaid."
@@ -1038,6 +1066,16 @@ async function enableAntiRaid(guildId) {
           <H2 id="endpoints-premium">Endpoints de Premium</H2>
           <EndpointCard method="GET" url="/api/guilds/:guildId/premium" auth={true} desc="Estado del premium del servidor." res={`{ "guildId": "987654321", "active": false, "plan": null, "expiresAt": null, "features": [] }`} />
           <EndpointCard method="GET" url="/api/premium/plans" auth={false} desc="Lista los planes premium disponibles." res={`[{ "id": "plus", "name": "Plus", "price": 4.99, "features": [...] }]`} />
+          <EndpointCard method="POST" url="/api/guilds/:guildId/premium/activate" auth={true} desc="Activa una licencia premium en el servidor usando una clave de licencia."
+            req={`{ "licenseKey": "NRX-PRO-ABCD1234EFGH5678" }`}
+            res={`{
+  "ok": true,
+  "message": "Licencia activada correctamente",
+  "plan": "pro",
+  "expiresAt": null
+}`}
+            errors={[{ code: 400, msg: "Clave de licencia invalida o ya usada" }, { code: 409, msg: "El servidor ya tiene premium activo" }]}
+          />
 
           <H2 id="endpoints-soporte">Endpoints de Soporte Web</H2>
           <EndpointCard method="GET" url="/api/support/tickets" auth={true} desc="Lista los tickets de soporte web. Los owners ven todos; los usuarios normales ven solo los suyos." res={`[{ "id": 1, "userId": "user-id", "username": "usuario", "subject": "Ayuda", "status": "open", "priority": "normal", "createdAt": "..." }]`} />
@@ -1051,6 +1089,11 @@ async function enableAntiRaid(guildId) {
           />
           <EndpointCard method="GET" url="/api/support/tickets/:id/messages" auth={true} desc="Obtiene los mensajes de un ticket de soporte." res={`[{ "id": 1, "ticketId": 1, "userId": "user-id", "username": "usuario", "content": "...", "isStaff": false, "createdAt": "..." }]`} />
           <EndpointCard method="POST" url="/api/support/tickets/:id/messages" auth={true} desc="Envia un mensaje en un ticket de soporte." req={`{ "content": "Gracias por contactar con soporte..." }`} res={`{ "id": 2, "content": "...", "isStaff": true, "createdAt": "..." }`} />
+          <EndpointCard method="PATCH" url="/api/support/tickets/:id" auth={true} desc="Actualiza el estado o prioridad de un ticket de soporte. Solo accesible por staff (owners)."
+            req={`{ "status": "closed", "priority": "high" }`}
+            res={`{ "id": 1, "status": "closed", "priority": "high", "updatedAt": "..." }`}
+            errors={[{ code: 403, msg: "Solo staff puede modificar tickets" }, { code: 404, msg: "Ticket no encontrado" }]}
+          />
 
           <H2 id="endpoints-ai">Endpoints de AI</H2>
           <EndpointCard method="POST" url="/api/guilds/:guildId/ai/analyze" auth={true} desc="Analiza la configuracion de seguridad del servidor y devuelve recomendaciones."
@@ -1092,13 +1135,152 @@ async function enableAntiRaid(guildId) {
           <EndpointCard method="GET" url="/api/admin/licenses" auth={true} desc="Lista todas las licencias." res={`[{ "id": 1, "key": "NRX-PRO-ABCD1234...", "plan": "pro", "guildId": null, "active": true, "createdAt": "..." }]`} />
           <EndpointCard method="POST" url="/api/admin/licenses" auth={true} desc="Genera una nueva licencia." req={`{ "plan": "pro", "guildId": null, "expiresAt": null }`} res={`{ "id": 2, "key": "NRX-PRO-XXXX...", "plan": "pro", "active": true }`} />
           <EndpointCard method="DELETE" url="/api/admin/licenses/:id" auth={true} desc="Revoca una licencia." res={`(vacío, 204 No Content)`} />
-          <EndpointCard method="GET" url="/api/blacklist" auth={true} desc="Lista de usuarios en la blacklist global." res={`[{ "id": 1, "userId": "baduser123", "username": "BadUser", "reason": "Raid", "addedBy": "admin" }]`} />
-          <EndpointCard method="POST" url="/api/blacklist" auth={true} desc="Agrega un usuario a la blacklist." req={`{ "userId": "baduser123", "username": "BadUser", "reason": "Intento de raid" }`} />
-          <EndpointCard method="DELETE" url="/api/blacklist/:userId" auth={true} desc="Elimina un usuario de la blacklist." res={`(vacío, 204 No Content)`} />
-          <EndpointCard method="GET" url="/api/announcements" auth={false} desc="Lista todos los anuncios publicados." res={`[{ "id": 1, "title": "...", "content": "...", "type": "info", "published": true, "createdAt": "..." }]`} />
-          <EndpointCard method="POST" url="/api/announcements" auth={true} desc="Crea un nuevo anuncio (solo owner)." req={`{ "title": "Nuevo modulo", "content": "...", "type": "info", "published": true }`} />
-          <EndpointCard method="PATCH" url="/api/announcements/:id" auth={true} desc="Actualiza un anuncio existente." req={`{ "title": "Titulo actualizado", "published": false }`} />
-          <EndpointCard method="DELETE" url="/api/announcements/:id" auth={true} desc="Elimina un anuncio." res={`(vacío, 204 No Content)`} />
+
+          <H3>Gestion de Admins Secundarios</H3>
+          <EndpointCard method="GET" url="/api/admin/admins" auth={true} desc="Lista todos los administradores secundarios con sus permisos."
+            res={`[
+  {
+    "id": 1,
+    "userId": "user-id",
+    "discordId": "123456789",
+    "username": "admin_usuario",
+    "canManagePremium": true,
+    "canManageBlacklist": true,
+    "canViewStats": true,
+    "createdAt": "2026-06-06T00:00:00.000Z"
+  }
+]`}
+          />
+          <EndpointCard method="POST" url="/api/admin/admins" auth={true} desc="Otorga acceso de administrador secundario a un usuario."
+            req={`{
+  "discordId": "123456789",
+  "canManagePremium": true,
+  "canManageBlacklist": false,
+  "canViewStats": true
+}`}
+            res={`{ "id": 2, "discordId": "123456789", "username": "nuevo_admin", "createdAt": "..." }`}
+            errors={[{ code: 400, msg: "Usuario no encontrado en la plataforma" }, { code: 409, msg: "El usuario ya es admin" }]}
+          />
+          <EndpointCard method="PATCH" url="/api/admin/admins/:id" auth={true} desc="Actualiza los permisos de un administrador secundario."
+            req={`{ "canManagePremium": false, "canManageBlacklist": true }`}
+            res={`{ "id": 2, "canManagePremium": false, "canManageBlacklist": true }`}
+          />
+          <EndpointCard method="DELETE" url="/api/admin/admins/:id" auth={true} desc="Revoca el acceso de admin secundario a un usuario." res={`(vacío, 204 No Content)`} />
+
+          <H3>Configuracion del Bot</H3>
+          <EndpointCard method="GET" url="/api/admin/bot-settings" auth={true} desc="Obtiene la configuracion actual del sistema (tokens/IDs). Los valores sensibles estan enmascarados."
+            res={`{
+  "botTokenConfigured": true,
+  "clientIdConfigured": true,
+  "clientSecretConfigured": true,
+  "sessionSecretConfigured": true
+}`}
+          />
+          <EndpointCard method="PUT" url="/api/admin/bot-settings" auth={true} desc="Actualiza la configuracion del sistema bot. Solo accesible por owner."
+            req={`{ "botToken": "...", "clientId": "...", "clientSecret": "..." }`}
+            res={`{ "ok": true, "message": "Configuracion actualizada" }`}
+            errors={[{ code: 403, msg: "Owner access required" }]}
+          />
+          <EndpointCard method="GET" url="/api/admin/activity-logs" auth={true} desc="Lista el historial de actividad del panel de administracion."
+            res={`[
+  {
+    "id": 1,
+    "adminId": "user-id",
+    "adminUsername": "owner",
+    "action": "LICENSE_CREATED",
+    "details": "Licencia NRX-PRO-XXXX creada para plan pro",
+    "createdAt": "2026-06-06T00:00:00.000Z"
+  }
+]`}
+          />
+
+          <H2 id="endpoints-anuncios">Endpoints de Anuncios</H2>
+          <Alert type="info">Los anuncios son visibles en la pagina de soporte y en el panel. Solo el owner puede crear, editar o eliminar anuncios. La lectura es publica.</Alert>
+          <EndpointCard method="GET" url="/api/announcements" auth={false} desc="Lista todos los anuncios publicados ordenados por fecha descendente."
+            res={`[
+  {
+    "id": 1,
+    "title": "Nueva version v2.0",
+    "content": "Hemos lanzado...",
+    "type": "info",
+    "published": true,
+    "createdAt": "2026-06-06T00:00:00.000Z"
+  }
+]`}
+          />
+          <EndpointCard method="POST" url="/api/announcements" auth={true} desc="Crea un nuevo anuncio. Solo owner."
+            req={`{
+  "title": "Nuevo modulo AntiNuke",
+  "content": "Hemos agregado proteccion contra nukes...",
+  "type": "info",
+  "published": true
+}`}
+            res={`{ "id": 2, "title": "...", "published": true, "createdAt": "..." }`}
+            errors={[{ code: 403, msg: "Owner access required" }]}
+          />
+          <EndpointCard method="PATCH" url="/api/announcements/:id" auth={true} desc="Actualiza un anuncio existente. Solo owner."
+            req={`{ "title": "Titulo actualizado", "published": false }`}
+            res={`{ "id": 1, "title": "Titulo actualizado", "published": false }`}
+          />
+          <EndpointCard method="DELETE" url="/api/announcements/:id" auth={true} desc="Elimina un anuncio permanentemente. Solo owner." res={`(vacío, 204 No Content)`} />
+
+          <H2 id="endpoints-blacklist">Endpoints de Blacklist</H2>
+          <Alert type="info">El endpoint de verificacion <code className="font-mono text-xs">/api/blacklist/check/:discordId</code> es publico para permitir que bots externos consulten la blacklist sin autenticacion.</Alert>
+          <EndpointCard method="GET" url="/api/blacklist/check/:discordId" auth={false} desc="Comprueba si un Discord ID esta en la blacklist global. Endpoint publico, ideal para bots."
+            params={[{ name: "discordId", type: "path param", required: true, desc: "Discord ID a consultar" }]}
+            res={`{
+  "blacklisted": true,
+  "reason": "Intento de raid masivo",
+  "addedBy": "admin_usuario",
+  "permanent": true,
+  "expiresAt": null,
+  "addedAt": "2026-06-06T00:00:00.000Z"
+}`}
+          />
+          <EndpointCard method="GET" url="/api/blacklist" auth={true} desc="Lista todas las entradas de la blacklist global. Solo admins."
+            res={`[{ "id": 1, "userId": "baduser123", "username": "BadUser", "reason": "Raid", "addedBy": "admin", "permanent": true }]`}
+          />
+          <EndpointCard method="POST" url="/api/blacklist" auth={true} desc="Agrega o actualiza un usuario en la blacklist global."
+            req={`{
+  "userId": "baduser123",
+  "username": "BadUser",
+  "reason": "Intento de raid masivo",
+  "permanent": true,
+  "expiresAt": null
+}`}
+            res={`{ "id": 1, "userId": "baduser123", "permanent": true, "createdAt": "..." }`}
+          />
+          <EndpointCard method="PATCH" url="/api/blacklist/:userId" auth={true} desc="Actualiza una entrada existente en la blacklist (razon, duracion, etc.)."
+            req={`{ "reason": "Razon actualizada", "permanent": false, "expiresAt": "2027-01-01T00:00:00.000Z" }`}
+            res={`{ "userId": "baduser123", "reason": "Razon actualizada", "permanent": false, "expiresAt": "2027-01-01T..." }`}
+          />
+          <EndpointCard method="DELETE" url="/api/blacklist/:userId" auth={true} desc="Elimina un usuario de la blacklist global." res={`(vacío, 204 No Content)`} />
+
+          <H2 id="endpoints-sistema">Endpoints de Sistema</H2>
+          <Alert type="tip">Estos endpoints son utiles para verificar que la API esta activa y que el bot esta correctamente configurado.</Alert>
+          <EndpointCard method="GET" url="/api/healthz" auth={false} desc="Health check del servidor API. Devuelve 200 si el servicio esta operativo."
+            res={`{ "status": "ok", "uptime": 3600, "timestamp": "2026-06-06T00:00:00.000Z" }`}
+          />
+          <EndpointCard method="GET" url="/api/settings/bot-status" auth={false} desc="Comprueba publicamente si los componentes principales del bot estan configurados."
+            res={`{
+  "configured": true,
+  "botToken": true,
+  "clientId": true,
+  "clientSecret": true
+}`}
+          />
+          <EndpointCard method="GET" url="/api/bot/guild-config/:guildId" auth={true} desc="Devuelve la configuracion completa de un servidor en una sola llamada. Pensado para bots externos que necesitan toda la config de una vez."
+            params={[{ name: "guildId", type: "path param", required: true, desc: "ID del servidor" }]}
+            res={`{
+  "guild": { "id": "987654321", "name": "Mi Servidor", ... },
+  "welcome": { "enabled": true, "channelId": "...", ... },
+  "goodbye": { "enabled": false, ... },
+  "verification": { "enabled": true, "roleId": "...", "antiVpn": true, ... },
+  "antiraid": { "enabled": true, "antiNuke": true, ... },
+  "logs": { "enabled": true, "channelId": "...", ... },
+  "premium": { "active": false, "plan": null }
+}`}
+          />
 
           <H2 id="rate-limits">Rate Limits</H2>
           <Alert type="warning">Actualmente Neuralix no implementa rate limits por endpoint. Se recomienda no hacer mas de 60 peticiones por minuto desde la misma IP para evitar bloqueos del servidor proxy.</Alert>
