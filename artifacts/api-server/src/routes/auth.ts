@@ -199,11 +199,38 @@ router.post("/auth/logout", (_req, res) => {
   res.json({ ok: true });
 });
 
-// Returns the raw JWT so external tools can use it as a Bearer token.
-// Example: Authorization: Bearer <token>
+/**
+ * GET /api/auth/token
+ * Returns the JWT so bots/scripts can use the API externally.
+ *
+ * How to authenticate after getting this token:
+ *   Authorization: Bearer <token>
+ *   X-API-Key: <token>
+ *   ?token=<token>          (query param, easiest for testing)
+ *
+ * Example (curl):
+ *   curl https://your-domain/api/guilds -H "Authorization: Bearer TOKEN"
+ *   curl "https://your-domain/api/guilds?token=TOKEN"
+ */
 router.get("/auth/token", requireAuth, (req, res) => {
-  const token = req.cookies?.token || req.headers.authorization?.replace("Bearer ", "");
-  res.json({ token });
+  const user = (req as any).user;
+  // Re-issue a fresh 365-day token so it won't expire soon
+  const freshToken = signToken({
+    userId: user.id,
+    discordId: user.discordId,
+    isOwner: user.isOwner,
+  });
+  res.json({
+    token: freshToken,
+    userId: user.id,
+    discordId: user.discordId,
+    username: user.username,
+    usage: {
+      header: `Authorization: Bearer ${freshToken}`,
+      queryParam: `?token=${freshToken}`,
+      xApiKey: `X-API-Key: ${freshToken}`,
+    },
+  });
 });
 
 export default router;

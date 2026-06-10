@@ -1,19 +1,74 @@
 import { useParams, useLocation } from "wouter";
-import { Users, Ticket, Shield, ShieldAlert, Database, FileText, ExternalLink, AlertTriangle, Bell, CheckCircle } from "lucide-react";
+import { Users, Ticket, Shield, ShieldAlert, Database, FileText, ExternalLink, AlertTriangle, Bell, CheckCircle, RefreshCw } from "lucide-react";
 import { useGetGuild, useGetGuildStats, useGetGuildBotStatus, useGetAnnouncements, getGetGuildQueryKey, getGetGuildStatsQueryKey, getGetGuildBotStatusQueryKey, getGetAnnouncementsQueryKey } from "@workspace/api-client-react";
 import Layout from "@/components/Layout";
 import StatCard from "@/components/StatCard";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useState, useEffect } from "react";
+
+const POLL_INTERVAL = 30_000; // 30 seconds
 
 export default function ServerDashboard() {
   const { guildId } = useParams<{ guildId: string }>();
   const [, setLocation] = useLocation();
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const [secondsSince, setSecondsSince] = useState(0);
 
-  const { data: guild, isLoading: guildLoading } = useGetGuild(guildId, { query: { queryKey: getGetGuildQueryKey(guildId), enabled: !!guildId, staleTime: 0 } });
-  const { data: stats } = useGetGuildStats(guildId, { query: { queryKey: getGetGuildStatsQueryKey(guildId), enabled: !!guildId, staleTime: 0, refetchOnMount: true } });
-  const { data: botStatus } = useGetGuildBotStatus(guildId, { query: { queryKey: getGetGuildBotStatusQueryKey(guildId), enabled: !!guildId, staleTime: 0 } });
-  const { data: announcements } = useGetAnnouncements({ query: { queryKey: getGetAnnouncementsQueryKey(), enabled: true } });
+  const { data: guild, isLoading: guildLoading, refetch: refetchGuild } = useGetGuild(guildId, {
+    query: {
+      queryKey: getGetGuildQueryKey(guildId),
+      enabled: !!guildId,
+      staleTime: 0,
+      refetchInterval: POLL_INTERVAL,
+      refetchIntervalInBackground: false,
+    },
+  });
+
+  const { data: stats, refetch: refetchStats } = useGetGuildStats(guildId, {
+    query: {
+      queryKey: getGetGuildStatsQueryKey(guildId),
+      enabled: !!guildId,
+      staleTime: 0,
+      refetchInterval: POLL_INTERVAL,
+      refetchIntervalInBackground: false,
+      refetchOnMount: true,
+    },
+  });
+
+  const { data: botStatus, refetch: refetchBot } = useGetGuildBotStatus(guildId, {
+    query: {
+      queryKey: getGetGuildBotStatusQueryKey(guildId),
+      enabled: !!guildId,
+      staleTime: 0,
+      refetchInterval: POLL_INTERVAL,
+      refetchIntervalInBackground: false,
+    },
+  });
+
+  const { data: announcements } = useGetAnnouncements({
+    query: { queryKey: getGetAnnouncementsQueryKey(), enabled: true },
+  });
+
+  // Track seconds since last update for the live indicator
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setSecondsSince(Math.floor((Date.now() - lastUpdated.getTime()) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [lastUpdated]);
+
+  // Update lastUpdated whenever stats change
+  useEffect(() => {
+    if (stats) setLastUpdated(new Date());
+  }, [stats]);
+
+  function handleManualRefresh() {
+    setLastUpdated(new Date());
+    refetchGuild();
+    refetchStats();
+    refetchBot();
+  }
 
   if (guildLoading && !guild) return (
     <Layout guildId={guildId}>
@@ -45,26 +100,76 @@ export default function ServerDashboard() {
       )}
 
       {/* Header */}
-      <div className="flex items-center gap-3 md:gap-4 mb-6 md:mb-8">
-        {guild?.icon ? (
-          <img src={`https://cdn.discordapp.com/icons/${guildId}/${guild.icon}.png`} className="w-12 h-12 md:w-16 md:h-16 rounded-full flex-shrink-0" alt={guild.name} />
-        ) : (
-          <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-            <span className="text-xl md:text-2xl font-black text-primary">{guild?.name?.[0]}</span>
+      <div className="flex items-center justify-between gap-4 mb-6 md:mb-8">
+        <div className="flex items-center gap-3 md:gap-4 min-w-0">
+          {guild?.icon ? (
+            <img src={`https://cdn.discordapp.com/icons/${guildId}/${guild.icon}.png`} className="w-12 h-12 md:w-16 md:h-16 rounded-full flex-shrink-0" alt={guild.name} />
+          ) : (
+            <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+              <span className="text-xl md:text-2xl font-black text-primary">{guild?.name?.[0]}</span>
+            </div>
+          )}
+          <div className="min-w-0">
+            <h1 className="text-xl md:text-2xl font-black truncate">{guild?.name || guildId}</h1>
+            <p className="text-xs md:text-sm text-muted-foreground">Panel de control del servidor</p>
           </div>
-        )}
-        <div className="min-w-0">
-          <h1 className="text-xl md:text-2xl font-black truncate">{guild?.name || guildId}</h1>
-          <p className="text-xs md:text-sm text-muted-foreground">Panel de control del servidor</p>
+        </div>
+
+        {/* Live indicator + refresh button */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+            </span>
+            <span>
+              {secondsSince < 5
+                ? "Actualizado"
+                : secondsSince < 60
+                  ? `Hace ${secondsSince}s`
+                  : `Hace ${Math.floor(secondsSince / 60)}m`}
+            </span>
+          </div>
+          <button
+            onClick={handleManualRefresh}
+            className="p-2 rounded-lg hover:bg-primary/10 text-muted-foreground hover:text-primary transition-colors"
+            title="Actualizar datos"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
-        <StatCard label="Miembros" value={stats?.memberCount?.toLocaleString() ?? "—"} icon={<Users className="w-5 h-5" />} color="primary" trend="Total en el servidor" />
-        <StatCard label="Tickets abiertos" value={stats?.openTickets ?? "—"} icon={<Ticket className="w-5 h-5" />} color="accent" trend="Tickets activos" />
-        <StatCard label="Detecciones AntiRaid" value={stats?.antiraidDetections ?? "—"} icon={<ShieldAlert className="w-5 h-5" />} color="red" trend="Total detectado" />
-        <StatCard label="Backups" value={stats?.backupsCount ?? "—"} icon={<Database className="w-5 h-5" />} color="green" trend="Copias disponibles" />
+        <StatCard
+          label="Miembros"
+          value={stats?.memberCount?.toLocaleString() ?? "—"}
+          icon={<Users className="w-5 h-5" />}
+          color="primary"
+          trend="Total en el servidor"
+        />
+        <StatCard
+          label="Tickets abiertos"
+          value={stats?.openTickets ?? "—"}
+          icon={<Ticket className="w-5 h-5" />}
+          color="accent"
+          trend="Tickets activos"
+        />
+        <StatCard
+          label="Detecciones AntiRaid"
+          value={stats?.antiraidDetections ?? "—"}
+          icon={<ShieldAlert className="w-5 h-5" />}
+          color="red"
+          trend="Total detectado"
+        />
+        <StatCard
+          label="Backups"
+          value={stats?.backupsCount ?? "—"}
+          icon={<Database className="w-5 h-5" />}
+          color="green"
+          trend="Copias disponibles"
+        />
       </div>
 
       {/* Quick access */}
