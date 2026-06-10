@@ -32,8 +32,8 @@ export default function BackupsPage() {
   const [tab, setTab] = useState<Tab>("backups");
   const [transferGuild, setTransferGuild] = useState("");
 
-  const { data: backups, isLoading } = useGetBackups(guildId, { query: { queryKey: getGetBackupsQueryKey(guildId), enabled: !!guildId } });
-  const { data: premium } = useGetGuildPremium(guildId, { query: { enabled: !!guildId, queryKey: getGetGuildPremiumQueryKey(guildId) } });
+  const { data: backups, isLoading } = useGetBackups(guildId, { query: { queryKey: getGetBackupsQueryKey(guildId), enabled: !!guildId, refetchInterval: 10000, refetchIntervalInBackground: false } });
+  const { data: premium } = useGetGuildPremium(guildId, { query: { enabled: !!guildId, queryKey: getGetGuildPremiumQueryKey(guildId), refetchInterval: 30000, refetchIntervalInBackground: false } });
   const createBackup = useCreateBackup();
   const restoreBackup = useRestoreBackup();
 

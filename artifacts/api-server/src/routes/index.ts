@@ -17,12 +17,14 @@ import aiRouter from "./ai";
 import setupRouter from "./setup";
 import botSettingsRouter from "./bot-settings";
 import examplesRouter from "./examples";
+import botRouter from "./bot";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(authRouter);
 router.use(examplesRouter);
+router.use(botRouter);
 router.use(guildsRouter);
 router.use(announcementsRouter);
 router.use(welcomeRouter);

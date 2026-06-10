@@ -1,5 +1,5 @@
 import { useParams } from "wouter";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useGetGoodbyeConfig, useUpdateGoodbyeConfig, useTestGoodbye, getGetGoodbyeConfigQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import Layout from "@/components/Layout";
@@ -15,12 +15,18 @@ export default function GoodbyePage() {
   const { guildId } = useParams<{ guildId: string }>();
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { data: config, isLoading, isError } = useGetGoodbyeConfig(guildId, { query: { queryKey: getGetGoodbyeConfigQueryKey(guildId), enabled: !!guildId } });
+  const { data: config, isLoading, isError } = useGetGoodbyeConfig(guildId, { query: { queryKey: getGetGoodbyeConfigQueryKey(guildId), enabled: !!guildId, refetchInterval: 5000, refetchIntervalInBackground: false } });
   const update = useUpdateGoodbyeConfig();
   const testGoodbye = useTestGoodbye();
   const [cfg, setCfg] = useState<any>(null);
+  const isMounted = useRef(false);
 
-  useEffect(() => { if (config) setCfg(config); }, [config]);
+  useEffect(() => {
+    if (config && !isMounted.current) {
+      setCfg(config);
+      isMounted.current = true;
+    }
+  }, [config]);
 
   if (isLoading || (!cfg && !isError)) return (
     <Layout guildId={guildId}><div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></Layout>

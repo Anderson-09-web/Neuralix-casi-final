@@ -1,5 +1,5 @@
 import { useParams } from "wouter";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ShieldAlert, TrendingDown, Zap, Shield, Network, Lock, Crown } from "lucide-react";
 import { useGetAntiraidConfig, useUpdateAntiraidConfig, useGetAntiraidStats, useGetGuildPremium, getGetAntiraidConfigQueryKey, getGetAntiraidStatsQueryKey, getGetGuildPremiumQueryKey } from "@workspace/api-client-react";
 import { Link } from "wouter";
@@ -40,17 +40,23 @@ export default function AntiraidPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
 
-  const { data: config, isLoading, isError } = useGetAntiraidConfig(guildId, { query: { queryKey: getGetAntiraidConfigQueryKey(guildId), enabled: !!guildId } });
-  const { data: stats } = useGetAntiraidStats(guildId, { query: { queryKey: getGetAntiraidStatsQueryKey(guildId), enabled: !!guildId } });
-  const { data: premium } = useGetGuildPremium(guildId, { query: { enabled: !!guildId, queryKey: getGetGuildPremiumQueryKey(guildId) } });
+  const { data: config, isLoading, isError } = useGetAntiraidConfig(guildId, { query: { queryKey: getGetAntiraidConfigQueryKey(guildId), enabled: !!guildId, refetchInterval: 5000, refetchIntervalInBackground: false } });
+  const { data: stats } = useGetAntiraidStats(guildId, { query: { queryKey: getGetAntiraidStatsQueryKey(guildId), enabled: !!guildId, refetchInterval: 5000, refetchIntervalInBackground: false } });
+  const { data: premium } = useGetGuildPremium(guildId, { query: { enabled: !!guildId, queryKey: getGetGuildPremiumQueryKey(guildId), refetchInterval: 30000, refetchIntervalInBackground: false } });
   const update = useUpdateAntiraidConfig();
 
   const plan = (premium as any)?.plan || null;
   const isPlus = !!plan;
 
   const [cfg, setCfg] = useState<any>(null);
+  const isMounted = useRef(false);
 
-  useEffect(() => { if (config) setCfg(config); }, [config]);
+  useEffect(() => {
+    if (config && !isMounted.current) {
+      setCfg(config);
+      isMounted.current = true;
+    }
+  }, [config]);
 
   if (isLoading || (!cfg && !isError)) return (
     <Layout guildId={guildId}>

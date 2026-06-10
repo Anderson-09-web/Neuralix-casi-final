@@ -1,5 +1,5 @@
 import { useParams } from "wouter";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { FileText, Shield, Users, MessageSquare, Settings } from "lucide-react";
 import { useGetLogsConfig, useUpdateLogsConfig, useGetGuildLogs, getGetLogsConfigQueryKey, getGetGuildLogsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -23,12 +23,18 @@ export default function LogsPage() {
   const { toast } = useToast();
   const [tab, setTab] = useState<"config" | "logs">("logs");
 
-  const { data: logsConfig } = useGetLogsConfig(guildId, { query: { queryKey: getGetLogsConfigQueryKey(guildId), enabled: !!guildId } });
-  const { data: logs, isLoading } = useGetGuildLogs(guildId, { query: { queryKey: getGetGuildLogsQueryKey(guildId), enabled: !!guildId } });
+  const { data: logsConfig } = useGetLogsConfig(guildId, { query: { queryKey: getGetLogsConfigQueryKey(guildId), enabled: !!guildId, refetchInterval: 5000, refetchIntervalInBackground: false } });
+  const { data: logs, isLoading } = useGetGuildLogs(guildId, { query: { queryKey: getGetGuildLogsQueryKey(guildId), enabled: !!guildId, refetchInterval: 5000, refetchIntervalInBackground: false } });
   const update = useUpdateLogsConfig();
   const [cfg, setCfg] = useState<any>(null);
+  const isMounted = useRef(false);
 
-  useEffect(() => { if (logsConfig) setCfg(logsConfig); }, [logsConfig]);
+  useEffect(() => {
+    if (logsConfig && !isMounted.current) {
+      setCfg(logsConfig);
+      isMounted.current = true;
+    }
+  }, [logsConfig]);
 
   const set = (key: string) => (val: any) => setCfg((c: any) => ({ ...c, [key]: val }));
 

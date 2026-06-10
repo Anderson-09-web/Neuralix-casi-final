@@ -1,5 +1,5 @@
 import { useParams } from "wouter";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Ticket, CheckCircle, Clock, X, RotateCcw, Layout as PanelIcon, Settings, List, Star } from "lucide-react";
 import { useGetTicketConfig, useUpdateTicketConfig, useGetTickets, useCloseTicket, useReopenTicket, getGetTicketConfigQueryKey, getGetTicketsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -28,14 +28,20 @@ export default function TicketsPage() {
   const { toast } = useToast();
   const [tab, setTab] = useState<Tab>("panel");
 
-  const { data: config, isLoading, isError } = useGetTicketConfig(guildId, { query: { queryKey: getGetTicketConfigQueryKey(guildId), enabled: !!guildId } });
-  const { data: tickets } = useGetTickets(guildId, { query: { queryKey: getGetTicketsQueryKey(guildId), enabled: !!guildId && tab === "list" } });
+  const { data: config, isLoading, isError } = useGetTicketConfig(guildId, { query: { queryKey: getGetTicketConfigQueryKey(guildId), enabled: !!guildId, refetchInterval: 5000, refetchIntervalInBackground: false } });
+  const { data: tickets } = useGetTickets(guildId, { query: { queryKey: getGetTicketsQueryKey(guildId), enabled: !!guildId && tab === "list", refetchInterval: 5000, refetchIntervalInBackground: false } });
   const update = useUpdateTicketConfig();
   const closeTicket = useCloseTicket();
   const reopenTicket = useReopenTicket();
   const [cfg, setCfg] = useState<any>(null);
+  const isMounted = useRef(false);
 
-  useEffect(() => { if (config) setCfg(config); }, [config]);
+  useEffect(() => {
+    if (config && !isMounted.current) {
+      setCfg(config);
+      isMounted.current = true;
+    }
+  }, [config]);
 
   const set = (key: string) => (val: any) => setCfg((c: any) => ({ ...c, [key]: val }));
 

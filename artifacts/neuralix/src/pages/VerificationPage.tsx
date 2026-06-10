@@ -1,5 +1,5 @@
 import { useParams } from "wouter";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useGetVerificationConfig, useUpdateVerificationConfig, useGetGuildPremium, getGetVerificationConfigQueryKey, getGetGuildPremiumQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import Layout from "@/components/Layout";
@@ -18,14 +18,20 @@ export default function VerificationPage() {
   const { guildId } = useParams<{ guildId: string }>();
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { data: config, isLoading, isError } = useGetVerificationConfig(guildId, { query: { queryKey: getGetVerificationConfigQueryKey(guildId), enabled: !!guildId } });
-  const { data: premium } = useGetGuildPremium(guildId, { query: { enabled: !!guildId, queryKey: getGetGuildPremiumQueryKey(guildId) } });
+  const { data: config, isLoading, isError } = useGetVerificationConfig(guildId, { query: { queryKey: getGetVerificationConfigQueryKey(guildId), enabled: !!guildId, refetchInterval: 5000, refetchIntervalInBackground: false } });
+  const { data: premium } = useGetGuildPremium(guildId, { query: { enabled: !!guildId, queryKey: getGetGuildPremiumQueryKey(guildId), refetchInterval: 30000, refetchIntervalInBackground: false } });
   const update = useUpdateVerificationConfig();
   const [cfg, setCfg] = useState<any>(null);
+  const isMounted = useRef(false);
   const plan = (premium as any)?.plan || null;
   const isPlus = !!plan;
 
-  useEffect(() => { if (config) setCfg(config); }, [config]);
+  useEffect(() => {
+    if (config && !isMounted.current) {
+      setCfg(config);
+      isMounted.current = true;
+    }
+  }, [config]);
 
   if (isLoading || (!cfg && !isError)) return (
     <Layout guildId={guildId}><div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div></Layout>
