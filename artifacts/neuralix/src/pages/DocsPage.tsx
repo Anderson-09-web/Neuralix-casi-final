@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Link, useLocation } from "wouter";
 import {
   Lock, Eye, EyeOff, AlertTriangle, Search, ChevronRight, ChevronDown,
   Bot, Shield, ShieldAlert, Ticket, Users, FileText, Database,
   Star, Settings, Globe, Key, Zap, BookOpen, Code2, Terminal,
   ArrowLeft, Clock, CheckCircle, XCircle, Info, Copy, Check,
-  Menu, X, Hash, ExternalLink
+  Menu, X, Hash, ExternalLink, Play, Loader2, RotateCcw, ChevronUp
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -102,7 +102,335 @@ const SECTIONS = [
       "Endpoints de Anuncios", "Endpoints de Blacklist", "Endpoints de Sistema", "Rate Limits"
     ]
   },
+  { id: "playground", label: "Playground", icon: Terminal, subsections: [] },
 ];
+
+// ─── Playground Endpoint Definitions ─────────────────────────────────────────
+interface PlaygroundEndpoint {
+  group: string;
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  path: string;
+  desc: string;
+  auth: boolean;
+  pathParams?: string[];
+  defaultBody?: string;
+}
+
+const PLAYGROUND_ENDPOINTS: PlaygroundEndpoint[] = [
+  // Auth
+  { group: "Auth", method: "GET", path: "/api/auth/me", desc: "Usuario autenticado actual", auth: true },
+  { group: "Auth", method: "GET", path: "/api/auth/discord/url", desc: "URL de autorizacion OAuth2", auth: false },
+  { group: "Auth", method: "GET", path: "/api/auth/token", desc: "JWT activo del usuario", auth: true },
+  { group: "Auth", method: "GET", path: "/api/auth/bot-invite", desc: "URL de invitacion del bot", auth: false },
+  { group: "Auth", method: "POST", path: "/api/auth/logout", desc: "Cerrar sesion", auth: true },
+  // Guilds
+  { group: "Guilds", method: "GET", path: "/api/guilds", desc: "Lista de servidores del usuario", auth: true },
+  { group: "Guilds", method: "GET", path: "/api/guilds/:guildId", desc: "Detalles de un servidor", auth: true, pathParams: ["guildId"] },
+  { group: "Guilds", method: "GET", path: "/api/guilds/:guildId/stats", desc: "Estadisticas del servidor", auth: true, pathParams: ["guildId"] },
+  { group: "Guilds", method: "GET", path: "/api/guilds/:guildId/bot-status", desc: "Estado del bot en el servidor", auth: true, pathParams: ["guildId"] },
+  // Welcome / Goodbye
+  { group: "Bienvenidas", method: "GET", path: "/api/guilds/:guildId/welcome", desc: "Config de bienvenidas", auth: true, pathParams: ["guildId"] },
+  { group: "Bienvenidas", method: "PUT", path: "/api/guilds/:guildId/welcome", desc: "Actualizar config de bienvenidas", auth: true, pathParams: ["guildId"], defaultBody: '{\n  "enabled": true,\n  "channelId": "",\n  "message": "Bienvenido {user}!"\n}' },
+  { group: "Bienvenidas", method: "POST", path: "/api/guilds/:guildId/welcome/test", desc: "Enviar mensaje de prueba", auth: true, pathParams: ["guildId"] },
+  { group: "Bienvenidas", method: "GET", path: "/api/guilds/:guildId/goodbye", desc: "Config de despedidas", auth: true, pathParams: ["guildId"] },
+  { group: "Bienvenidas", method: "PUT", path: "/api/guilds/:guildId/goodbye", desc: "Actualizar config de despedidas", auth: true, pathParams: ["guildId"], defaultBody: '{\n  "enabled": true,\n  "channelId": "",\n  "message": "Adios {user}!"\n}' },
+  // Verificacion
+  { group: "Verificacion", method: "GET", path: "/api/guilds/:guildId/verification", desc: "Config de verificacion", auth: true, pathParams: ["guildId"] },
+  { group: "Verificacion", method: "PUT", path: "/api/guilds/:guildId/verification", desc: "Actualizar verificacion", auth: true, pathParams: ["guildId"], defaultBody: '{\n  "enabled": true,\n  "antiVpn": true,\n  "antiAlt": true\n}' },
+  { group: "Verificacion", method: "GET", path: "/api/guilds/:guildId/verification/verified-users", desc: "Usuarios verificados", auth: true, pathParams: ["guildId"] },
+  // Tickets
+  { group: "Tickets", method: "GET", path: "/api/guilds/:guildId/tickets/config", desc: "Config del sistema de tickets", auth: true, pathParams: ["guildId"] },
+  { group: "Tickets", method: "GET", path: "/api/guilds/:guildId/tickets", desc: "Lista de tickets del servidor", auth: true, pathParams: ["guildId"] },
+  // AntiRaid
+  { group: "AntiRaid", method: "GET", path: "/api/guilds/:guildId/antiraid", desc: "Config del AntiRaid", auth: true, pathParams: ["guildId"] },
+  { group: "AntiRaid", method: "PUT", path: "/api/guilds/:guildId/antiraid", desc: "Actualizar AntiRaid", auth: true, pathParams: ["guildId"], defaultBody: '{\n  "enabled": true,\n  "antiNuke": true\n}' },
+  { group: "AntiRaid", method: "GET", path: "/api/guilds/:guildId/antiraid/stats", desc: "Estadisticas de detecciones", auth: true, pathParams: ["guildId"] },
+  // Logs
+  { group: "Logs", method: "GET", path: "/api/guilds/:guildId/logs/config", desc: "Config de logs", auth: true, pathParams: ["guildId"] },
+  { group: "Logs", method: "GET", path: "/api/guilds/:guildId/logs", desc: "Ultimos registros del servidor", auth: true, pathParams: ["guildId"] },
+  // Backups
+  { group: "Backups", method: "GET", path: "/api/guilds/:guildId/backups", desc: "Lista de backups", auth: true, pathParams: ["guildId"] },
+  { group: "Backups", method: "POST", path: "/api/guilds/:guildId/backups", desc: "Crear nuevo backup", auth: true, pathParams: ["guildId"] },
+  // Premium
+  { group: "Premium", method: "GET", path: "/api/guilds/:guildId/premium", desc: "Estado premium del servidor", auth: true, pathParams: ["guildId"] },
+  { group: "Premium", method: "GET", path: "/api/premium/plans", desc: "Planes premium disponibles", auth: false },
+  { group: "Premium", method: "POST", path: "/api/guilds/:guildId/premium/activate", desc: "Activar licencia premium", auth: true, pathParams: ["guildId"], defaultBody: '{\n  "licenseKey": "NRX-PRO-XXXX"\n}' },
+  // Soporte
+  { group: "Soporte", method: "GET", path: "/api/support/tickets", desc: "Tickets de soporte web", auth: true },
+  { group: "Soporte", method: "POST", path: "/api/support/tickets", desc: "Crear ticket de soporte", auth: true, defaultBody: '{\n  "subject": "Consulta",\n  "message": "...",\n  "priority": "normal"\n}' },
+  // AI
+  { group: "AI", method: "POST", path: "/api/guilds/:guildId/ai/analyze", desc: "Analizar seguridad del servidor", auth: true, pathParams: ["guildId"] },
+  { group: "AI", method: "POST", path: "/api/guilds/:guildId/ai/chat", desc: "Chat con asistente IA", auth: true, pathParams: ["guildId"], defaultBody: '{\n  "message": "Como activo el AntiRaid?"\n}' },
+  // Admin
+  { group: "Admin", method: "GET", path: "/api/admin/stats", desc: "Estadisticas globales del sistema", auth: true },
+  { group: "Admin", method: "GET", path: "/api/admin/licenses", desc: "Lista de licencias", auth: true },
+  { group: "Admin", method: "GET", path: "/api/admin/admins", desc: "Lista de admins secundarios", auth: true },
+  { group: "Admin", method: "GET", path: "/api/admin/activity-logs", desc: "Historial de actividad admin", auth: true },
+  { group: "Admin", method: "GET", path: "/api/admin/bot-settings", desc: "Estado de configuracion del bot", auth: true },
+  // Blacklist
+  { group: "Blacklist", method: "GET", path: "/api/blacklist/check/:discordId", desc: "Verificar usuario en blacklist", auth: false, pathParams: ["discordId"] },
+  { group: "Blacklist", method: "GET", path: "/api/blacklist", desc: "Lista completa de blacklist", auth: true },
+  // Anuncios
+  { group: "Anuncios", method: "GET", path: "/api/announcements", desc: "Lista de anuncios publicados", auth: false },
+  // Sistema
+  { group: "Sistema", method: "GET", path: "/api/healthz", desc: "Health check del servidor", auth: false },
+  { group: "Sistema", method: "GET", path: "/api/settings/bot-status", desc: "Estado de configuracion del sistema", auth: false },
+  { group: "Sistema", method: "GET", path: "/api/bot/guild-config/:guildId", desc: "Config completa del servidor (una llamada)", auth: true, pathParams: ["guildId"] },
+];
+
+const METHOD_COLORS: Record<string, string> = {
+  GET: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+  POST: "bg-green-500/20 text-green-400 border-green-500/30",
+  PUT: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+  PATCH: "bg-orange-500/20 text-orange-400 border-orange-500/30",
+  DELETE: "bg-red-500/20 text-red-400 border-red-500/30",
+};
+
+const STATUS_COLOR = (s: number) =>
+  s >= 200 && s < 300 ? "text-green-400" : s >= 400 && s < 500 ? "text-yellow-400" : "text-red-400";
+
+// ─── Playground Component ─────────────────────────────────────────────────────
+function PlaygroundSection() {
+  const groups = useMemo(() => {
+    const map: Record<string, PlaygroundEndpoint[]> = {};
+    for (const ep of PLAYGROUND_ENDPOINTS) {
+      if (!map[ep.group]) map[ep.group] = [];
+      map[ep.group].push(ep);
+    }
+    return map;
+  }, []);
+
+  const [selected, setSelected] = useState<PlaygroundEndpoint>(PLAYGROUND_ENDPOINTS[0]);
+  const [pathValues, setPathValues] = useState<Record<string, string>>({});
+  const [body, setBody] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+  const [response, setResponse] = useState<{ status: number; time: number; data: string } | null>(null);
+  const [copyDone, setCopyDone] = useState(false);
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(["Auth", "Guilds"]));
+  const [search, setSearch] = useState("");
+
+  const selectEndpoint = useCallback((ep: PlaygroundEndpoint) => {
+    setSelected(ep);
+    setPathValues({});
+    setBody(ep.defaultBody ?? "");
+    setResponse(null);
+  }, []);
+
+  const resolvedUrl = useMemo(() => {
+    let url = selected.path;
+    for (const [k, v] of Object.entries(pathValues)) {
+      url = url.replace(`:${k}`, v || `:${k}`);
+    }
+    return url;
+  }, [selected, pathValues]);
+
+  const send = useCallback(async () => {
+    setLoading(true);
+    setResponse(null);
+    const t0 = Date.now();
+    try {
+      const opts: RequestInit = { method: selected.method, credentials: "include" };
+      if (body && ["POST", "PUT", "PATCH"].includes(selected.method)) {
+        opts.headers = { "Content-Type": "application/json" };
+        opts.body = body;
+      }
+      const res = await fetch(resolvedUrl, opts);
+      const elapsed = Date.now() - t0;
+      let text = await res.text();
+      try { text = JSON.stringify(JSON.parse(text), null, 2); } catch { /* keep raw */ }
+      setResponse({ status: res.status, time: elapsed, data: text });
+    } catch (e: any) {
+      setResponse({ status: 0, time: Date.now() - t0, data: `Error de red: ${e.message}` });
+    } finally {
+      setLoading(false);
+    }
+  }, [selected, resolvedUrl, body]);
+
+  const copyResponse = () => {
+    if (response) {
+      navigator.clipboard.writeText(response.data);
+      setCopyDone(true);
+      setTimeout(() => setCopyDone(false), 2000);
+    }
+  };
+
+  const filteredGroups = useMemo(() => {
+    if (!search) return groups;
+    const q = search.toLowerCase();
+    const out: typeof groups = {};
+    for (const [g, eps] of Object.entries(groups)) {
+      const filtered = eps.filter(e =>
+        e.path.toLowerCase().includes(q) ||
+        e.desc.toLowerCase().includes(q) ||
+        e.method.toLowerCase().includes(q)
+      );
+      if (filtered.length) out[g] = filtered;
+    }
+    return out;
+  }, [groups, search]);
+
+  const toggleGroup = (g: string) =>
+    setOpenGroups(prev => { const n = new Set(prev); n.has(g) ? n.delete(g) : n.add(g); return n; });
+
+  const hasBody = ["POST", "PUT", "PATCH"].includes(selected.method);
+
+  return (
+    <div>
+      <h1 className="text-3xl font-black mb-2">Playground</h1>
+      <p className="text-muted-foreground mb-6 text-sm">
+        Prueba los endpoints directamente desde el navegador. Las peticiones se envian con tu sesion activa (cookie JWT). Inicia sesion con Discord primero si quieres probar endpoints protegidos.
+      </p>
+
+      <div className="flex gap-4 h-[calc(100vh-220px)] min-h-[500px]">
+
+        {/* ── Endpoint list ── */}
+        <div className="w-56 flex-shrink-0 flex flex-col gap-2 overflow-y-auto pr-1">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <Input
+              placeholder="Buscar..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="pl-8 h-8 text-xs bg-secondary"
+            />
+          </div>
+          {Object.entries(filteredGroups).map(([g, eps]) => (
+            <div key={g}>
+              <button
+                onClick={() => toggleGroup(g)}
+                className="flex items-center justify-between w-full px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
+              >
+                {g}
+                {openGroups.has(g)
+                  ? <ChevronUp className="w-3 h-3" />
+                  : <ChevronDown className="w-3 h-3" />}
+              </button>
+              {openGroups.has(g) && (
+                <div className="space-y-0.5">
+                  {eps.map(ep => {
+                    const isActive = selected.path === ep.path && selected.method === ep.method;
+                    return (
+                      <button
+                        key={`${ep.method}${ep.path}`}
+                        onClick={() => selectEndpoint(ep)}
+                        className={cn(
+                          "flex items-center gap-2 w-full px-2 py-1.5 rounded-lg text-left transition-all group",
+                          isActive ? "bg-primary/15 border border-primary/20" : "hover:bg-secondary"
+                        )}
+                      >
+                        <span className={cn(
+                          "text-[10px] font-bold px-1 py-0.5 rounded border font-mono flex-shrink-0 w-10 text-center",
+                          METHOD_COLORS[ep.method]
+                        )}>{ep.method}</span>
+                        <span className={cn(
+                          "text-xs truncate",
+                          isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
+                        )}>{ep.desc}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* ── Main panel ── */}
+        <div className="flex-1 flex flex-col gap-3 min-w-0">
+
+          {/* URL bar */}
+          <div className="flex items-center gap-2 bg-card border border-card-border rounded-xl px-4 py-3">
+            <span className={cn(
+              "text-xs font-bold px-2 py-1 rounded border font-mono flex-shrink-0",
+              METHOD_COLORS[selected.method]
+            )}>{selected.method}</span>
+            <code className="flex-1 text-sm font-mono text-foreground truncate">{resolvedUrl}</code>
+            {selected.auth && (
+              <div className="flex items-center gap-1 text-xs text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 rounded px-2 py-0.5 flex-shrink-0">
+                <Lock className="w-3 h-3" /> Auth
+              </div>
+            )}
+            <Button onClick={send} disabled={loading} size="sm" className="flex-shrink-0 gap-1.5">
+              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+              {loading ? "Enviando..." : "Enviar"}
+            </Button>
+          </div>
+
+          {/* Path params */}
+          {(selected.pathParams ?? []).length > 0 && (
+            <div className="bg-card border border-card-border rounded-xl p-4">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Parametros de ruta</p>
+              <div className="grid grid-cols-2 gap-3">
+                {selected.pathParams!.map(param => (
+                  <div key={param}>
+                    <label className="text-xs font-mono text-primary mb-1 block">:{param}</label>
+                    <Input
+                      placeholder={`Ej: 123456789`}
+                      value={pathValues[param] ?? ""}
+                      onChange={e => setPathValues(p => ({ ...p, [param]: e.target.value }))}
+                      className="h-8 text-xs font-mono"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Body editor */}
+          {hasBody && (
+            <div className="bg-card border border-card-border rounded-xl p-4 flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Cuerpo (JSON)</p>
+                <button
+                  onClick={() => setBody(selected.defaultBody ?? "")}
+                  className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+                >
+                  <RotateCcw className="w-3 h-3" /> Restablecer
+                </button>
+              </div>
+              <textarea
+                value={body}
+                onChange={e => setBody(e.target.value)}
+                className="w-full h-32 bg-[hsl(224,35%,6%)] border border-border rounded-lg p-3 text-xs font-mono text-foreground resize-none focus:outline-none focus:ring-1 focus:ring-primary/50 leading-relaxed"
+                spellCheck={false}
+                placeholder='{ "key": "value" }'
+              />
+            </div>
+          )}
+
+          {/* Response */}
+          {response ? (
+            <div className="bg-card border border-card-border rounded-xl p-4 flex flex-col gap-2 flex-1 min-h-0">
+              <div className="flex items-center justify-between flex-shrink-0">
+                <div className="flex items-center gap-3">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Respuesta</p>
+                  <span className={cn("text-sm font-bold font-mono", STATUS_COLOR(response.status))}>
+                    {response.status === 0 ? "ERROR" : response.status}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{response.time}ms</span>
+                </div>
+                <button onClick={copyResponse} className="text-muted-foreground hover:text-foreground transition-colors">
+                  {copyDone ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+              <pre className="flex-1 overflow-auto bg-[hsl(224,35%,6%)] border border-border rounded-lg p-3 text-xs font-mono text-foreground leading-relaxed">
+                {response.data}
+              </pre>
+            </div>
+          ) : (
+            <div className="flex-1 flex items-center justify-center border border-dashed border-border rounded-xl text-muted-foreground">
+              <div className="text-center">
+                <Terminal className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">La respuesta aparecera aqui</p>
+                <p className="text-xs mt-1 opacity-60">Selecciona un endpoint y presiona Enviar</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── Code Block ───────────────────────────────────────────────────────────────
 function CodeBlock({ code, lang = "json" }: { code: string; lang?: string }) {
@@ -1301,6 +1629,9 @@ async function enableAntiRaid(guildId) {
           </div>
         </div>
       )}
+
+      {/* PLAYGROUND */}
+      {activeSection === "playground" && <PlaygroundSection />}
     </div>
   );
 }
