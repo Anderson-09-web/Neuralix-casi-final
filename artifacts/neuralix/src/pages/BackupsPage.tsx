@@ -1,6 +1,6 @@
 import { useParams } from "wouter";
 import { useState } from "react";
-import { Database, Plus, RotateCcw, Clock, Calendar, Send, Star, Shield, Zap, Download, AlertTriangle } from "lucide-react";
+import { Database, Plus, RotateCcw, Clock, Calendar, Send, Star, Shield, Zap, Download, AlertTriangle, Trash2 } from "lucide-react";
 import { useGetBackups, useCreateBackup, useRestoreBackup, useGetGuildPremium, getGetBackupsQueryKey, getGetGuildPremiumQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import Layout from "@/components/Layout";
@@ -55,6 +55,26 @@ export default function BackupsPage() {
       onSuccess: () => toast({ title: "Backup restaurado exitosamente" }),
       onError: () => toast({ title: "Error al restaurar", variant: "destructive" }),
     });
+  };
+
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const handleDelete = async (backupId: number) => {
+    if (!confirm("¿Eliminar este backup? Esta accion no se puede deshacer.")) return;
+    setDeletingId(backupId);
+    try {
+      const res = await fetch(`/api/guilds/${guildId}/backups/${backupId}`, { method: "DELETE", credentials: "include" });
+      if (res.ok) {
+        toast({ title: "Backup eliminado" });
+        qc.invalidateQueries({ queryKey: getGetBackupsQueryKey(guildId) });
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: err?.error || "Error al eliminar backup", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Error de red al eliminar", variant: "destructive" });
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const handleExport = (backup: any) => {
@@ -153,7 +173,12 @@ export default function BackupsPage() {
                     )}
                     <Button size="sm" variant="outline" onClick={() => handleRestore(backup.id)} disabled={restoreBackup.isPending} className="gap-2" data-testid={`btn-restore-${backup.id}`}>
                       <RotateCcw className="w-4 h-4" />
-                      Restaurar
+                      <span>Restaurar</span>
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => handleDelete(backup.id)} disabled={deletingId === backup.id} className="gap-1 text-muted-foreground hover:text-destructive" title="Eliminar backup" data-testid={`btn-delete-${backup.id}`}>
+                      {deletingId === backup.id
+                        ? <><RotateCcw className="w-3.5 h-3.5 animate-spin" /><span>...</span></>
+                        : <Trash2 className="w-3.5 h-3.5" />}
                     </Button>
                   </div>
                 </div>

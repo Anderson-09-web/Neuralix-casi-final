@@ -736,6 +736,26 @@ paths:
               schema:
                 $ref: "#/components/schemas/Backup"
 
+  /guilds/{guildId}/backups/{backupId}:
+    delete:
+      operationId: deleteBackup
+      tags: [backups]
+      summary: Delete a backup
+      parameters:
+        - name: guildId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: backupId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+
   /guilds/{guildId}/backups/{backupId}/restore:
     post:
       operationId: restoreBackup

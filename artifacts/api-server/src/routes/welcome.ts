@@ -66,7 +66,9 @@ function buildDiscordPayload(cfg: typeof welcomeConfigsTable.$inferSelect, opts:
     if (cfg.embedDescription) embed.description = processTemplate(cfg.embedDescription, opts);
     if (cfg.embedFooter) embed.footer = { text: processTemplate(cfg.embedFooter, opts) };
     if (cfg.embedImage) embed.image = { url: cfg.embedImage };
-    payload.embeds = [embed];
+    if (embed.title || embed.description || embed.footer || embed.image) {
+      payload.embeds = [embed];
+    }
   }
 
   return payload;

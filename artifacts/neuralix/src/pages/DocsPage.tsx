@@ -75,7 +75,7 @@ const SECTIONS = [
   },
   {
     id: "backups", label: "Sistema de Backups", icon: Database, subsections: [
-      "Crear backup", "Restaurar backup", "Historial", "Backups automaticos", "Versionado"
+      "Crear backup", "Restaurar backup", "Eliminar backup", "Historial", "Backups automaticos", "Versionado"
     ]
   },
   {
@@ -151,6 +151,8 @@ const PLAYGROUND_ENDPOINTS: PlaygroundEndpoint[] = [
   // Backups
   { group: "Backups", method: "GET", path: "/api/guilds/:guildId/backups", desc: "Lista de backups", auth: true, pathParams: ["guildId"] },
   { group: "Backups", method: "POST", path: "/api/guilds/:guildId/backups", desc: "Crear nuevo backup", auth: true, pathParams: ["guildId"] },
+  { group: "Backups", method: "POST", path: "/api/guilds/:guildId/backups/:backupId/restore", desc: "Restaurar backup (7 modulos)", auth: true, pathParams: ["guildId", "backupId"] },
+  { group: "Backups", method: "DELETE", path: "/api/guilds/:guildId/backups/:backupId", desc: "Eliminar backup", auth: true, pathParams: ["guildId", "backupId"] },
   // Premium
   { group: "Premium", method: "GET", path: "/api/guilds/:guildId/premium", desc: "Estado premium del servidor", auth: true, pathParams: ["guildId"] },
   { group: "Premium", method: "GET", path: "/api/premium/plans", desc: "Planes premium disponibles", auth: false },
@@ -906,17 +908,21 @@ function DocsContent({ activeSection }: { activeSection: string }) {
           <h1 className="text-3xl font-black mb-4">Sistema de Backups</h1>
           <p className="text-muted-foreground mb-6">Guarda y restaura la configuracion completa de tu servidor con un solo click.</p>
           <H2 id="crear-backup">Crear backup</H2>
-          <p className="text-muted-foreground">Ve a <code className="bg-primary/10 text-primary px-1 rounded">Panel → Backups</code> y pulsa <strong>Crear backup</strong>. Neuralix guardara el estado actual de:</p>
+          <p className="text-muted-foreground">Ve a <code className="bg-primary/10 text-primary px-1 rounded">Panel → Backups</code> y pulsa <strong>Crear backup</strong>. Neuralix guardara el estado actual de los 7 modulos:</p>
           <ul className="text-muted-foreground space-y-1 mt-2">
-            <li>Configuracion de bienvenidas y despedidas</li>
-            <li>Configuracion AntiRaid (todos los modulos)</li>
-            <li>Configuracion de tickets</li>
-            <li>Configuracion de verificacion</li>
-            <li>Configuracion de logs</li>
+            <li>Configuracion de bienvenidas (canal, mensaje, embed, roles automaticos)</li>
+            <li>Configuracion de despedidas (canal, mensaje, embed)</li>
+            <li>Configuracion AntiRaid (todos los modulos y umbrales)</li>
+            <li>Configuracion de tickets (panel, categorias, soporte)</li>
+            <li>Configuracion de verificacion (metodo, rol, canal)</li>
+            <li>Configuracion de logs (canal, eventos activos)</li>
+            <li>Configuracion general del servidor (idioma, zona horaria, prefijo)</li>
           </ul>
           <H2 id="restaurar-backup">Restaurar backup</H2>
-          <p className="text-muted-foreground">Haz click en <strong>Restaurar</strong> en cualquier backup de la lista. La configuracion se sobrescribira con la del backup seleccionado.</p>
-          <Alert type="danger">Restaurar un backup sobrescribe la configuracion actual. Esta accion no se puede deshacer.</Alert>
+          <p className="text-muted-foreground">Haz click en <strong>Restaurar</strong> en cualquier backup de la lista. La configuracion de los 7 modulos se sobrescribira con la del backup seleccionado de forma atomica.</p>
+          <Alert type="danger">Restaurar un backup sobrescribe la configuracion actual de todos los modulos. Esta accion no se puede deshacer.</Alert>
+          <H2 id="eliminar-backup">Eliminar backup</H2>
+          <p className="text-muted-foreground">Haz click en el icono de papelera junto a cualquier backup para eliminarlo permanentemente. Se pedira confirmacion antes de proceder. Los backups eliminados no se pueden recuperar.</p>
           <H2 id="historial-backups">Historial</H2>
           <p className="text-muted-foreground">Todos los backups se muestran con nombre, fecha, tamano y numero de version. Los mas recientes aparecen primero.</p>
           <H2 id="backups-automaticos">Backups automaticos</H2>
@@ -1390,7 +1396,8 @@ async function enableAntiRaid(guildId) {
           <H2 id="endpoints-backups">Endpoints de Backups</H2>
           <EndpointCard method="GET" url="/api/guilds/:guildId/backups" auth={true} desc="Lista todos los backups del servidor." res={`[{ "id": 1, "guildId": "987654321", "label": "Backup #1", "size": 2048, "version": 1, "createdAt": "..." }]`} />
           <EndpointCard method="POST" url="/api/guilds/:guildId/backups" auth={true} desc="Crea un nuevo backup de la configuracion actual." res={`{ "id": 2, "label": "Backup #2 - 06/06/2026", "size": 2048, "version": 2, "createdAt": "..." }`} />
-          <EndpointCard method="POST" url="/api/guilds/:guildId/backups/:backupId/restore" auth={true} desc="Restaura la configuracion del servidor desde un backup especifico." res={`{ "ok": true, "message": "Backup restaurado exitosamente" }`} errors={[{ code: 404, msg: "Backup no encontrado" }]} />
+          <EndpointCard method="POST" url="/api/guilds/:guildId/backups/:backupId/restore" auth={true} desc="Restaura la configuracion del servidor desde un backup especifico. Sobrescribe los 7 modulos: welcome, goodbye, antiraid, tickets, verification, logs y configuracion general." res={`{ "ok": true, "message": "Backup restaurado exitosamente" }`} errors={[{ code: 404, msg: "Backup no encontrado" }]} />
+          <EndpointCard method="DELETE" url="/api/guilds/:guildId/backups/:backupId" auth={true} desc="Elimina un backup especifico de forma permanente." res={`{ "ok": true }`} errors={[{ code: 404, msg: "Backup no encontrado" }, { code: 403, msg: "Sin permisos" }]} />
 
           <H2 id="endpoints-premium">Endpoints de Premium</H2>
           <EndpointCard method="GET" url="/api/guilds/:guildId/premium" auth={true} desc="Estado del premium del servidor." res={`{ "guildId": "987654321", "active": false, "plan": null, "expiresAt": null, "features": [] }`} />
