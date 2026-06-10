@@ -183,7 +183,7 @@ function AdminSupportChat({ ticketId, ticketSubject, ticketStatus, ticketUsernam
         <Button size="sm" variant={localStatus === "open" ? "outline" : "default"}
           className={cn("gap-2 h-8 text-xs", localStatus === "closed" && "border-green-500/50 text-green-400 hover:text-green-300")}
           onClick={handleToggleStatus} disabled={updatingStatus}>
-          {localStatus === "open" ? <><X className="w-3.5 h-3.5" /> Cerrar ticket</> : <><CheckCheck className="w-3.5 h-3.5" /> Reabrir ticket</>}
+          {localStatus === "open" ? <><X className="w-3.5 h-3.5" /><span>Cerrar ticket</span></> : <><CheckCheck className="w-3.5 h-3.5" /><span>Reabrir ticket</span></>}
         </Button>
       </div>
       <div className="bg-card border border-card-border rounded-xl overflow-hidden flex flex-col flex-1 min-h-0">
@@ -606,7 +606,7 @@ export default function AdminPage() {
                 data-testid="btn-create-license"
               >
                 <Plus className="w-4 h-4" />
-                {createLicense.isPending ? "Generando..." : "Generar licencia"}
+                <span>{createLicense.isPending ? "Generando..." : "Generar licencia"}</span>
               </Button>
             </div>
           </div>
@@ -693,7 +693,7 @@ export default function AdminPage() {
               </NativeSelect>
             </div>
             <Button onClick={handleBlacklist} disabled={addBlacklist.isPending} className="gap-2">
-              <Shield className="w-4 h-4" /> Agregar a blacklist
+              <Shield className="w-4 h-4" /><span>Agregar a blacklist</span>
             </Button>
           </div>
 
@@ -791,7 +791,7 @@ export default function AdminPage() {
                 <option value="success">Exito</option>
               </NativeSelect>
               <Button onClick={handleAnnouncement} disabled={createAnnouncement.isPending} className="gap-2">
-                <Plus className="w-4 h-4" /> Publicar
+                <Plus className="w-4 h-4" /><span>Publicar</span>
               </Button>
             </div>
           </div>
@@ -876,7 +876,7 @@ export default function AdminPage() {
                 <span className="text-xs bg-secondary px-2 py-0.5 rounded-full text-muted-foreground">{adminsList.length}</span>
               </h3>
               <button onClick={fetchAdminsList} className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
-                <RefreshCw className="w-3 h-3" /> Actualizar
+                <RefreshCw className="w-3 h-3" /><span>Actualizar</span>
               </button>
             </div>
 
@@ -1114,7 +1114,7 @@ export default function AdminPage() {
                       </div>
                       <Button size="sm" variant="outline" className={cn("gap-1.5 text-xs h-7", linksCopied === key && "border-green-500/50 text-green-400")}
                         onClick={() => copyLink(key, value)} disabled={!value}>
-                        {linksCopied === key ? <><Check className="w-3 h-3" /> Copiado</> : <><Copy className="w-3 h-3" /> Copiar</>}
+                        {linksCopied === key ? <><Check className="w-3 h-3" /><span>Copiado</span></> : <><Copy className="w-3 h-3" /><span>Copiar</span></>}
                       </Button>
                     </div>
                     <div className="bg-background rounded-lg px-3 py-2 border border-border">
@@ -1125,7 +1125,7 @@ export default function AdminPage() {
 
                 <div className="flex justify-end">
                   <button onClick={fetchLinks} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors">
-                    <RefreshCw className="w-3 h-3" /> Actualizar links
+                    <RefreshCw className="w-3 h-3" /><span>Actualizar links</span>
                   </button>
                 </div>
               </div>

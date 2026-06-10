@@ -106,7 +106,7 @@ export default function VerificationPage() {
             </div>
             <Link href={`/servers/${guildId}/premium`}>
               <Button size="sm" className="gap-1.5 text-xs flex-shrink-0">
-                <Crown className="w-3.5 h-3.5" /> Activar Plus
+                <Crown className="w-3.5 h-3.5" /><span>Activar Plus</span>
               </Button>
             </Link>
           </div>

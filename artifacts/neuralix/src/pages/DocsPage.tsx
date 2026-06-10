@@ -385,7 +385,7 @@ function PlaygroundSection() {
                   onClick={() => setBody(selected.defaultBody ?? "")}
                   className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
                 >
-                  <RotateCcw className="w-3 h-3" /> Restablecer
+                  <RotateCcw className="w-3 h-3" /><span>Restablecer</span>
                 </button>
               </div>
               <textarea
@@ -1761,7 +1761,7 @@ function PasswordGate({ onUnlock }: { onUnlock: () => void }) {
 
           <p className="text-center text-xs text-muted-foreground mt-6">
             <button onClick={() => window.location.href = "/"} className="flex items-center justify-center gap-1 hover:text-foreground transition-colors">
-              <ArrowLeft className="w-3 h-3" /> Volver al inicio
+              <ArrowLeft className="w-3 h-3" /><span>Volver al inicio</span>
             </button>
           </p>
         </div>
@@ -1881,7 +1881,7 @@ export default function DocsPage() {
       {/* Footer */}
       <div className="px-4 py-3 border-t border-sidebar-border">
         <button onClick={() => window.location.href = "/"} className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
-          <ArrowLeft className="w-3 h-3" /> Volver al panel
+          <ArrowLeft className="w-3 h-3" /><span>Volver al panel</span>
         </button>
       </div>
     </div>
@@ -1926,7 +1926,7 @@ export default function DocsPage() {
             <button onClick={() => { localStorage.removeItem(STORAGE_KEY); setUnlocked(false); }}
               className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 px-2 py-1 rounded hover:bg-secondary"
               data-testid="btn-docs-lock">
-              <Lock className="w-3 h-3" /> Cerrar sesion
+              <Lock className="w-3 h-3" /><span>Cerrar sesion</span>
             </button>
           </div>
         </header>

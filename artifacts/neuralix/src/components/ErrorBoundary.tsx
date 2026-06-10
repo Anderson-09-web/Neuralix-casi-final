@@ -2,13 +2,24 @@ import { Component, ReactNode } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 
 interface Props { children: ReactNode; }
-interface State { hasError: boolean; error?: Error; }
+interface State { hasError: boolean; error?: Error; retryCount: number; }
+
+const DOM_ERRORS = ["insertBefore", "removeChild", "NotFoundError", "HierarchyRequestError"];
 
 export default class ErrorBoundary extends Component<Props, State> {
-  state: State = { hasError: false };
+  state: State = { hasError: false, retryCount: 0 };
 
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): Partial<State> {
     return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error) {
+    const isDomError = DOM_ERRORS.some((s) => error.message.includes(s) || error.name.includes(s));
+    if (isDomError && this.state.retryCount < 3) {
+      setTimeout(() => {
+        this.setState((s) => ({ hasError: false, error: undefined, retryCount: s.retryCount + 1 }));
+      }, 200);
+    }
   }
 
   render() {
@@ -28,7 +39,7 @@ export default class ErrorBoundary extends Component<Props, State> {
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"
             >
               <RefreshCw className="w-4 h-4" />
-              Recargar pagina
+              <span>Recargar pagina</span>
             </button>
           </div>
         </div>

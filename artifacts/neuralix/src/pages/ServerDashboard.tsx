@@ -93,7 +93,7 @@ export default function ServerDashboard() {
           <a href={botStatus.addBotUrl} target="_blank" rel="noopener noreferrer">
             <Button size="sm" className="gap-2 bg-yellow-500 hover:bg-yellow-600 text-black font-bold">
               <ExternalLink className="w-4 h-4" />
-              Agregar Bot
+              <span>Agregar Bot</span>
             </Button>
           </a>
         </div>

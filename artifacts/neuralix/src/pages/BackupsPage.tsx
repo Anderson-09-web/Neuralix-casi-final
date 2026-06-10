@@ -81,7 +81,7 @@ export default function BackupsPage() {
           <span className={cn("text-xs font-medium px-2 py-1 rounded-full bg-card border border-border", limit.color)}>{limit.label}</span>
           <Button onClick={handleCreate} disabled={createBackup.isPending || atLimit} className="gap-2" data-testid="btn-create-backup">
             <Plus className="w-4 h-4" />
-            {createBackup.isPending ? "Creando..." : "Crear backup"}
+            <span>{createBackup.isPending ? "Creando..." : "Crear backup"}</span>
           </Button>
         </div>
       </div>
@@ -107,7 +107,7 @@ export default function BackupsPage() {
               <h3 className="font-semibold text-lg mb-2">Sin backups</h3>
               <p className="text-muted-foreground text-sm mb-6">Crea tu primer backup para guardar la configuracion actual.</p>
               <Button onClick={handleCreate} className="gap-2" data-testid="btn-create-first-backup">
-                <Plus className="w-4 h-4" /> Crear primer backup
+                <Plus className="w-4 h-4" /><span>Crear primer backup</span>
               </Button>
             </div>
           ) : (

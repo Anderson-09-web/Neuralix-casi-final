@@ -45,7 +45,7 @@ export default function VerifyPortal() {
               <p className="text-xs text-destructive mb-8">No se especifico un servidor valido.</p>
             )}
             <Button className="w-full" size="lg" onClick={handleVerify} disabled={!guildId || verify.isPending} data-testid="btn-verify">
-              {verify.isPending ? "Verificando..." : "Verificarme ahora"}
+              <span>{verify.isPending ? "Verificando..." : "Verificarme ahora"}</span>
             </Button>
           </>
         )}

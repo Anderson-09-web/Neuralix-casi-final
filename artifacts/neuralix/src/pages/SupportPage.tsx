@@ -117,7 +117,7 @@ export default function SupportPage() {
             <div className="flex gap-3">
               <Button variant="outline" onClick={() => setView("list")}>Cancelar</Button>
               <Button onClick={handleCreate} disabled={createTicket.isPending} data-testid="btn-submit-ticket">
-                {createTicket.isPending ? "Enviando..." : "Crear ticket"}
+                <span>{createTicket.isPending ? "Enviando..." : "Crear ticket"}</span>
               </Button>
             </div>
           </div>

@@ -104,11 +104,11 @@ export default function WelcomePage() {
         <div className="flex gap-2 flex-wrap justify-end">
           <Button variant="outline" size="sm" onClick={() => setShowPreview((v) => !v)} className="gap-2">
             <Eye className="w-3.5 h-3.5" />
-            {showPreview ? "Ocultar preview" : "Vista previa"}
+            <span>{showPreview ? "Ocultar preview" : "Vista previa"}</span>
           </Button>
-          <Button variant="outline" size="sm" onClick={test} disabled={testWelcome.isPending} data-testid="btn-test-welcome">
+          <Button variant="outline" size="sm" onClick={test} disabled={testWelcome.isPending} data-testid="btn-test-welcome" className="gap-2">
             {testWelcome.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
-            Probar
+            <span>Probar</span>
           </Button>
           <Button size="sm" onClick={save} disabled={update.isPending} data-testid="btn-save-welcome">Guardar</Button>
         </div>

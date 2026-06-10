@@ -280,11 +280,11 @@ export default function TicketsPage() {
                       </span>
                       {t.status === "open" ? (
                         <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handleClose(t.id)}>
-                          <X className="w-3 h-3 mr-1" /> Cerrar
+                          <X className="w-3 h-3 mr-1" /><span>Cerrar</span>
                         </Button>
                       ) : (
                         <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => handleReopen(t.id)}>
-                          <RotateCcw className="w-3 h-3 mr-1" /> Reabrir
+                          <RotateCcw className="w-3 h-3 mr-1" /><span>Reabrir</span>
                         </Button>
                       )}
                     </div>

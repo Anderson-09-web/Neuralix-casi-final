@@ -247,7 +247,7 @@ export default function AntiraidPage() {
         </div>
         <div className="flex gap-3 flex-wrap justify-end">
           <Button variant="outline" size="sm" onClick={saveAll} disabled={update.isPending} data-testid="btn-save-antiraid">
-            {update.isPending ? "Guardando..." : "Guardar todo"}
+            <span>{update.isPending ? "Guardando..." : "Guardar todo"}</span>
           </Button>
           <ToggleModule title="AntiRaid Global" enabled={cfg.enabled} onToggle={toggle("enabled")} />
         </div>
@@ -317,7 +317,7 @@ export default function AntiraidPage() {
             </div>
             <Link href={`/servers/${guildId}/premium`}>
               <Button size="sm" className="gap-1.5 text-xs flex-shrink-0">
-                <Crown className="w-3.5 h-3.5" /> Activar Plus
+                <Crown className="w-3.5 h-3.5" /><span>Activar Plus</span>
               </Button>
             </Link>
           </div>
@@ -357,7 +357,7 @@ export default function AntiraidPage() {
             </div>
             <Link href={`/servers/${guildId}/premium`}>
               <Button size="sm" className="gap-1.5 text-xs flex-shrink-0">
-                <Crown className="w-3.5 h-3.5" /> Activar Plus
+                <Crown className="w-3.5 h-3.5" /><span>Activar Plus</span>
               </Button>
             </Link>
           </div>
