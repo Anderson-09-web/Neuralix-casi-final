@@ -347,12 +347,13 @@ function PlaygroundSection() {
             <code className="flex-1 text-sm font-mono text-foreground truncate">{resolvedUrl}</code>
             {selected.auth && (
               <div className="flex items-center gap-1 text-xs text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 rounded px-2 py-0.5 flex-shrink-0">
-                <Lock className="w-3 h-3" /> Auth
+                <Lock className="w-3 h-3" /><span>Auth</span>
               </div>
             )}
             <Button onClick={send} disabled={loading} size="sm" className="flex-shrink-0 gap-1.5">
-              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-              {loading ? "Enviando..." : "Enviar"}
+              {loading
+                ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /><span>Enviando...</span></>
+                : <><Play className="w-3.5 h-3.5" /><span>Enviar</span></>}
             </Button>
           </div>
 
@@ -480,7 +481,7 @@ function EndpointCard({ method, url, auth, desc, params, req, res, errors }: {
           <p className="text-sm text-muted-foreground">{desc}</p>
           {auth && (
             <div className="flex items-center gap-2 text-xs text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 rounded-lg px-3 py-2">
-              <Lock className="w-3.5 h-3.5" /> Requiere autenticacion (cookie JWT)
+              <Lock className="w-3.5 h-3.5" /><span>Requiere autenticacion (cookie JWT)</span>
             </div>
           )}
           {params && params.length > 0 && (
