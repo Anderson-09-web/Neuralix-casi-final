@@ -15,3 +15,7 @@ export * from "./admin-logs";
 export * from "./bot-settings";
 export * from "./moderation";
 export * from "./giveaways";
+export * from "./ticket-modules";
+export * from "./antiraid-whitelist";
+export * from "./auto-roles";
+export * from "./webhooks";

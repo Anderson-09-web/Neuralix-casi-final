@@ -1,19 +1,20 @@
 import { Router } from "express";
-import { db, ticketConfigsTable, ticketsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, ticketConfigsTable, ticketsTable, ticketModulesTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
+import axios from "axios";
 
 const router = Router();
 
 const ALLOWED_FIELDS = new Set([
-  "enabled", "categoryId", "supportRoleId", "additionalRoles",
-  "transcriptChannelId", "logsChannelId",
-  "maxTicketsPerUser",
+  "enabled", "categoryId", "supportRoleId", "supportRoleIds", "additionalRoles",
+  "transcriptChannelId", "logsChannelId", "maxTicketsPerUser",
   "panelChannelId", "panelMessage", "panelTitle", "panelDescription",
   "panelColor", "panelImage", "panelFooter",
   "buttonLabel", "buttonEmoji", "buttonColor",
   "ticketNameFormat", "openMessage", "mentionSupport",
   "autoClose", "satisfactionSurvey", "autoTranscript",
+  "claimEnabled", "deleteEnabled", "useModules",
 ]);
 
 function whitelistBody(body: Record<string, unknown>) {
@@ -42,7 +43,6 @@ router.put("/guilds/:guildId/tickets/config", requireAuth, async (req, res) => {
   const guildId = req.params.guildId as string;
   try {
     const safeBody = whitelistBody(req.body);
-
     const [existing] = await db.select().from(ticketConfigsTable).where(eq(ticketConfigsTable.guildId, guildId));
     let cfg;
     if (existing) {
@@ -66,7 +66,9 @@ router.put("/guilds/:guildId/tickets/config", requireAuth, async (req, res) => {
 router.get("/guilds/:guildId/tickets", requireAuth, async (req, res) => {
   const guildId = req.params.guildId as string;
   try {
-    const tickets = await db.select().from(ticketsTable).where(eq(ticketsTable.guildId, guildId));
+    const tickets = await db.select().from(ticketsTable)
+      .where(eq(ticketsTable.guildId, guildId))
+      .orderBy(ticketsTable.createdAt);
     res.json(tickets);
   } catch (err: any) {
     res.status(500).json({ error: err?.message || "Error al obtener tickets" });
@@ -75,11 +77,8 @@ router.get("/guilds/:guildId/tickets", requireAuth, async (req, res) => {
 
 router.post("/guilds/:guildId/tickets/:ticketId/close", requireAuth, async (req, res) => {
   const ticketId = Number(req.params.ticketId as string);
+  if (isNaN(ticketId)) { res.status(400).json({ error: "ID invalido" }); return; }
   try {
-    if (isNaN(ticketId)) {
-      res.status(400).json({ error: "ID de ticket invalido" });
-      return;
-    }
     await db.update(ticketsTable)
       .set({ status: "closed", closedAt: new Date() })
       .where(eq(ticketsTable.id, ticketId));
@@ -91,11 +90,8 @@ router.post("/guilds/:guildId/tickets/:ticketId/close", requireAuth, async (req,
 
 router.post("/guilds/:guildId/tickets/:ticketId/reopen", requireAuth, async (req, res) => {
   const ticketId = Number(req.params.ticketId as string);
+  if (isNaN(ticketId)) { res.status(400).json({ error: "ID invalido" }); return; }
   try {
-    if (isNaN(ticketId)) {
-      res.status(400).json({ error: "ID de ticket invalido" });
-      return;
-    }
     await db.update(ticketsTable)
       .set({ status: "open", closedAt: null })
       .where(eq(ticketsTable.id, ticketId));
@@ -105,62 +101,205 @@ router.post("/guilds/:guildId/tickets/:ticketId/reopen", requireAuth, async (req
   }
 });
 
-/**
- * POST /api/guilds/:guildId/tickets/test
- * Sends the ticket panel embed to the configured panelChannelId.
- */
-router.post("/guilds/:guildId/tickets/test", requireAuth, async (req, res) => {
+// ─── Ticket Modules ────────────────────────────────────────────────────────────
+
+router.get("/guilds/:guildId/tickets/modules", requireAuth, async (req, res) => {
+  const guildId = req.params.guildId as string;
+  try {
+    const modules = await db.select().from(ticketModulesTable)
+      .where(eq(ticketModulesTable.guildId, guildId))
+      .orderBy(ticketModulesTable.sortOrder);
+    res.json(modules);
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "Error al obtener modulos de tickets" });
+  }
+});
+
+router.post("/guilds/:guildId/tickets/modules", requireAuth, async (req, res) => {
+  const guildId = req.params.guildId as string;
+  try {
+    const { name, description, emoji, welcomeMessage, supportRoleIds, categoryId, buttonLabel, buttonColor, buttonStyle, sortOrder } = req.body;
+    if (!name) { res.status(400).json({ error: "El nombre es obligatorio" }); return; }
+    const [created] = await db.insert(ticketModulesTable).values({
+      guildId, name,
+      description: description || null,
+      emoji: emoji || null,
+      welcomeMessage: welcomeMessage || null,
+      supportRoleIds: Array.isArray(supportRoleIds) ? supportRoleIds : [],
+      categoryId: categoryId || null,
+      buttonLabel: buttonLabel || null,
+      buttonColor: buttonColor || "PRIMARY",
+      buttonStyle: buttonStyle || "button",
+      sortOrder: Number(sortOrder) || 0,
+      enabled: true,
+    }).returning();
+    res.json(created);
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "Error al crear modulo" });
+  }
+});
+
+router.put("/guilds/:guildId/tickets/modules/:id", requireAuth, async (req, res) => {
+  const guildId = req.params.guildId as string;
+  const id = Number(req.params.id as string);
+  if (isNaN(id)) { res.status(400).json({ error: "ID invalido" }); return; }
+  try {
+    const { name, description, emoji, welcomeMessage, supportRoleIds, categoryId, buttonLabel, buttonColor, buttonStyle, sortOrder, enabled } = req.body;
+    const [updated] = await db.update(ticketModulesTable).set({
+      name,
+      description: description || null,
+      emoji: emoji || null,
+      welcomeMessage: welcomeMessage || null,
+      supportRoleIds: Array.isArray(supportRoleIds) ? supportRoleIds : [],
+      categoryId: categoryId || null,
+      buttonLabel: buttonLabel || null,
+      buttonColor: buttonColor || "PRIMARY",
+      buttonStyle: buttonStyle || "button",
+      sortOrder: Number(sortOrder) || 0,
+      enabled: enabled !== false,
+    }).where(and(eq(ticketModulesTable.id, id), eq(ticketModulesTable.guildId, guildId))).returning();
+    if (!updated) { res.status(404).json({ error: "Modulo no encontrado" }); return; }
+    res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "Error al actualizar modulo" });
+  }
+});
+
+router.delete("/guilds/:guildId/tickets/modules/:id", requireAuth, async (req, res) => {
+  const guildId = req.params.guildId as string;
+  const id = Number(req.params.id as string);
+  if (isNaN(id)) { res.status(400).json({ error: "ID invalido" }); return; }
+  try {
+    await db.delete(ticketModulesTable)
+      .where(and(eq(ticketModulesTable.id, id), eq(ticketModulesTable.guildId, guildId)));
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "Error al eliminar modulo" });
+  }
+});
+
+// ─── Send Panel ─────────────────────────────────────────────────────────────
+
+router.post("/guilds/:guildId/tickets/send-panel", requireAuth, async (req, res) => {
   const guildId = req.params.guildId as string;
   const botToken = process.env.DISCORD_BOT_TOKEN;
-  if (!botToken) {
-    res.status(400).json({ ok: false, error: "DISCORD_BOT_TOKEN no esta configurado" });
-    return;
-  }
+  if (!botToken) { res.status(400).json({ ok: false, error: "DISCORD_BOT_TOKEN no configurado" }); return; }
   try {
     const [cfg] = await db.select().from(ticketConfigsTable).where(eq(ticketConfigsTable.guildId, guildId));
-    if (!cfg?.panelChannelId) {
-      res.status(400).json({ ok: false, error: "Canal del panel de tickets no configurado. Escribe el ID del canal del panel y guarda primero." });
+    const channelId = req.body.channelId || cfg?.panelChannelId;
+    if (!channelId) {
+      res.status(400).json({ ok: false, error: "Canal del panel no configurado" });
       return;
     }
-    const axios = (await import("axios")).default;
+
     const buttonColors: Record<string, number> = { PRIMARY: 1, SECONDARY: 2, SUCCESS: 3, DANGER: 4 };
-    const buttonStyle = buttonColors[cfg.buttonColor || "PRIMARY"] ?? 1;
-    const payload: Record<string, unknown> = {
-      components: [{
+
+    let components: any[] = [];
+
+    if (cfg?.useModules) {
+      const modules = await db.select().from(ticketModulesTable)
+        .where(and(eq(ticketModulesTable.guildId, guildId), eq(ticketModulesTable.enabled, true)))
+        .orderBy(ticketModulesTable.sortOrder);
+      if (modules.length === 0) {
+        res.status(400).json({ ok: false, error: "No hay modulos activos. Crea al menos un modulo primero." });
+        return;
+      }
+      if (modules.length <= 5) {
+        components = [{
+          type: 1,
+          components: modules.map((m) => ({
+            type: 2,
+            style: buttonColors[m.buttonColor || "PRIMARY"] ?? 1,
+            label: m.buttonLabel || m.name,
+            emoji: m.emoji ? { name: m.emoji } : undefined,
+            custom_id: `ticket_open_module_${m.id}`,
+          })),
+        }];
+      } else {
+        components = [{
+          type: 1,
+          components: [{
+            type: 3,
+            custom_id: "ticket_select_module",
+            placeholder: "Selecciona el tipo de ticket...",
+            options: modules.map((m) => ({
+              label: m.name,
+              value: String(m.id),
+              description: m.description || undefined,
+              emoji: m.emoji ? { name: m.emoji } : undefined,
+            })),
+          }],
+        }];
+      }
+    } else {
+      components = [{
         type: 1,
         components: [{
           type: 2,
-          style: buttonStyle,
-          label: cfg.buttonLabel || "Abrir Ticket",
-          emoji: cfg.buttonEmoji ? { name: cfg.buttonEmoji } : undefined,
-          custom_id: "ticket_open_test",
+          style: buttonColors[cfg?.buttonColor || "PRIMARY"] ?? 1,
+          label: cfg?.buttonLabel || "Abrir Ticket",
+          emoji: cfg?.buttonEmoji ? { name: cfg.buttonEmoji } : undefined,
+          custom_id: "ticket_open",
         }],
-      }],
-    };
-    if (cfg.panelTitle || cfg.panelDescription || cfg.panelMessage) {
+      }];
+    }
+
+    const payload: Record<string, unknown> = { components };
+    if (cfg?.panelTitle || cfg?.panelDescription || cfg?.panelMessage) {
       payload.embeds = [{
         title: cfg.panelTitle || "Soporte",
-        description: cfg.panelDescription || cfg.panelMessage || "Haz click en el boton para abrir un ticket.",
+        description: cfg.panelDescription || cfg.panelMessage || "Haz click para abrir un ticket.",
         color: cfg.panelColor ? parseInt(cfg.panelColor.replace("#", ""), 16) : 0x5865F2,
-        footer: cfg.panelFooter ? { text: cfg.panelFooter } : { text: "Neuralix Tickets · Mensaje de prueba" },
+        footer: cfg.panelFooter ? { text: cfg.panelFooter } : { text: "Neuralix Tickets" },
         image: cfg.panelImage ? { url: cfg.panelImage } : undefined,
       }];
-    } else {
-      payload.content = "**" + (cfg.panelTitle || "Sistema de Soporte") + "**\nHaz click en el boton para abrir un ticket. *(Mensaje de prueba)*";
     }
+
     const discordRes = await axios.post(
-      `https://discord.com/api/v10/channels/${cfg.panelChannelId}/messages`,
+      `https://discord.com/api/v10/channels/${channelId}/messages`,
       payload,
       { headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" }, validateStatus: () => true },
     );
+
     if (discordRes.status === 200 || discordRes.status === 201) {
-      res.json({ ok: true, message: "Panel de tickets enviado al canal" });
+      res.json({ ok: true, message: "Panel enviado al canal correctamente" });
     } else {
       res.status(400).json({
         ok: false,
         error: discordRes.data?.message || `Discord respondio con status ${discordRes.status}`,
-        hint: discordRes.status === 403 ? "El bot no tiene permisos en el canal del panel" : discordRes.status === 404 ? "Canal del panel no encontrado. Verifica el ID" : undefined,
+        hint: discordRes.status === 403 ? "El bot no tiene permisos en el canal" : discordRes.status === 404 ? "Canal no encontrado" : undefined,
       });
+    }
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err?.message });
+  }
+});
+
+router.post("/guilds/:guildId/tickets/test", requireAuth, async (req, res) => {
+  req.body.channelId = undefined;
+  const guildId = req.params.guildId as string;
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  if (!botToken) { res.status(400).json({ ok: false, error: "DISCORD_BOT_TOKEN no configurado" }); return; }
+  try {
+    const [cfg] = await db.select().from(ticketConfigsTable).where(eq(ticketConfigsTable.guildId, guildId));
+    if (!cfg?.panelChannelId) {
+      res.status(400).json({ ok: false, error: "Canal del panel de tickets no configurado. Guarda el ID del canal primero." });
+      return;
+    }
+    const buttonColors: Record<string, number> = { PRIMARY: 1, SECONDARY: 2, SUCCESS: 3, DANGER: 4 };
+    const payload: Record<string, unknown> = {
+      components: [{ type: 1, components: [{ type: 2, style: buttonColors[cfg.buttonColor || "PRIMARY"] ?? 1, label: cfg.buttonLabel || "Abrir Ticket", emoji: cfg.buttonEmoji ? { name: cfg.buttonEmoji } : undefined, custom_id: "ticket_open" }] }],
+    };
+    if (cfg.panelTitle || cfg.panelDescription || cfg.panelMessage) {
+      payload.embeds = [{ title: cfg.panelTitle || "Soporte", description: cfg.panelDescription || cfg.panelMessage || "Haz click en el boton.", color: cfg.panelColor ? parseInt(cfg.panelColor.replace("#", ""), 16) : 0x5865F2, footer: cfg.panelFooter ? { text: cfg.panelFooter } : { text: "Neuralix Tickets · Prueba" }, image: cfg.panelImage ? { url: cfg.panelImage } : undefined }];
+    } else {
+      payload.content = "**" + (cfg.panelTitle || "Soporte") + "** *(Prueba)*";
+    }
+    const discordRes = await axios.post(`https://discord.com/api/v10/channels/${cfg.panelChannelId}/messages`, payload, { headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" }, validateStatus: () => true });
+    if (discordRes.status === 200 || discordRes.status === 201) {
+      res.json({ ok: true, message: "Panel enviado al canal" });
+    } else {
+      res.status(400).json({ ok: false, error: discordRes.data?.message || `Discord status ${discordRes.status}` });
     }
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err?.message });

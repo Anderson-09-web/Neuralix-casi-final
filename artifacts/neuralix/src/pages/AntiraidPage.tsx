@@ -1,389 +1,394 @@
 import { useParams } from "wouter";
 import { useState, useEffect, useRef } from "react";
-import { ShieldAlert, TrendingDown, Zap, Shield, Network, Lock, Crown, RefreshCw } from "lucide-react";
-import { useGetAntiraidConfig, useUpdateAntiraidConfig, useGetAntiraidStats, useGetGuildPremium, getGetAntiraidConfigQueryKey, getGetAntiraidStatsQueryKey, getGetGuildPremiumQueryKey } from "@workspace/api-client-react";
-import { Link } from "wouter";
+import { ShieldAlert, RefreshCw, Shield, Users, Plus, Trash2, UserCheck, TrendingDown } from "lucide-react";
+import { useGetAntiraidConfig, useUpdateAntiraidConfig, useGetAntiraidStats, getGetAntiraidConfigQueryKey, getGetAntiraidStatsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import Layout from "@/components/Layout";
-import ToggleModule from "@/components/ToggleModule";
-import StatCard from "@/components/StatCard";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
-function NativeSelect({ value, onChange, children, className }: {
-  value: string; onChange: (v: string) => void; children: React.ReactNode; className?: string;
-}) {
+const TABS = [
+  { id: "config", label: "Configuracion" },
+  { id: "whitelist", label: "Whitelist" },
+  { id: "stats", label: "Estadisticas" },
+] as const;
+type Tab = typeof TABS[number]["id"];
+
+function NativeSelect({ value, onChange, children }: { value: string; onChange: (v: string) => void; children: React.ReactNode }) {
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className={cn(
-        "h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-ring appearance-none pr-8 cursor-pointer",
-        className
-      )}
-      style={{
-        backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")",
-        backgroundRepeat: "no-repeat",
-        backgroundPosition: "right 10px center",
-      }}
-    >
+    <select value={value} onChange={(e) => onChange(e.target.value)}
+      className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring appearance-none pr-8 cursor-pointer"
+      style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 10px center" }}>
       {children}
     </select>
   );
 }
 
+type WhitelistEntry = { id: number; entityId: string; entityType: string; name?: string | null; reason?: string | null; addedByUsername?: string | null; createdAt: string };
+const emptyWlForm = { entityId: "", entityType: "user", name: "", reason: "" };
+
 export default function AntiraidPage() {
   const { guildId } = useParams<{ guildId: string }>();
   const qc = useQueryClient();
   const { toast } = useToast();
+  const [tab, setTab] = useState<Tab>("config");
+  const [testing, setTesting] = useState(false);
 
-  const { data: config, isLoading, isError } = useGetAntiraidConfig(guildId, { query: { queryKey: getGetAntiraidConfigQueryKey(guildId), enabled: !!guildId, refetchInterval: 5000, refetchIntervalInBackground: false } });
-  const { data: stats } = useGetAntiraidStats(guildId, { query: { queryKey: getGetAntiraidStatsQueryKey(guildId), enabled: !!guildId, refetchInterval: 5000, refetchIntervalInBackground: false } });
-  const { data: premium } = useGetGuildPremium(guildId, { query: { enabled: !!guildId, queryKey: getGetGuildPremiumQueryKey(guildId), refetchInterval: 30000, refetchIntervalInBackground: false } });
+  const { data: config, isLoading } = useGetAntiraidConfig(guildId, { query: { queryKey: getGetAntiraidConfigQueryKey(guildId), enabled: !!guildId, refetchInterval: 10000 } });
+  const { data: stats } = useGetAntiraidStats(guildId, { query: { queryKey: getGetAntiraidStatsQueryKey(guildId), enabled: !!guildId && tab === "stats", refetchInterval: 5000 } });
   const update = useUpdateAntiraidConfig();
-
-  const plan = (premium as any)?.plan || null;
-  const isPlus = !!plan;
-
   const [cfg, setCfg] = useState<any>(null);
-  const [testingAntiraid, setTestingAntiraid] = useState(false);
   const isMounted = useRef(false);
 
+  // Whitelist state
+  const [whitelist, setWhitelist] = useState<WhitelistEntry[]>([]);
+  const [wlForm, setWlForm] = useState({ ...emptyWlForm });
+  const [addingWl, setAddingWl] = useState(false);
+  const [showWlForm, setShowWlForm] = useState(false);
+
   useEffect(() => {
-    if (config && !isMounted.current) {
-      setCfg(config);
-      isMounted.current = true;
-    }
+    if (config && !isMounted.current) { setCfg(config); isMounted.current = true; }
   }, [config]);
 
-  const handleTest = async () => {
-    setTestingAntiraid(true);
-    try {
-      const res = await fetch(`/api/guilds/${guildId}/antiraid/test`, { method: "POST", credentials: "include" });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data?.ok !== false) toast({ title: "Alerta de prueba enviada al canal de logs" });
-      else toast({ title: data?.error || "Error al enviar prueba", description: data?.hint, variant: "destructive" });
-    } catch {
-      toast({ title: "Error de red", variant: "destructive" });
-    } finally {
-      setTestingAntiraid(false);
-    }
+  useEffect(() => {
+    if (guildId && tab === "whitelist") fetchWhitelist();
+  }, [guildId, tab]);
+
+  const fetchWhitelist = async () => {
+    const res = await fetch(`/api/guilds/${guildId}/antiraid/whitelist`, { credentials: "include" });
+    if (res.ok) setWhitelist(await res.json());
   };
 
-  if (isLoading || (!cfg && !isError)) return (
+  const set = (key: string) => (val: any) => setCfg((c: any) => ({ ...c, [key]: val }));
+  const setN = (key: string) => (e: React.ChangeEvent<HTMLInputElement>) => setCfg((c: any) => ({ ...c, [key]: Number(e.target.value) || 0 }));
+
+  const save = () => {
+    update.mutate({ guildId, data: cfg }, {
+      onSuccess: () => { toast({ title: "AntiRaid guardado" }); qc.invalidateQueries({ queryKey: getGetAntiraidConfigQueryKey(guildId) }); },
+      onError: () => toast({ title: "Error al guardar", variant: "destructive" }),
+    });
+  };
+
+  const handleTest = async () => {
+    setTesting(true);
+    const res = await fetch(`/api/guilds/${guildId}/antiraid/test`, { method: "POST", credentials: "include" });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data?.ok !== false) toast({ title: "Alerta de prueba enviada al canal de logs" });
+    else toast({ title: data?.error || "Error al enviar prueba", variant: "destructive" });
+    setTesting(false);
+  };
+
+  const addToWhitelist = async () => {
+    if (!wlForm.entityId) { toast({ title: "ID de entidad requerido", variant: "destructive" }); return; }
+    setAddingWl(true);
+    const res = await fetch(`/api/guilds/${guildId}/antiraid/whitelist`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(wlForm),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) { toast({ title: "Agregado a la whitelist" }); setWlForm({ ...emptyWlForm }); setShowWlForm(false); fetchWhitelist(); }
+    else toast({ title: data.error || "Error al agregar", variant: "destructive" });
+    setAddingWl(false);
+  };
+
+  const removeFromWhitelist = async (id: number) => {
+    const res = await fetch(`/api/guilds/${guildId}/antiraid/whitelist/${id}`, { method: "DELETE", credentials: "include" });
+    if (res.ok) { toast({ title: "Eliminado de la whitelist" }); fetchWhitelist(); }
+    else toast({ title: "Error al eliminar", variant: "destructive" });
+  };
+
+  if (isLoading || (!cfg && !config)) return (
     <Layout guildId={guildId}>
       <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
     </Layout>
   );
-
-  if (isError || !cfg) return (
-    <Layout guildId={guildId}>
-      <div className="flex flex-col items-center justify-center py-24 text-center gap-3">
-        <ShieldAlert className="w-10 h-10 text-muted-foreground opacity-40" />
-        <p className="text-muted-foreground text-sm">No se pudo cargar la configuracion de AntiRaid.<br />Asegurate de que el bot esta en el servidor.</p>
-      </div>
-    </Layout>
-  );
-
-  const toggle = (key: string) => (val: boolean) => {
-    const next = { ...cfg, [key]: val };
-    setCfg(next);
-    update.mutate({ guildId, data: { [key]: val } }, {
-      onSuccess: () => qc.invalidateQueries({ queryKey: getGetAntiraidConfigQueryKey(guildId) }),
-      onError: () => toast({ title: "Error al guardar", variant: "destructive" }),
-    });
-  };
-
-  const setField = (key: string) => (val: any) => setCfg((c: any) => ({ ...c, [key]: val }));
-
-  const saveAll = () => {
-    update.mutate({ guildId, data: cfg }, {
-      onSuccess: () => { toast({ title: "Configuracion guardada" }); qc.invalidateQueries({ queryKey: getGetAntiraidConfigQueryKey(guildId) }); },
-      onError: () => toast({ title: "Error al guardar", variant: "destructive" }),
-    });
-  };
-
-  const modules = [
-    {
-      key: "antiJoin", title: "AntiJoin", desc: "Detecta y bloquea raids de union masiva en tiempo real", badge: "Critico",
-      children: (
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs text-muted-foreground">Max. uniones por intervalo</Label>
-              <Input type="number" className="mt-1" value={cfg.antiJoinThreshold ?? 5} onChange={(e) => setField("antiJoinThreshold")(Number(e.target.value))} min={2} max={50} />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Intervalo (segundos)</Label>
-              <Input type="number" className="mt-1" value={cfg.antiJoinInterval ?? 10} onChange={(e) => setField("antiJoinInterval")(Number(e.target.value))} min={1} max={60} />
-            </div>
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground mb-1 block">Accion automatica</Label>
-            <NativeSelect value={cfg.antiJoinAction ?? "ban"} onChange={setField("antiJoinAction")}>
-              <option value="ban">Banear</option>
-              <option value="kick">Expulsar</option>
-              <option value="timeout">Silenciar (timeout)</option>
-              <option value="notify">Solo notificar</option>
-            </NativeSelect>
-          </div>
-        </div>
-      ),
-    },
-    {
-      key: "antiAlt", title: "AntiAlt", desc: "Bloquea cuentas nuevas segun edad minima de la cuenta", badge: "Recomendado",
-      children: (
-        <div>
-          <Label className="text-xs text-muted-foreground">Edad minima de cuenta (dias)</Label>
-          <Input type="number" className="mt-1 w-32" value={cfg.antiAltMinAge ?? 7} onChange={(e) => setField("antiAltMinAge")(Number(e.target.value))} min={1} max={365} />
-        </div>
-      ),
-    },
-    { key: "antiBot", title: "AntiBot", desc: "Bloquea bots no autorizados al unirse al servidor" },
-    {
-      key: "antiSpam", title: "AntiSpam", desc: "Limita la velocidad de mensajes por usuario con accion configurable",
-      children: (
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs text-muted-foreground">Mensajes maximos</Label>
-              <Input type="number" className="mt-1" value={cfg.antiSpamLimit ?? 5} onChange={(e) => setField("antiSpamLimit")(Number(e.target.value))} min={2} max={30} />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Por (segundos)</Label>
-              <Input type="number" className="mt-1" value={cfg.antiSpamInterval ?? 5} onChange={(e) => setField("antiSpamInterval")(Number(e.target.value))} min={1} max={60} />
-            </div>
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground mb-1 block">Accion</Label>
-            <NativeSelect value={cfg.antiSpamAction ?? "mute"} onChange={setField("antiSpamAction")}>
-              <option value="mute">Silenciar</option>
-              <option value="kick">Expulsar</option>
-              <option value="ban">Banear</option>
-              <option value="delete">Solo borrar mensajes</option>
-            </NativeSelect>
-          </div>
-        </div>
-      ),
-    },
-    {
-      key: "antiLinks", title: "AntiLinks", desc: "Bloquea enlaces no autorizados en mensajes",
-      children: (
-        <div>
-          <Label className="text-xs text-muted-foreground">Dominios permitidos (separados por coma)</Label>
-          <Input className="mt-1 text-xs" placeholder="discord.gg, youtube.com" value={(cfg.allowedDomains || []).join(", ")} onChange={(e) => setField("allowedDomains")(e.target.value.split(",").map((d: string) => d.trim()).filter(Boolean))} />
-        </div>
-      ),
-    },
-    {
-      key: "antiMassMention", title: "AntiMassMention", desc: "Limita el numero de menciones por mensaje",
-      children: (
-        <div>
-          <Label className="text-xs text-muted-foreground">Menciones maximas por mensaje</Label>
-          <Input type="number" className="mt-1 w-32" value={cfg.massMentionLimit ?? 5} onChange={(e) => setField("massMentionLimit")(Number(e.target.value))} min={2} max={20} />
-        </div>
-      ),
-    },
-    {
-      key: "antiVpn", title: "AntiVPN", desc: "Detecta y bloquea usuarios conectados via VPN, Proxy o Tor", badge: "Potente",
-      children: (
-        <div className="space-y-3">
-          <div>
-            <Label className="text-xs text-muted-foreground mb-1 block">Nivel de deteccion</Label>
-            <NativeSelect value={cfg.vpnCheckLevel ?? "standard"} onChange={setField("vpnCheckLevel")}>
-              <option value="basic">Basico (solo VPNs conocidas)</option>
-              <option value="standard">Estandar (VPN + Proxy)</option>
-              <option value="strict">Estricto (VPN + Proxy + Tor + Datacenter IPs)</option>
-            </NativeSelect>
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground mb-1 block">Accion</Label>
-            <NativeSelect value={cfg.antiVpnAction ?? "ban"} onChange={setField("antiVpnAction")}>
-              <option value="ban">Banear</option>
-              <option value="kick">Expulsar</option>
-              <option value="notify">Solo notificar al staff</option>
-            </NativeSelect>
-          </div>
-          <div className="flex gap-4">
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input type="checkbox" className="accent-primary" checked={!!cfg.antiProxy} onChange={(e) => setField("antiProxy")(e.target.checked)} />
-              <span>Detectar Proxies</span>
-            </label>
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input type="checkbox" className="accent-primary" checked={!!cfg.antiTor} onChange={(e) => setField("antiTor")(e.target.checked)} />
-              <span>Detectar Tor</span>
-            </label>
-          </div>
-        </div>
-      ),
-    },
-    { key: "antiWebhook", title: "AntiWebhook", desc: "Previene la creacion masiva de webhooks por admins comprometidos" },
-    { key: "antiChannelCreate", title: "AntiChannelCreate", desc: "Detecta creacion masiva de canales (indicador de nuke)" },
-    { key: "antiChannelDelete", title: "AntiChannelDelete", desc: "Detecta eliminacion masiva de canales (indicador de nuke)" },
-    { key: "antiChannelUpdate", title: "AntiChannelUpdate", desc: "Detecta modificaciones masivas de canales" },
-    { key: "antiRoleCreate", title: "AntiRoleCreate", desc: "Detecta creacion masiva de roles" },
-    { key: "antiRoleDelete", title: "AntiRoleDelete", desc: "Detecta eliminacion masiva de roles" },
-    { key: "antiRoleUpdate", title: "AntiRoleUpdate", desc: "Detecta modificaciones masivas de roles" },
-    { key: "antiEmojiCreate", title: "AntiEmojiCreate", desc: "Detecta creacion masiva de emojis" },
-    { key: "antiEmojiDelete", title: "AntiEmojiDelete", desc: "Detecta eliminacion masiva de emojis" },
-    { key: "antiBanMass", title: "AntiBanMass", desc: "Detecta y revierte baneos masivos por administradores comprometidos" },
-    { key: "antiKickMass", title: "AntiKickMass", desc: "Detecta y revierte expulsiones masivas" },
-    {
-      key: "antiNuke", title: "AntiNuke", desc: "Proteccion total contra destruccion del servidor — detecta y revoca permisos al instante", badge: "Premium",
-      children: (
-        <div className="space-y-3">
-          <div>
-            <Label className="text-xs text-muted-foreground">Umbral de acciones para activar AntiNuke</Label>
-            <Input type="number" className="mt-1 w-32" value={cfg.nukeThreshold ?? 10} onChange={(e) => setField("nukeThreshold")(Number(e.target.value))} min={3} max={50} />
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground mb-1 block">Accion al detectar nuke</Label>
-            <NativeSelect value={cfg.nukeAction ?? "strip_permissions"} onChange={setField("nukeAction")}>
-              <option value="strip_permissions">Revocar permisos del admin</option>
-              <option value="ban">Banear al admin</option>
-              <option value="kick">Expulsar al admin</option>
-              <option value="notify">Solo notificar al owner</option>
-            </NativeSelect>
-          </div>
-        </div>
-      ),
-    },
-  ];
 
   return (
     <Layout guildId={guildId}>
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-black mb-1">AntiRaid</h1>
-          <p className="text-muted-foreground text-sm">Configura los {modules.length} modulos de proteccion contra raids, VPN y nukes.</p>
+          <p className="text-muted-foreground text-sm">Proteccion avanzada contra raids, spam, bots y nuke con whitelist y auto-accion.</p>
         </div>
-        <div className="flex gap-3 flex-wrap justify-end">
-          <Button variant="outline" size="sm" onClick={handleTest} disabled={testingAntiraid} className="gap-2">
-            <span className="flex items-center gap-1.5">
-              {testingAntiraid && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
-              <span>Probar alerta</span>
-            </span>
-          </Button>
-          <Button variant="outline" size="sm" onClick={saveAll} disabled={update.isPending} data-testid="btn-save-antiraid">
-            <span>{update.isPending ? "Guardando..." : "Guardar todo"}</span>
-          </Button>
-          <ToggleModule title="AntiRaid Global" enabled={cfg.enabled} onToggle={toggle("enabled")} />
-        </div>
+        {tab === "config" && cfg && (
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={handleTest} disabled={testing} className="gap-1.5">
+              {testing && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+              <span>Enviar Prueba</span>
+            </Button>
+            <Button size="sm" onClick={save} disabled={update.isPending} data-testid="btn-save-antiraid">Guardar</Button>
+          </div>
+        )}
       </div>
 
-      {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-          <StatCard label="Total detectado" value={stats.totalDetections} icon={<ShieldAlert className="w-5 h-5" />} color="red" />
-          <StatCard label="Alts bloqueados" value={stats.blockedAlt} icon={<TrendingDown className="w-5 h-5" />} color="primary" />
-          <StatCard label="Bots bloqueados" value={stats.blockedBot} icon={<Zap className="w-5 h-5" />} color="accent" />
-          <StatCard label="Spam detectado" value={stats.blockedSpam} icon={<ShieldAlert className="w-5 h-5" />} color="yellow" />
+      <div className="flex gap-1 bg-secondary rounded-lg p-1 w-fit mb-6">
+        {TABS.map(({ id, label }) => (
+          <button key={id} onClick={() => setTab(id)}
+            className={cn("px-4 py-1.5 rounded-md text-sm font-medium transition-all", tab === id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Config Tab ── */}
+      {tab === "config" && cfg && (
+        <div className="max-w-3xl space-y-5">
+          <div className="bg-card border border-card-border rounded-xl p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="font-semibold text-base">AntiRaid activo</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">Activa todos los modulos de proteccion configurados.</p>
+              </div>
+              <Switch checked={cfg.enabled} onCheckedChange={set("enabled")} data-testid="toggle-antiraid-enabled" />
+            </div>
+          </div>
+
+          {/* AntiJoin */}
+          <div className="bg-card border border-card-border rounded-xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div><Label className="font-semibold text-sm">AntiJoin</Label><p className="text-xs text-muted-foreground">Bloquea joins masivos en poco tiempo</p></div>
+              <Switch checked={cfg.antiJoin} onCheckedChange={set("antiJoin")} data-testid="toggle-antijoin" />
+            </div>
+            {cfg.antiJoin && (
+              <div className="grid grid-cols-3 gap-4">
+                <div><Label className="text-xs mb-1.5 block">Limite de joins</Label><Input type="number" min={2} value={cfg.antiJoinThreshold ?? 5} onChange={setN("antiJoinThreshold")} /></div>
+                <div><Label className="text-xs mb-1.5 block">Ventana (segundos)</Label><Input type="number" min={1} value={cfg.antiJoinInterval ?? 10} onChange={setN("antiJoinInterval")} /></div>
+                <div><Label className="text-xs mb-1.5 block">Accion</Label>
+                  <NativeSelect value={cfg.antiJoinAction || "ban"} onChange={set("antiJoinAction")}>
+                    <option value="ban">Ban</option><option value="kick">Kick</option><option value="timeout">Timeout</option>
+                  </NativeSelect>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* AntiAlt */}
+          <div className="bg-card border border-card-border rounded-xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div><Label className="font-semibold text-sm">AntiAlt</Label><p className="text-xs text-muted-foreground">Bloquea cuentas nuevas o alternativas</p></div>
+              <Switch checked={cfg.antiAlt} onCheckedChange={set("antiAlt")} data-testid="toggle-antialt" />
+            </div>
+            {cfg.antiAlt && (
+              <div><Label className="text-xs mb-1.5 block">Edad minima de la cuenta (dias)</Label><Input type="number" min={1} value={cfg.antiAltMinAge ?? 7} onChange={setN("antiAltMinAge")} className="w-32" /></div>
+            )}
+          </div>
+
+          {/* AntiSpam */}
+          <div className="bg-card border border-card-border rounded-xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div><Label className="font-semibold text-sm">AntiSpam</Label><p className="text-xs text-muted-foreground">Sanciona mensajes repetidos o rapidos</p></div>
+              <Switch checked={cfg.antiSpam} onCheckedChange={set("antiSpam")} data-testid="toggle-antispam" />
+            </div>
+            {cfg.antiSpam && (
+              <div className="grid grid-cols-3 gap-4">
+                <div><Label className="text-xs mb-1.5 block">Mensajes maximos</Label><Input type="number" min={2} value={cfg.antiSpamLimit ?? 5} onChange={setN("antiSpamLimit")} /></div>
+                <div><Label className="text-xs mb-1.5 block">Ventana (segundos)</Label><Input type="number" min={1} value={cfg.antiSpamInterval ?? 5} onChange={setN("antiSpamInterval")} /></div>
+                <div><Label className="text-xs mb-1.5 block">Accion</Label>
+                  <NativeSelect value={cfg.antiSpamAction || "mute"} onChange={set("antiSpamAction")}>
+                    <option value="mute">Timeout</option><option value="kick">Kick</option><option value="ban">Ban</option>
+                  </NativeSelect>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* AntiBot */}
+          <div className="bg-card border border-card-border rounded-xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div><Label className="font-semibold text-sm">AntiBot</Label><p className="text-xs text-muted-foreground">Bloquea bots no autorizados</p></div>
+              <Switch checked={cfg.antiBot} onCheckedChange={set("antiBot")} data-testid="toggle-antibot" />
+            </div>
+            {cfg.antiBot && (
+              <div>
+                <Label className="text-xs mb-1.5 block">IDs de bots autorizados (separados por coma)</Label>
+                <Input placeholder="ID1, ID2, ID3"
+                  value={Array.isArray(cfg.antiBotWhitelist) ? cfg.antiBotWhitelist.join(", ") : ""}
+                  onChange={(e) => set("antiBotWhitelist")(e.target.value.split(",").map((s: string) => s.trim()).filter(Boolean))} />
+              </div>
+            )}
+          </div>
+
+          {/* AntiLinks */}
+          <div className="bg-card border border-card-border rounded-xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div><Label className="font-semibold text-sm">AntiLinks</Label><p className="text-xs text-muted-foreground">Elimina mensajes con enlaces no autorizados</p></div>
+              <Switch checked={cfg.antiLinks} onCheckedChange={set("antiLinks")} data-testid="toggle-antilinks" />
+            </div>
+            {cfg.antiLinks && (
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-xs mb-1.5 block">Dominios permitidos</Label>
+                  <Input placeholder="youtube.com, twitch.tv"
+                    value={Array.isArray(cfg.allowedDomains) ? cfg.allowedDomains.join(", ") : ""}
+                    onChange={(e) => set("allowedDomains")(e.target.value.split(",").map((s: string) => s.trim()).filter(Boolean))} />
+                </div>
+                <div>
+                  <Label className="text-xs mb-1.5 block">Dominios bloqueados (vacio = bloquear todo)</Label>
+                  <Input placeholder="discord.gg, bit.ly"
+                    value={Array.isArray(cfg.blockedDomains) ? cfg.blockedDomains.join(", ") : ""}
+                    onChange={(e) => set("blockedDomains")(e.target.value.split(",").map((s: string) => s.trim()).filter(Boolean))} />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* MassMention */}
+          <div className="bg-card border border-card-border rounded-xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div><Label className="font-semibold text-sm">AntiMassMention</Label><p className="text-xs text-muted-foreground">Bloquea menciones masivas en un mensaje</p></div>
+              <Switch checked={cfg.antiMassMention} onCheckedChange={set("antiMassMention")} />
+            </div>
+            {cfg.antiMassMention && (
+              <div><Label className="text-xs mb-1.5 block">Max. menciones por mensaje</Label><Input type="number" min={2} value={cfg.massMentionLimit ?? 5} onChange={setN("massMentionLimit")} className="w-32" /></div>
+            )}
+          </div>
+
+          {/* AntiNuke */}
+          <div className="bg-card border border-card-border rounded-xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div><Label className="font-semibold text-sm">AntiNuke</Label><p className="text-xs text-muted-foreground">Detecta y actua contra nukeos del servidor</p></div>
+              <Switch checked={cfg.antiNuke} onCheckedChange={set("antiNuke")} data-testid="toggle-antinuke" />
+            </div>
+            {cfg.antiNuke && (
+              <div className="grid grid-cols-2 gap-4">
+                <div><Label className="text-xs mb-1.5 block">Acciones para detectar nuke</Label><Input type="number" min={3} value={cfg.nukeThreshold ?? 10} onChange={setN("nukeThreshold")} /></div>
+                <div><Label className="text-xs mb-1.5 block">Accion al detectar nuke</Label>
+                  <NativeSelect value={cfg.nukeAction || "strip_permissions"} onChange={set("nukeAction")}>
+                    <option value="strip_permissions">Quitar permisos</option><option value="kick">Kick</option><option value="ban">Ban</option>
+                  </NativeSelect>
+                </div>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-x-6 gap-y-3 pt-1">
+              {([
+                ["antiChannelCreate", "Crear canales"],
+                ["antiChannelDelete", "Eliminar canales"],
+                ["antiRoleCreate", "Crear roles"],
+                ["antiRoleDelete", "Eliminar roles"],
+                ["antiBanMass", "Baneos masivos"],
+                ["antiKickMass", "Kicks masivos"],
+                ["antiWebhook", "Webhooks no autorizados"],
+                ["antiEmojiDelete", "Eliminar emojis"],
+              ] as const).map(([key, label]) => (
+                <div key={key} className="flex items-center justify-between">
+                  <Label className="text-sm">{label}</Label>
+                  <Switch checked={cfg[key] || false} onCheckedChange={set(key)} />
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
-      <div className="mb-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Shield className="w-4 h-4 text-primary" />
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Proteccion Raids & Spam</h2>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {modules.filter(m => ["antiJoin","antiAlt","antiBot","antiSpam","antiLinks","antiMassMention"].includes(m.key)).map(({ key, title, desc, badge, children }) => (
-            <ToggleModule
-              key={key}
-              title={title}
-              description={desc}
-              enabled={!!cfg[key]}
-              onToggle={toggle(key)}
-              badge={badge}
-              badgeColor={badge === "Premium" ? "bg-yellow-500/20 text-yellow-400" : badge === "Critico" ? "bg-red-500/20 text-red-400" : badge === "Potente" ? "bg-orange-500/20 text-orange-400" : "bg-primary/20 text-primary"}
-            >
-              {children}
-            </ToggleModule>
-          ))}
-        </div>
-      </div>
+      {/* ── Whitelist Tab ── */}
+      {tab === "whitelist" && (
+        <div className="max-w-2xl space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">Usuarios y roles exentos de todas las protecciones AntiRaid.</p>
+            <Button size="sm" onClick={() => setShowWlForm(!showWlForm)}>
+              <Plus className="w-4 h-4 mr-1" /> Agregar
+            </Button>
+          </div>
 
-      <div className="mb-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Network className="w-4 h-4 text-orange-400" />
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Deteccion de Red</h2>
-          <span className="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded font-medium">Plus</span>
-        </div>
-        {isPlus ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {modules.filter(m => ["antiVpn"].includes(m.key)).map(({ key, title, desc, badge, children }) => (
-              <ToggleModule
-                key={key}
-                title={title}
-                description={desc}
-                enabled={!!cfg[key]}
-                onToggle={toggle(key)}
-                badge={badge}
-                badgeColor="bg-orange-500/20 text-orange-400"
-              >
-                {children}
-              </ToggleModule>
-            ))}
-          </div>
-        ) : (
-          <div className="bg-card border border-card-border rounded-xl p-5 flex items-center gap-4">
-            <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
-              <Lock className="w-4 h-4 text-primary" />
+          {showWlForm && (
+            <div className="bg-card border border-card-border rounded-xl p-5 space-y-4">
+              <h3 className="font-semibold text-sm">Agregar a Whitelist</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-xs mb-1.5 block">ID de usuario o rol *</Label>
+                  <Input value={wlForm.entityId} onChange={(e) => setWlForm((f) => ({ ...f, entityId: e.target.value }))} placeholder="ID de Discord" />
+                </div>
+                <div>
+                  <Label className="text-xs mb-1.5 block">Tipo</Label>
+                  <NativeSelect value={wlForm.entityType} onChange={(v) => setWlForm((f) => ({ ...f, entityType: v }))}>
+                    <option value="user">Usuario</option>
+                    <option value="role">Rol</option>
+                    <option value="bot">Bot</option>
+                  </NativeSelect>
+                </div>
+                <div>
+                  <Label className="text-xs mb-1.5 block">Nombre (opcional)</Label>
+                  <Input value={wlForm.name} onChange={(e) => setWlForm((f) => ({ ...f, name: e.target.value }))} placeholder="Nombre del usuario/rol" />
+                </div>
+                <div>
+                  <Label className="text-xs mb-1.5 block">Razon (opcional)</Label>
+                  <Input value={wlForm.reason} onChange={(e) => setWlForm((f) => ({ ...f, reason: e.target.value }))} placeholder="Razon de la exencion" />
+                </div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Button size="sm" onClick={addToWhitelist} disabled={addingWl}>Agregar</Button>
+                <Button size="sm" variant="ghost" onClick={() => { setShowWlForm(false); setWlForm({ ...emptyWlForm }); }}>Cancelar</Button>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-sm mb-0.5">AntiVPN — Deteccion de Red</p>
-              <p className="text-xs text-muted-foreground">Detecta y bloquea VPN, Proxy y Tor. Disponible con plan Plus o superior.</p>
-            </div>
-            <Link href={`/servers/${guildId}/premium`}>
-              <Button size="sm" className="gap-1.5 text-xs flex-shrink-0">
-                <Crown className="w-3.5 h-3.5" /><span>Activar Plus</span>
-              </Button>
-            </Link>
-          </div>
-        )}
-      </div>
+          )}
 
-      <div>
-        <div className="flex items-center gap-2 mb-4">
-          <ShieldAlert className="w-4 h-4 text-yellow-400" />
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Proteccion AntiNuke</h2>
-          <span className="text-xs bg-primary/20 text-primary px-1.5 py-0.5 rounded font-medium">Plus</span>
+          {whitelist.length === 0 ? (
+            <div className="text-center py-16 bg-card rounded-xl border border-card-border">
+              <UserCheck className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+              <p className="font-semibold">Whitelist vacia</p>
+              <p className="text-sm text-muted-foreground mt-1">Agrega usuarios o roles que deban estar exentos de las protecciones AntiRaid.</p>
+            </div>
+          ) : (
+            <div className="bg-card border border-card-border rounded-xl divide-y divide-border overflow-hidden">
+              {whitelist.map((entry) => (
+                <div key={entry.id} className="flex items-center justify-between px-5 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className={cn("w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0",
+                      entry.entityType === "role" ? "bg-purple-500/20" : "bg-green-500/20")}>
+                      {entry.entityType === "role" ? <Shield className="w-4 h-4 text-purple-400" /> : <Users className="w-4 h-4 text-green-400" />}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{entry.name || entry.entityId}</p>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span className="font-mono">{entry.entityId}</span>
+                        <span className="capitalize bg-secondary px-1.5 py-0.5 rounded">{entry.entityType}</span>
+                        {entry.reason && <span>· {entry.reason}</span>}
+                        {entry.addedByUsername && <span>· por {entry.addedByUsername}</span>}
+                      </div>
+                    </div>
+                  </div>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => removeFromWhitelist(entry.id)}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-        {isPlus ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {modules.filter(m => !["antiJoin","antiAlt","antiBot","antiSpam","antiLinks","antiMassMention","antiVpn"].includes(m.key)).map(({ key, title, desc, badge, children }) => (
-              <ToggleModule
-                key={key}
-                title={title}
-                description={desc}
-                enabled={!!cfg[key]}
-                onToggle={toggle(key)}
-                badge={badge}
-                badgeColor={badge === "Premium" ? "bg-yellow-500/20 text-yellow-400" : "bg-primary/20 text-primary"}
-              >
-                {children}
-              </ToggleModule>
-            ))}
-          </div>
-        ) : (
-          <div className="bg-card border border-card-border rounded-xl p-5 flex items-center gap-4">
-            <div className="w-10 h-10 rounded-full bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center flex-shrink-0">
-              <Lock className="w-4 h-4 text-yellow-400" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-sm mb-0.5">Proteccion AntiNuke — 12 modulos</p>
-              <p className="text-xs text-muted-foreground">Protege contra nukes, baneos masivos, eliminacion de canales y roles. Disponible con plan Plus o superior.</p>
-            </div>
-            <Link href={`/servers/${guildId}/premium`}>
-              <Button size="sm" className="gap-1.5 text-xs flex-shrink-0">
-                <Crown className="w-3.5 h-3.5" /><span>Activar Plus</span>
-              </Button>
-            </Link>
-          </div>
-        )}
-      </div>
+      )}
+
+      {/* ── Stats Tab ── */}
+      {tab === "stats" && (
+        <div className="max-w-2xl">
+          {!stats ? (
+            <div className="flex justify-center py-12"><div className="w-7 h-7 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                {([
+                  { label: "Detecciones totales", value: (stats as any).totalDetections ?? 0, color: "text-red-400" },
+                  { label: "Detectados hoy", value: (stats as any).detectedToday ?? 0, color: "text-orange-400" },
+                  { label: "Bots bloqueados", value: (stats as any).blockedBot ?? 0, color: "text-blue-400" },
+                  { label: "Alts bloqueados", value: (stats as any).blockedAlt ?? 0, color: "text-yellow-400" },
+                  { label: "Spam bloqueado", value: (stats as any).blockedSpam ?? 0, color: "text-green-400" },
+                  { label: "VPN/Proxy bloqueados", value: (stats as any).blockedVpn ?? 0, color: "text-purple-400" },
+                ] as const).map(({ label, value, color }) => (
+                  <div key={label} className="bg-card border border-card-border rounded-xl p-5">
+                    <p className="text-xs text-muted-foreground mb-1">{label}</p>
+                    <p className={cn("text-3xl font-black", color)}>{value}</p>
+                  </div>
+                ))}
+              </div>
+              {(stats as any).lastDetectionAt && (
+                <p className="text-xs text-muted-foreground text-center">Ultima deteccion: {new Date((stats as any).lastDetectionAt).toLocaleString("es")}</p>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </Layout>
   );
 }

@@ -1,6 +1,6 @@
 import { useParams } from "wouter";
 import { useState, useEffect, useRef } from "react";
-import { FileText, Shield, Users, MessageSquare, Settings } from "lucide-react";
+import { FileText, Shield, Users, MessageSquare, Settings, Mic, Star, Volume2, Hash, AtSign, BookOpen } from "lucide-react";
 import { useGetLogsConfig, useUpdateLogsConfig, useGetGuildLogs, getGetLogsConfigQueryKey, getGetGuildLogsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import Layout from "@/components/Layout";
@@ -14,8 +14,33 @@ const categoryIcon = (cat: string) => {
   if (cat === "moderation") return <Shield className="w-4 h-4 text-red-400" />;
   if (cat === "member") return <Users className="w-4 h-4 text-blue-400" />;
   if (cat === "message") return <MessageSquare className="w-4 h-4 text-green-400" />;
+  if (cat === "security") return <Shield className="w-4 h-4 text-orange-400" />;
   return <Settings className="w-4 h-4 text-muted-foreground" />;
 };
+
+const LOG_CATEGORIES = [
+  { key: "logMembers", label: "Miembros", desc: "Entrada/salida, baneos, kicks", icon: Users },
+  { key: "logMessages", label: "Mensajes", desc: "Mensajes editados y eliminados", icon: MessageSquare },
+  { key: "logRoles", label: "Roles", desc: "Creacion, eliminacion y cambios de roles", icon: Star },
+  { key: "logChannels", label: "Canales", desc: "Creacion, eliminacion y cambios de canales", icon: Hash },
+  { key: "logModeration", label: "Moderacion", desc: "Baneos, kicks, mutes, timeouts", icon: Shield },
+  { key: "logSecurity", label: "Seguridad", desc: "AntiRaid, verificacion, blacklist", icon: Shield },
+  { key: "logVerifications", label: "Verificaciones", desc: "Resultados de verificaciones de usuarios", icon: AtSign },
+  { key: "logTickets", label: "Tickets", desc: "Apertura y cierre de tickets de soporte", icon: BookOpen },
+  { key: "logGiveaways", label: "Sorteos", desc: "Inicio, fin y ganadores de sorteos", icon: Star },
+  { key: "logVoice", label: "Voz", desc: "Entradas/salidas de canales de voz", icon: Volume2 },
+  { key: "logNicknames", label: "Apodos", desc: "Cambios de apodo y actualizaciones de roles", icon: Mic },
+  { key: "logInvites", label: "Invitaciones", desc: "Creacion y uso de invitaciones", icon: FileText },
+];
+
+const CHANNEL_OVERRIDES = [
+  { key: "memberChannelId", label: "Canal — Miembros", category: "logMembers" },
+  { key: "messageChannelId", label: "Canal — Mensajes", category: "logMessages" },
+  { key: "roleChannelId", label: "Canal — Roles", category: "logRoles" },
+  { key: "channelLogsChannelId", label: "Canal — Canales", category: "logChannels" },
+  { key: "moderationChannelId", label: "Canal — Moderacion", category: "logModeration" },
+  { key: "securityChannelId", label: "Canal — Seguridad", category: "logSecurity" },
+];
 
 export default function LogsPage() {
   const { guildId } = useParams<{ guildId: string }>();
@@ -41,16 +66,18 @@ export default function LogsPage() {
   const save = () => {
     update.mutate({ guildId, data: cfg }, {
       onSuccess: () => { toast({ title: "Logs guardados" }); qc.invalidateQueries({ queryKey: getGetLogsConfigQueryKey(guildId) }); },
-      onError: () => toast({ title: "Error", variant: "destructive" }),
+      onError: () => toast({ title: "Error al guardar", variant: "destructive" }),
     });
   };
+
+  const enabledCount = cfg ? LOG_CATEGORIES.filter(({ key }) => cfg[key]).length : 0;
 
   return (
     <Layout guildId={guildId}>
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-black mb-1">Logs del Servidor</h1>
-          <p className="text-muted-foreground text-sm">Revisa y configura el historial de actividad.</p>
+          <p className="text-muted-foreground text-sm">Registra toda la actividad del servidor con canales especializados por categoria.</p>
         </div>
         {tab === "config" && cfg && <Button size="sm" onClick={save} disabled={update.isPending} data-testid="btn-save-logs">Guardar</Button>}
       </div>
@@ -76,7 +103,7 @@ export default function LogsPage() {
             </div>
           ) : (
             <div className="bg-card border border-card-border rounded-xl divide-y divide-border overflow-hidden">
-              {logs.map((log) => (
+              {(logs as any[]).map((log) => (
                 <div key={log.id} data-testid={`log-row-${log.id}`} className="flex items-center gap-4 px-5 py-3 hover:bg-secondary/50 transition-colors">
                   {categoryIcon(log.category)}
                   <div className="flex-1 min-w-0">
@@ -95,32 +122,59 @@ export default function LogsPage() {
       )}
 
       {tab === "config" && cfg && (
-        <div className="max-w-2xl space-y-5">
+        <div className="max-w-3xl space-y-5">
+          {/* General */}
           <div className="bg-card border border-card-border rounded-xl p-6 space-y-5">
             <div className="flex items-center justify-between">
               <Label className="font-semibold">Logs activos</Label>
               <Switch checked={cfg.enabled} onCheckedChange={set("enabled")} data-testid="toggle-logs-enabled" />
             </div>
             <div>
-              <Label className="text-sm mb-1.5 block">Canal de logs (ID)</Label>
-              <Input placeholder="ID del canal" value={cfg.channelId || ""} onChange={(e) => set("channelId")(e.target.value)} data-testid="input-logs-channel" />
+              <Label className="text-sm mb-1.5 block">Canal de logs principal (ID)</Label>
+              <Input placeholder="Canal para todos los logs (fallback)" value={cfg.channelId || ""} onChange={(e) => set("channelId")(e.target.value)} data-testid="input-logs-channel" />
+              <p className="text-xs text-muted-foreground mt-1">Este canal se usa cuando no hay un canal especifico para la categoria.</p>
             </div>
           </div>
+
+          {/* Category toggles */}
           <div className="bg-card border border-card-border rounded-xl p-6 space-y-4">
-            <h3 className="font-semibold text-sm">Categorias de logs</h3>
-            {[
-              { key: "logMembers", label: "Miembros (entrada/salida/baneo)" },
-              { key: "logMessages", label: "Mensajes (editados/eliminados)" },
-              { key: "logRoles", label: "Roles (creacion/eliminacion/cambios)" },
-              { key: "logChannels", label: "Canales (creacion/eliminacion/cambios)" },
-              { key: "logModeration", label: "Moderacion (baneos, kicks, mutes)" },
-              { key: "logSecurity", label: "Seguridad (AntiRaid, verificacion)" },
-            ].map(({ key, label }) => (
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-sm">Categorias de logs</h3>
+              <span className="text-xs text-muted-foreground">{enabledCount}/{LOG_CATEGORIES.length} activas</span>
+            </div>
+            {LOG_CATEGORIES.map(({ key, label, desc, icon: Icon }) => (
               <div key={key} className="flex items-center justify-between">
-                <Label className="text-sm">{label}</Label>
-                <Switch checked={cfg[key]} onCheckedChange={set(key)} data-testid={`toggle-${key}`} />
+                <div className="flex items-center gap-2">
+                  <Icon className="w-4 h-4 text-muted-foreground" />
+                  <div>
+                    <Label className="text-sm">{label}</Label>
+                    <p className="text-xs text-muted-foreground">{desc}</p>
+                  </div>
+                </div>
+                <Switch checked={cfg[key] ?? false} onCheckedChange={set(key)} data-testid={`toggle-${key}`} />
               </div>
             ))}
+          </div>
+
+          {/* Per-category channels */}
+          <div className="bg-card border border-card-border rounded-xl p-6 space-y-5">
+            <div>
+              <h3 className="font-semibold text-sm">Canales por categoria</h3>
+              <p className="text-xs text-muted-foreground mt-1">Opcional: envia cada categoria a un canal diferente. Si se deja vacio, se usa el canal principal.</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {CHANNEL_OVERRIDES.map(({ key, label, category }) => (
+                <div key={key}>
+                  <Label className="text-xs mb-1.5 block text-muted-foreground">{label}</Label>
+                  <Input
+                    placeholder={`ID del canal${!cfg[category] ? " (categoria desactivada)" : ""}`}
+                    value={cfg[key] || ""}
+                    onChange={(e) => set(key)(e.target.value || null)}
+                    disabled={!cfg[category]}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}

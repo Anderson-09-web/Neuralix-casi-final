@@ -3,7 +3,7 @@ import { useState } from "react";
 import {
   Shield, LayoutDashboard, Users, Ticket, ShieldAlert, FileText,
   Star, Database, Settings, ChevronLeft, ChevronRight, Sun, Moon,
-  HeadphonesIcon, LogOut, Menu, X, Bot, Bell, ChevronDown
+  HeadphonesIcon, LogOut, Menu, X, Bot, Bell, ChevronDown, Tag, Webhook
 } from "lucide-react";
 import { useGetMe, useLogout, useGetGuild, getGetMeQueryKey, getGetGuildQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -21,6 +21,8 @@ const navItems = (guildId: string) => [
   { href: `/servers/${guildId}/verification`, icon: Shield, label: "Verificacion" },
   { href: `/servers/${guildId}/tickets`, icon: Ticket, label: "Tickets" },
   { href: `/servers/${guildId}/antiraid`, icon: ShieldAlert, label: "AntiRaid" },
+  { href: `/servers/${guildId}/auto-roles`, icon: Tag, label: "Auto-Roles" },
+  { href: `/servers/${guildId}/webhooks`, icon: Webhook, label: "Webhooks" },
   { href: `/servers/${guildId}/logs`, icon: FileText, label: "Logs" },
   { href: `/servers/${guildId}/premium`, icon: Star, label: "Premium" },
   { href: `/servers/${guildId}/backups`, icon: Database, label: "Backups" },

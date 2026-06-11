@@ -21,6 +21,9 @@ import botRouter from "./bot";
 import statusRouter from "./status";
 import moderationRouter from "./moderation";
 import giveawaysRouter from "./giveaways";
+import autoRolesRouter from "./auto-roles";
+import webhooksRouter from "./webhooks";
+import messagesRouter from "./messages";
 
 const router: IRouter = Router();
 
@@ -46,5 +49,8 @@ router.use(botSettingsRouter);
 router.use(statusRouter);
 router.use(moderationRouter);
 router.use(giveawaysRouter);
+router.use(autoRolesRouter);
+router.use(webhooksRouter);
+router.use(messagesRouter);
 
 export default router;

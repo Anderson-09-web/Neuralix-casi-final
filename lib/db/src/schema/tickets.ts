@@ -9,6 +9,7 @@ export const ticketConfigsTable = pgTable("ticket_configs", {
 
   categoryId: text("category_id"),
   supportRoleId: text("support_role_id"),
+  supportRoleIds: text("support_role_ids").array().notNull().default([]),
   additionalRoles: text("additional_roles"),
   transcriptChannelId: text("transcript_channel_id"),
   logsChannelId: text("logs_channel_id"),
@@ -32,6 +33,9 @@ export const ticketConfigsTable = pgTable("ticket_configs", {
   autoClose: integer("auto_close").notNull().default(0),
   satisfactionSurvey: boolean("satisfaction_survey").notNull().default(false),
   autoTranscript: boolean("auto_transcript").notNull().default(true),
+  claimEnabled: boolean("claim_enabled").notNull().default(true),
+  deleteEnabled: boolean("delete_enabled").notNull().default(true),
+  useModules: boolean("use_modules").notNull().default(false),
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
@@ -46,6 +50,10 @@ export const ticketsTable = pgTable("tickets", {
   subject: text("subject").notNull(),
   status: text("status").notNull().default("open"),
   claimedBy: text("claimed_by"),
+  claimedByUsername: text("claimed_by_username"),
+  moduleId: integer("module_id"),
+  moduleName: text("module_name"),
+  transcript: text("transcript"),
   closedAt: timestamp("closed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
