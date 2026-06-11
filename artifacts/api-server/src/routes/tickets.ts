@@ -105,4 +105,66 @@ router.post("/guilds/:guildId/tickets/:ticketId/reopen", requireAuth, async (req
   }
 });
 
+/**
+ * POST /api/guilds/:guildId/tickets/test
+ * Sends the ticket panel embed to the configured panelChannelId.
+ */
+router.post("/guilds/:guildId/tickets/test", requireAuth, async (req, res) => {
+  const guildId = req.params.guildId as string;
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  if (!botToken) {
+    res.status(400).json({ ok: false, error: "DISCORD_BOT_TOKEN no esta configurado" });
+    return;
+  }
+  try {
+    const [cfg] = await db.select().from(ticketConfigsTable).where(eq(ticketConfigsTable.guildId, guildId));
+    if (!cfg?.panelChannelId) {
+      res.status(400).json({ ok: false, error: "Canal del panel de tickets no configurado. Escribe el ID del canal del panel y guarda primero." });
+      return;
+    }
+    const axios = (await import("axios")).default;
+    const buttonColors: Record<string, number> = { PRIMARY: 1, SECONDARY: 2, SUCCESS: 3, DANGER: 4 };
+    const buttonStyle = buttonColors[cfg.buttonColor || "PRIMARY"] ?? 1;
+    const payload: Record<string, unknown> = {
+      components: [{
+        type: 1,
+        components: [{
+          type: 2,
+          style: buttonStyle,
+          label: cfg.buttonLabel || "Abrir Ticket",
+          emoji: cfg.buttonEmoji ? { name: cfg.buttonEmoji } : undefined,
+          custom_id: "ticket_open_test",
+        }],
+      }],
+    };
+    if (cfg.panelTitle || cfg.panelDescription || cfg.panelMessage) {
+      payload.embeds = [{
+        title: cfg.panelTitle || "Soporte",
+        description: cfg.panelDescription || cfg.panelMessage || "Haz click en el boton para abrir un ticket.",
+        color: cfg.panelColor ? parseInt(cfg.panelColor.replace("#", ""), 16) : 0x5865F2,
+        footer: cfg.panelFooter ? { text: cfg.panelFooter } : { text: "Neuralix Tickets · Mensaje de prueba" },
+        image: cfg.panelImage ? { url: cfg.panelImage } : undefined,
+      }];
+    } else {
+      payload.content = "**" + (cfg.panelTitle || "Sistema de Soporte") + "**\nHaz click en el boton para abrir un ticket. *(Mensaje de prueba)*";
+    }
+    const discordRes = await axios.post(
+      `https://discord.com/api/v10/channels/${cfg.panelChannelId}/messages`,
+      payload,
+      { headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" }, validateStatus: () => true },
+    );
+    if (discordRes.status === 200 || discordRes.status === 201) {
+      res.json({ ok: true, message: "Panel de tickets enviado al canal" });
+    } else {
+      res.status(400).json({
+        ok: false,
+        error: discordRes.data?.message || `Discord respondio con status ${discordRes.status}`,
+        hint: discordRes.status === 403 ? "El bot no tiene permisos en el canal del panel" : discordRes.status === 404 ? "Canal del panel no encontrado. Verifica el ID" : undefined,
+      });
+    }
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err?.message });
+  }
+});
+
 export default router;

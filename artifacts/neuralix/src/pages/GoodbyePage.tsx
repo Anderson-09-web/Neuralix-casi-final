@@ -57,7 +57,18 @@ export default function GoodbyePage() {
           <p className="text-muted-foreground text-sm">Configura los mensajes cuando un miembro abandona el servidor.</p>
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" size="sm" onClick={() => testGoodbye.mutate({ guildId }, { onSuccess: () => toast({ title: "Mensaje de prueba enviado" }) })} data-testid="btn-test-goodbye">Probar</Button>
+          <Button variant="outline" size="sm" onClick={() => testGoodbye.mutate({ guildId }, {
+            onSuccess: (data: any) => {
+              if (data?.ok === false) toast({ title: data.error || "Error al enviar", description: data.hint, variant: "destructive" });
+              else toast({ title: "Mensaje de despedida enviado al canal" });
+            },
+            onError: (err: any) => toast({ title: err?.data?.error || "Error al enviar", variant: "destructive" }),
+          })} disabled={testGoodbye.isPending} data-testid="btn-test-goodbye">
+            <span className="flex items-center gap-1.5">
+              {testGoodbye.isPending && <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin inline-block" />}
+              <span>Probar</span>
+            </span>
+          </Button>
           <Button size="sm" onClick={save} disabled={update.isPending} data-testid="btn-save-goodbye">Guardar</Button>
         </div>
       </div>

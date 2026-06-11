@@ -107,8 +107,10 @@ export default function WelcomePage() {
             <span>{showPreview ? "Ocultar preview" : "Vista previa"}</span>
           </Button>
           <Button variant="outline" size="sm" onClick={test} disabled={testWelcome.isPending} data-testid="btn-test-welcome" className="gap-2">
-            {testWelcome.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
-            <span>Probar</span>
+            <span className="flex items-center gap-1.5">
+              {testWelcome.isPending && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+              <span>Probar</span>
+            </span>
           </Button>
           <Button size="sm" onClick={save} disabled={update.isPending} data-testid="btn-save-welcome">Guardar</Button>
         </div>

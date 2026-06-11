@@ -1,6 +1,6 @@
 import { useParams } from "wouter";
 import { useState, useEffect, useRef } from "react";
-import { ShieldAlert, TrendingDown, Zap, Shield, Network, Lock, Crown } from "lucide-react";
+import { ShieldAlert, TrendingDown, Zap, Shield, Network, Lock, Crown, RefreshCw } from "lucide-react";
 import { useGetAntiraidConfig, useUpdateAntiraidConfig, useGetAntiraidStats, useGetGuildPremium, getGetAntiraidConfigQueryKey, getGetAntiraidStatsQueryKey, getGetGuildPremiumQueryKey } from "@workspace/api-client-react";
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
@@ -49,6 +49,7 @@ export default function AntiraidPage() {
   const isPlus = !!plan;
 
   const [cfg, setCfg] = useState<any>(null);
+  const [testingAntiraid, setTestingAntiraid] = useState(false);
   const isMounted = useRef(false);
 
   useEffect(() => {
@@ -57,6 +58,20 @@ export default function AntiraidPage() {
       isMounted.current = true;
     }
   }, [config]);
+
+  const handleTest = async () => {
+    setTestingAntiraid(true);
+    try {
+      const res = await fetch(`/api/guilds/${guildId}/antiraid/test`, { method: "POST", credentials: "include" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.ok !== false) toast({ title: "Alerta de prueba enviada al canal de logs" });
+      else toast({ title: data?.error || "Error al enviar prueba", description: data?.hint, variant: "destructive" });
+    } catch {
+      toast({ title: "Error de red", variant: "destructive" });
+    } finally {
+      setTestingAntiraid(false);
+    }
+  };
 
   if (isLoading || (!cfg && !isError)) return (
     <Layout guildId={guildId}>
@@ -246,6 +261,12 @@ export default function AntiraidPage() {
           <p className="text-muted-foreground text-sm">Configura los {modules.length} modulos de proteccion contra raids, VPN y nukes.</p>
         </div>
         <div className="flex gap-3 flex-wrap justify-end">
+          <Button variant="outline" size="sm" onClick={handleTest} disabled={testingAntiraid} className="gap-2">
+            <span className="flex items-center gap-1.5">
+              {testingAntiraid && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+              <span>Probar alerta</span>
+            </span>
+          </Button>
           <Button variant="outline" size="sm" onClick={saveAll} disabled={update.isPending} data-testid="btn-save-antiraid">
             <span>{update.isPending ? "Guardando..." : "Guardar todo"}</span>
           </Button>

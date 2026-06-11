@@ -109,4 +109,52 @@ router.get("/guilds/:guildId/antiraid/stats", requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * POST /api/guilds/:guildId/antiraid/test
+ * Sends a simulated AntiRaid detection alert to the configured logs channel.
+ */
+router.post("/guilds/:guildId/antiraid/test", requireAuth, async (req, res) => {
+  const guildId = req.params.guildId as string;
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  if (!botToken) {
+    res.status(400).json({ ok: false, error: "DISCORD_BOT_TOKEN no esta configurado" });
+    return;
+  }
+  try {
+    const { logsConfigsTable } = await import("@workspace/db");
+    const [logCfg] = await db.select().from(logsConfigsTable).where(eq(logsConfigsTable.guildId, guildId));
+    const channelId = logCfg?.channelId;
+    if (!channelId) {
+      res.status(400).json({ ok: false, error: "Canal de logs no configurado. Configura el canal en la seccion Logs primero." });
+      return;
+    }
+    const payload = {
+      embeds: [{
+        title: "Alerta AntiRaid (Prueba)",
+        description: "Esto es una simulacion de deteccion AntiRaid.\n\n**Modulo:** AntiJoin\n**Accion tomada:** ban\n**Usuario:** UsuarioDePrueba#0000\n**ID:** 123456789012345678",
+        color: 0xED4245,
+        footer: { text: "Neuralix AntiRaid · Mensaje de prueba" },
+        timestamp: new Date().toISOString(),
+      }],
+    };
+    const axios = (await import("axios")).default;
+    const discordRes = await axios.post(
+      `https://discord.com/api/v10/channels/${channelId}/messages`,
+      payload,
+      { headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" }, validateStatus: () => true },
+    );
+    if (discordRes.status === 200 || discordRes.status === 201) {
+      res.json({ ok: true, message: "Alerta de prueba enviada al canal de logs" });
+    } else {
+      res.status(400).json({
+        ok: false,
+        error: discordRes.data?.message || `Discord respondio con status ${discordRes.status}`,
+        hint: discordRes.status === 403 ? "El bot no tiene permisos para enviar mensajes en el canal de logs" : discordRes.status === 404 ? "Canal no encontrado" : undefined,
+      });
+    }
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err?.message });
+  }
+});
+
 export default router;

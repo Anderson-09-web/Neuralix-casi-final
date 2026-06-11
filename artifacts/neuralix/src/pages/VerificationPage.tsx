@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { VariablesModal, VERIFICATION_VARIABLES } from "@/components/VariablesModal";
-import { Lock, Crown } from "lucide-react";
+import { Lock, Crown, RefreshCw } from "lucide-react";
 import { Link } from "wouter";
 
 export default function VerificationPage() {
@@ -22,9 +22,24 @@ export default function VerificationPage() {
   const { data: premium } = useGetGuildPremium(guildId, { query: { enabled: !!guildId, queryKey: getGetGuildPremiumQueryKey(guildId), refetchInterval: 30000, refetchIntervalInBackground: false } });
   const update = useUpdateVerificationConfig();
   const [cfg, setCfg] = useState<any>(null);
+  const [testingVerif, setTestingVerif] = useState(false);
   const isMounted = useRef(false);
   const plan = (premium as any)?.plan || null;
   const isPlus = !!plan;
+
+  const handleTest = async () => {
+    setTestingVerif(true);
+    try {
+      const res = await fetch(`/api/guilds/${guildId}/verification/test`, { method: "POST", credentials: "include" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.ok !== false) toast({ title: "Log de verificacion enviado al canal" });
+      else toast({ title: data?.error || "Error al enviar prueba", description: data?.hint, variant: "destructive" });
+    } catch {
+      toast({ title: "Error de red", variant: "destructive" });
+    } finally {
+      setTestingVerif(false);
+    }
+  };
 
   useEffect(() => {
     if (config && !isMounted.current) {
@@ -61,7 +76,15 @@ export default function VerificationPage() {
           <h1 className="text-2xl font-black mb-1">Verificacion</h1>
           <p className="text-muted-foreground text-sm">Protege tu servidor con filtros de verificacion avanzados.</p>
         </div>
-        <Button size="sm" onClick={save} disabled={update.isPending} data-testid="btn-save-verification">Guardar</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={handleTest} disabled={testingVerif} className="gap-2">
+            <span className="flex items-center gap-1.5">
+              {testingVerif && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+              <span>Probar</span>
+            </span>
+          </Button>
+          <Button size="sm" onClick={save} disabled={update.isPending} data-testid="btn-save-verification">Guardar</Button>
+        </div>
       </div>
 
       <div className="max-w-2xl space-y-4">

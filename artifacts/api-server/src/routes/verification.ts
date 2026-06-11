@@ -130,4 +130,55 @@ router.delete("/guilds/:guildId/verification/verified-users/:discordId", require
   }
 });
 
+/**
+ * POST /api/guilds/:guildId/verification/test
+ * Sends a test verification log message to the configured logChannelId.
+ */
+router.post("/guilds/:guildId/verification/test", requireAuth, async (req, res) => {
+  const guildId = req.params.guildId as string;
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  if (!botToken) {
+    res.status(400).json({ ok: false, error: "DISCORD_BOT_TOKEN no esta configurado" });
+    return;
+  }
+  try {
+    const [cfg] = await db.select().from(verificationConfigsTable).where(eq(verificationConfigsTable.guildId, guildId));
+    if (!cfg?.logChannelId) {
+      res.status(400).json({ ok: false, error: "Canal de logs de verificacion no configurado. Escribe el ID del canal de logs y guarda primero." });
+      return;
+    }
+    const axios = (await import("axios")).default;
+    const payload = {
+      embeds: [{
+        title: "Verificacion Completada (Prueba)",
+        description: "**UsuarioDePrueba** ha completado la verificacion correctamente.",
+        color: 0x57F287,
+        fields: [
+          { name: "Usuario", value: "UsuarioDePrueba#0000 (`123456789012345678`)", inline: true },
+          { name: "Metodo", value: cfg.antiVpn ? "AntiVPN + Captcha" : "Captcha", inline: true },
+          { name: "Rol asignado", value: cfg.roleId ? `<@&${cfg.roleId}>` : "Sin configurar", inline: true },
+        ],
+        footer: { text: "Neuralix Verificacion · Mensaje de prueba" },
+        timestamp: new Date().toISOString(),
+      }],
+    };
+    const discordRes = await axios.post(
+      `https://discord.com/api/v10/channels/${cfg.logChannelId}/messages`,
+      payload,
+      { headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" }, validateStatus: () => true },
+    );
+    if (discordRes.status === 200 || discordRes.status === 201) {
+      res.json({ ok: true, message: "Log de verificacion enviado al canal" });
+    } else {
+      res.status(400).json({
+        ok: false,
+        error: discordRes.data?.message || `Discord respondio con status ${discordRes.status}`,
+        hint: discordRes.status === 403 ? "El bot no tiene permisos en el canal de logs" : discordRes.status === 404 ? "Canal de logs no encontrado. Verifica el ID" : undefined,
+      });
+    }
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err?.message });
+  }
+});
+
 export default router;

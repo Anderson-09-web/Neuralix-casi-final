@@ -1,6 +1,6 @@
 import { useParams } from "wouter";
 import { useState, useEffect, useRef } from "react";
-import { Ticket, CheckCircle, Clock, X, RotateCcw, Layout as PanelIcon, Settings, List, Star } from "lucide-react";
+import { Ticket, CheckCircle, Clock, X, RotateCcw, Layout as PanelIcon, Settings, List, Star, RefreshCw } from "lucide-react";
 import { useGetTicketConfig, useUpdateTicketConfig, useGetTickets, useCloseTicket, useReopenTicket, getGetTicketConfigQueryKey, getGetTicketsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import Layout from "@/components/Layout";
@@ -34,7 +34,22 @@ export default function TicketsPage() {
   const closeTicket = useCloseTicket();
   const reopenTicket = useReopenTicket();
   const [cfg, setCfg] = useState<any>(null);
+  const [testingTickets, setTestingTickets] = useState(false);
   const isMounted = useRef(false);
+
+  const handleTest = async () => {
+    setTestingTickets(true);
+    try {
+      const res = await fetch(`/api/guilds/${guildId}/tickets/test`, { method: "POST", credentials: "include" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.ok !== false) toast({ title: "Panel de tickets enviado al canal" });
+      else toast({ title: data?.error || "Error al enviar prueba", description: data?.hint, variant: "destructive" });
+    } catch {
+      toast({ title: "Error de red", variant: "destructive" });
+    } finally {
+      setTestingTickets(false);
+    }
+  };
 
   useEffect(() => {
     if (config && !isMounted.current) {
@@ -74,7 +89,17 @@ export default function TicketsPage() {
           <p className="text-muted-foreground text-sm">Panel de soporte completo con transcripciones y roles personalizados.</p>
         </div>
         {tab !== "list" && cfg && (
-          <Button size="sm" onClick={save} disabled={update.isPending} data-testid="btn-save-tickets">Guardar</Button>
+          <div className="flex gap-2">
+            {tab === "panel" && (
+              <Button variant="outline" size="sm" onClick={handleTest} disabled={testingTickets} className="gap-2">
+                <span className="flex items-center gap-1.5">
+                  {testingTickets && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                  <span>Probar panel</span>
+                </span>
+              </Button>
+            )}
+            <Button size="sm" onClick={save} disabled={update.isPending} data-testid="btn-save-tickets">Guardar</Button>
+          </div>
         )}
       </div>
 
