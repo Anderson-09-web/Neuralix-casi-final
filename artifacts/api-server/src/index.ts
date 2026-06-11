@@ -1,8 +1,10 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { startBot } from "./bot";
+import { setBotClient } from "./bot-state";
 
-startBot();
+const botClient = startBot();
+setBotClient(botClient);
 
 const rawPort = process.env["PORT"];
 

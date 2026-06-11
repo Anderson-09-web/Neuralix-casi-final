@@ -1,13 +1,56 @@
 import { useParams, useLocation } from "wouter";
-import { Users, Ticket, Shield, ShieldAlert, Database, FileText, ExternalLink, AlertTriangle, Bell, CheckCircle, RefreshCw } from "lucide-react";
+import { Users, Ticket, Shield, ShieldAlert, Database, FileText, ExternalLink, AlertTriangle, Bell, CheckCircle, RefreshCw, Cpu, Wifi, WifiOff, Gift, MessageSquareWarning, Zap } from "lucide-react";
 import { useGetGuild, useGetGuildStats, useGetGuildBotStatus, useGetAnnouncements, getGetGuildQueryKey, getGetGuildStatsQueryKey, getGetGuildBotStatusQueryKey, getGetAnnouncementsQueryKey } from "@workspace/api-client-react";
 import Layout from "@/components/Layout";
 import StatCard from "@/components/StatCard";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 
-const POLL_INTERVAL = 30_000; // 30 seconds
+const POLL_INTERVAL = 30_000;
+const STATUS_POLL   = 15_000;
+
+interface BotGlobalStatus {
+  online: boolean;
+  ping: number | null;
+  tag: string | null;
+  guilds: number;
+  users: number;
+  memoryMb: number;
+  uptimeSec: number;
+  dbStatus: "ok" | "error";
+}
+
+function useBotGlobalStatus() {
+  return useQuery<BotGlobalStatus>({
+    queryKey: ["bot-global-status"],
+    queryFn: async () => {
+      const res = await fetch("/api/status");
+      if (!res.ok) throw new Error("Error al obtener estado");
+      return res.json();
+    },
+    refetchInterval: STATUS_POLL,
+    staleTime: 0,
+  });
+}
+
+function formatUptime(sec: number): string {
+  if (sec < 60) return `${sec}s`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}m ${sec % 60}s`;
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  return `${h}h ${m}m`;
+}
+
+function StatusDot({ ok }: { ok: boolean }) {
+  return (
+    <span className="relative flex h-2 w-2">
+      <span className={cn("animate-ping absolute inline-flex h-full w-full rounded-full opacity-75", ok ? "bg-green-400" : "bg-red-400")} />
+      <span className={cn("relative inline-flex rounded-full h-2 w-2", ok ? "bg-green-500" : "bg-red-500")} />
+    </span>
+  );
+}
 
 export default function ServerDashboard() {
   const { guildId } = useParams<{ guildId: string }>();
@@ -16,52 +59,29 @@ export default function ServerDashboard() {
   const [secondsSince, setSecondsSince] = useState(0);
 
   const { data: guild, isLoading: guildLoading, refetch: refetchGuild } = useGetGuild(guildId, {
-    query: {
-      queryKey: getGetGuildQueryKey(guildId),
-      enabled: !!guildId,
-      staleTime: 0,
-      refetchInterval: POLL_INTERVAL,
-      refetchIntervalInBackground: false,
-    },
+    query: { queryKey: getGetGuildQueryKey(guildId), enabled: !!guildId, staleTime: 0, refetchInterval: POLL_INTERVAL, refetchIntervalInBackground: false },
   });
 
   const { data: stats, refetch: refetchStats } = useGetGuildStats(guildId, {
-    query: {
-      queryKey: getGetGuildStatsQueryKey(guildId),
-      enabled: !!guildId,
-      staleTime: 0,
-      refetchInterval: POLL_INTERVAL,
-      refetchIntervalInBackground: false,
-      refetchOnMount: true,
-    },
+    query: { queryKey: getGetGuildStatsQueryKey(guildId), enabled: !!guildId, staleTime: 0, refetchInterval: POLL_INTERVAL, refetchIntervalInBackground: false, refetchOnMount: true },
   });
 
   const { data: botStatus, refetch: refetchBot } = useGetGuildBotStatus(guildId, {
-    query: {
-      queryKey: getGetGuildBotStatusQueryKey(guildId),
-      enabled: !!guildId,
-      staleTime: 0,
-      refetchInterval: POLL_INTERVAL,
-      refetchIntervalInBackground: false,
-    },
+    query: { queryKey: getGetGuildBotStatusQueryKey(guildId), enabled: !!guildId, staleTime: 0, refetchInterval: POLL_INTERVAL, refetchIntervalInBackground: false },
   });
 
   const { data: announcements } = useGetAnnouncements({
     query: { queryKey: getGetAnnouncementsQueryKey(), enabled: true },
   });
 
-  // Track seconds since last update for the live indicator
+  const { data: globalStatus } = useBotGlobalStatus();
+
   useEffect(() => {
-    const interval = setInterval(() => {
-      setSecondsSince(Math.floor((Date.now() - lastUpdated.getTime()) / 1000));
-    }, 1000);
+    const interval = setInterval(() => setSecondsSince(Math.floor((Date.now() - lastUpdated.getTime()) / 1000)), 1000);
     return () => clearInterval(interval);
   }, [lastUpdated]);
 
-  // Update lastUpdated whenever stats change
-  useEffect(() => {
-    if (stats) setLastUpdated(new Date());
-  }, [stats]);
+  useEffect(() => { if (stats) setLastUpdated(new Date()); }, [stats]);
 
   function handleManualRefresh() {
     setLastUpdated(new Date());
@@ -80,14 +100,60 @@ export default function ServerDashboard() {
 
   return (
     <Layout guildId={guildId} guildName={guild?.name} guildIcon={guild?.icon}>
+
+      {/* ── Global Bot Status Bar ─────────────────────────────────────────── */}
+      <div className={cn(
+        "mb-5 rounded-xl border p-3 flex items-center gap-4 flex-wrap text-xs",
+        globalStatus?.online
+          ? "bg-green-500/5 border-green-500/20"
+          : "bg-red-500/5 border-red-500/20",
+      )}>
+        <div className="flex items-center gap-2 font-semibold">
+          <StatusDot ok={globalStatus?.online ?? false} />
+          <span className={globalStatus?.online ? "text-green-400" : "text-red-400"}>
+            {globalStatus?.online ? "Bot Online" : "Bot Offline"}
+          </span>
+          {globalStatus?.tag && <span className="text-muted-foreground font-normal">({globalStatus.tag})</span>}
+        </div>
+        {globalStatus?.online && (
+          <>
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <Wifi className="w-3 h-3" />
+              <span>{globalStatus.ping ?? "—"} ms</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <Zap className="w-3 h-3" />
+              <span>{globalStatus.guilds} servidores</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <Users className="w-3 h-3" />
+              <span>{globalStatus.users?.toLocaleString()} usuarios</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <Cpu className="w-3 h-3" />
+              <span>{globalStatus.memoryMb} MB</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <span>Uptime: {formatUptime(globalStatus.uptimeSec)}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <StatusDot ok={globalStatus.dbStatus === "ok"} />
+              <span className={globalStatus.dbStatus === "ok" ? "text-green-400" : "text-red-400"}>
+                DB {globalStatus.dbStatus === "ok" ? "OK" : "Error"}
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+
       {/* Bot not present banner */}
       {botStatus && !botStatus.present && (
         <div className="mb-6 p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-yellow-400 flex-shrink-0" />
             <div>
-              <p className="font-semibold text-sm text-yellow-300">Bot no instalado</p>
-              <p className="text-xs text-yellow-300/70">Agrega el bot al servidor para activar todas las funciones.</p>
+              <p className="font-semibold text-sm text-yellow-300">Bot no instalado en este servidor</p>
+              <p className="text-xs text-yellow-300/70">Agrega el bot para activar todas las funciones.</p>
             </div>
           </div>
           <a href={botStatus.addBotUrl} target="_blank" rel="noopener noreferrer">
@@ -115,7 +181,6 @@ export default function ServerDashboard() {
           </div>
         </div>
 
-        {/* Live indicator + refresh button */}
         <div className="flex items-center gap-2 flex-shrink-0">
           <div className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground">
             <span className="relative flex h-2 w-2">
@@ -123,11 +188,7 @@ export default function ServerDashboard() {
               <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
             </span>
             <span>
-              {secondsSince < 5
-                ? "Actualizado"
-                : secondsSince < 60
-                  ? `Hace ${secondsSince}s`
-                  : `Hace ${Math.floor(secondsSince / 60)}m`}
+              {secondsSince < 5 ? "Actualizado" : secondsSince < 60 ? `Hace ${secondsSince}s` : `Hace ${Math.floor(secondsSince / 60)}m`}
             </span>
           </div>
           <button
@@ -142,46 +203,22 @@ export default function ServerDashboard() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
-        <StatCard
-          label="Miembros"
-          value={stats?.memberCount?.toLocaleString() ?? "—"}
-          icon={<Users className="w-5 h-5" />}
-          color="primary"
-          trend="Total en el servidor"
-        />
-        <StatCard
-          label="Tickets abiertos"
-          value={stats?.openTickets ?? "—"}
-          icon={<Ticket className="w-5 h-5" />}
-          color="accent"
-          trend="Tickets activos"
-        />
-        <StatCard
-          label="Detecciones AntiRaid"
-          value={stats?.antiraidDetections ?? "—"}
-          icon={<ShieldAlert className="w-5 h-5" />}
-          color="red"
-          trend="Total detectado"
-        />
-        <StatCard
-          label="Backups"
-          value={stats?.backupsCount ?? "—"}
-          icon={<Database className="w-5 h-5" />}
-          color="green"
-          trend="Copias disponibles"
-        />
+        <StatCard label="Miembros" value={stats?.memberCount?.toLocaleString() ?? "—"} icon={<Users className="w-5 h-5" />} color="primary" trend="Total en el servidor" />
+        <StatCard label="Tickets abiertos" value={stats?.openTickets ?? "—"} icon={<Ticket className="w-5 h-5" />} color="accent" trend="Tickets activos" />
+        <StatCard label="Detecciones AntiRaid" value={stats?.antiraidDetections ?? "—"} icon={<ShieldAlert className="w-5 h-5" />} color="red" trend="Total detectado" />
+        <StatCard label="Backups" value={stats?.backupsCount ?? "—"} icon={<Database className="w-5 h-5" />} color="green" trend="Copias disponibles" />
       </div>
 
       {/* Quick access */}
       <h2 className="text-lg font-bold mb-4">Acceso rapido</h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         {[
-          { href: `/servers/${guildId}/antiraid`, icon: ShieldAlert, label: "AntiRaid", desc: "Configura los 20+ modulos de proteccion", color: "text-primary" },
-          { href: `/servers/${guildId}/verification`, icon: Shield, label: "Verificacion", desc: "Filtra alts, bots y VPNs automaticamente", color: "text-accent" },
-          { href: `/servers/${guildId}/tickets`, icon: Ticket, label: "Tickets", desc: "Gestiona el sistema de soporte", color: "text-green-400" },
-          { href: `/servers/${guildId}/logs`, icon: FileText, label: "Logs", desc: "Revisa el historial de actividad", color: "text-yellow-400" },
-          { href: `/servers/${guildId}/backups`, icon: Database, label: "Backups", desc: "Crea y restaura copias de seguridad", color: "text-primary" },
-          { href: `/servers/${guildId}/welcome`, icon: Users, label: "Bienvenidas", desc: "Configura mensajes de entrada/salida", color: "text-accent" },
+          { href: `/servers/${guildId}/antiraid`,      icon: ShieldAlert,          label: "AntiRaid",       desc: "20+ modulos de proteccion avanzada",        color: "text-primary" },
+          { href: `/servers/${guildId}/verification`,  icon: Shield,               label: "Verificacion",   desc: "Filtra alts, bots y VPNs",                  color: "text-accent" },
+          { href: `/servers/${guildId}/tickets`,       icon: Ticket,               label: "Tickets",        desc: "Sistema de soporte configurable",            color: "text-green-400" },
+          { href: `/servers/${guildId}/logs`,          icon: FileText,             label: "Logs",           desc: "Historial completo de actividad",            color: "text-yellow-400" },
+          { href: `/servers/${guildId}/backups`,       icon: Database,             label: "Backups",        desc: "Crea y restaura copias de seguridad",        color: "text-primary" },
+          { href: `/servers/${guildId}/welcome`,       icon: Users,                label: "Bienvenidas",    desc: "Mensajes de entrada y salida",               color: "text-accent" },
         ].map(({ href, icon: Icon, label, desc, color }) => (
           <button key={href} onClick={() => setLocation(href)}
             className="p-5 rounded-xl bg-card border border-card-border hover:border-primary/30 hover:bg-primary/5 transition-all text-left group">
@@ -205,10 +242,10 @@ export default function ServerDashboard() {
         <div className="space-y-3">
           {(announcements as any[]).filter((a: any) => a.published).map((ann: any) => {
             const typeStyles: Record<string, { bg: string; border: string; badge: string; text: string }> = {
-              info:    { bg: "bg-blue-500/5",    border: "border-blue-500/20",   badge: "bg-blue-500/20 text-blue-300",   text: "text-blue-300" },
-              warning: { bg: "bg-yellow-500/5",  border: "border-yellow-500/20", badge: "bg-yellow-500/20 text-yellow-300", text: "text-yellow-300" },
-              success: { bg: "bg-green-500/5",   border: "border-green-500/20",  badge: "bg-green-500/20 text-green-300",  text: "text-green-300" },
-              danger:  { bg: "bg-red-500/5",     border: "border-red-500/20",    badge: "bg-red-500/20 text-red-300",      text: "text-red-300" },
+              info:    { bg: "bg-blue-500/5",   border: "border-blue-500/20",   badge: "bg-blue-500/20 text-blue-300",    text: "text-blue-300" },
+              warning: { bg: "bg-yellow-500/5", border: "border-yellow-500/20", badge: "bg-yellow-500/20 text-yellow-300", text: "text-yellow-300" },
+              success: { bg: "bg-green-500/5",  border: "border-green-500/20",  badge: "bg-green-500/20 text-green-300",  text: "text-green-300" },
+              danger:  { bg: "bg-red-500/5",    border: "border-red-500/20",    badge: "bg-red-500/20 text-red-300",      text: "text-red-300" },
             };
             const s = typeStyles[ann.type] ?? typeStyles.info;
             return (

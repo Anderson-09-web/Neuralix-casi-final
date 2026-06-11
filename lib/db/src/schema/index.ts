@@ -13,3 +13,5 @@ export * from "./support";
 export * from "./admins";
 export * from "./admin-logs";
 export * from "./bot-settings";
+export * from "./moderation";
+export * from "./giveaways";

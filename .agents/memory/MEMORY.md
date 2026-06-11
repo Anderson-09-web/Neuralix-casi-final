@@ -1,1 +1,3 @@
 - [Express 5 params typing](express5-params.md) — `req.params.x` is `string | string[]` in @types/express-serve-static-core@5.x; always cast with `as string`
+- [Bot state module](bot-state.md) — bot-state.ts holds singleton client ref + getBotStatus(); index.ts calls setBotClient(); ClientReady also calls setBotClient() to reset uptime to ready time; /api/status is public (no auth)
+- [New DB tables 2026-06](new-db-tables.md) — warnings, automod_configs, giveaways added to lib/db/src/schema/; exported from schema/index.ts; pushed with `pnpm --filter @workspace/db run push`; new routes: /api/status, /api/guilds/:id/moderation/warnings, /api/guilds/:id/automod, /api/guilds/:id/giveaways

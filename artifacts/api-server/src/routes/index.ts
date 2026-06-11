@@ -18,6 +18,9 @@ import setupRouter from "./setup";
 import botSettingsRouter from "./bot-settings";
 import examplesRouter from "./examples";
 import botRouter from "./bot";
+import statusRouter from "./status";
+import moderationRouter from "./moderation";
+import giveawaysRouter from "./giveaways";
 
 const router: IRouter = Router();
 
@@ -40,5 +43,8 @@ router.use(supportRouter);
 router.use(aiRouter);
 router.use(setupRouter);
 router.use(botSettingsRouter);
+router.use(statusRouter);
+router.use(moderationRouter);
+router.use(giveawaysRouter);
 
 export default router;
