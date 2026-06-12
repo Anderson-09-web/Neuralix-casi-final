@@ -212,7 +212,7 @@ ${rows}
 </body></html>`;
 }
 
-async function generateTranscript(channelId: string, botToken: string): Promise<{ text: string; html: string }> {
+async function generateTranscript(channelId: string, botToken: string, ticketId: number, username: string): Promise<{ text: string; html: string }> {
   try {
     const res = await axios.get(`${DISCORD_API}/channels/${channelId}/messages?limit=100`, {
       headers: { Authorization: `Bot ${botToken.trim()}` },
@@ -223,10 +223,11 @@ async function generateTranscript(channelId: string, botToken: string): Promise<
     const text = messages.map((m: any) => {
       const ts = new Date(m.timestamp).toLocaleString("es-ES");
       const author = m.author?.username || "Desconocido";
-      const content = m.content || (m.embeds?.length ? "[Embed]" : "[Adjunto]");
+      const content = m.content || (m.embeds?.length ? "[Embed]" : m.attachments?.length ? "[Adjunto]" : "");
       return `[${ts}] ${author}: ${content}`;
     }).join("\n");
-    return { text, html: "" };
+    const html = generateHtmlTranscript(messages, ticketId, username);
+    return { text, html };
   } catch { return { text: "", html: "" }; }
 }
 
@@ -616,8 +617,6 @@ export function startBot(): Client | undefined {
                 const userMsgsList = msgs.filter((m) => m.author.id === userId);
                 for (const [, m] of userMsgsList) { await m.delete().catch(() => {}); }
               } catch {}
-            } else {
-              await message.delete().catch(() => {});
             }
             if (action === "ban") await message.member?.ban({ reason: "AntiRaid: Flood detectado" });
             else if (action === "kick") await message.member?.kick("AntiRaid: Flood detectado");
@@ -1208,8 +1207,8 @@ export function startBot(): Client | undefined {
         moduleName: mod?.name ?? null,
       }).returning();
 
-      const welcomeMsg = mod?.welcomeMessage || cfg.openMessage || `Hola <@${userId}>, tu ticket fue creado. Pronto te atendemos.`;
-      const openMsg = welcomeMsg.replace("{user}", userId).replace("{username}", username);
+      const standardOpener = cfg.openMessage || `Hola <@${userId}>, tu ticket fue creado. Pronto te atendemos.`;
+      const openMsg = standardOpener.replace("{user}", userId).replace("{username}", username);
       const mentionParts: string[] = [];
       if (cfg.mentionSupport) { for (const rid of supportRoleIds) mentionParts.push(`<@&${rid}>`); }
 
@@ -1217,7 +1216,13 @@ export function startBot(): Client | undefined {
 
       await ticketChannel.send({ content: `${mentionParts.join(" ")} ${openMsg}`.trim(), components } as any);
 
-      // Per-module welcome embed
+      // Per-module welcome message as follow-up
+      if (mod?.welcomeMessage) {
+        const modMsg = mod.welcomeMessage.replace("{user}", `<@${userId}>`).replace("{username}", username);
+        await ticketChannel.send({ content: modMsg } as any).catch(() => {});
+      }
+
+      // Per-module welcome embed as additional follow-up
       if (mod?.welcomeEmbedEnabled && (mod.welcomeEmbedTitle || mod.welcomeEmbedDescription)) {
         await ticketChannel.send({
           embeds: [{
@@ -1263,8 +1268,9 @@ export function startBot(): Client | undefined {
       let transcriptText = "";
       let transcriptHtml = "";
       if (cfg?.autoTranscript) {
-        const result = await generateTranscript(interaction.channelId, botToken);
+        const result = await generateTranscript(interaction.channelId, botToken, ticketId, ticket.username ?? username);
         transcriptText = result.text;
+        transcriptHtml = result.html;
       }
 
       await db.update(ticketsTable).set({ status: "closed", closedAt: new Date(), transcript: transcriptText || null }).where(eq(ticketsTable.id, ticketId));
@@ -1284,11 +1290,33 @@ export function startBot(): Client | undefined {
         }
       } catch {}
 
-      if (cfg?.transcriptChannelId && transcriptText) {
-        const preview = transcriptText.substring(0, 800);
-        await sendToChannel(cfg.transcriptChannelId, {
-          embeds: [{ title: `Transcript — Ticket #${ticketId}`, description: `**Usuario:** <@${ticket.userId}> (\`${ticket.username}\`)\n**Cerrado por:** <@${userId}>\n**Mensajes:** ${transcriptText.split("\n").length}\n\n\`\`\`\n${preview}${preview.length < transcriptText.length ? "\n...(ver adjunto completo)" : ""}\n\`\`\``, color: 0x5865F2, timestamp: new Date().toISOString(), footer: { text: `Ticket #${ticketId} · ${ticket.username}` } }],
-        }, botToken);
+      if (cfg?.transcriptChannelId && (transcriptText || transcriptHtml)) {
+        const msgCount = transcriptText ? transcriptText.split("\n").length : 0;
+        const embedPayload = {
+          embeds: [{
+            title: `Transcript — Ticket #${ticketId}`,
+            description: `**Usuario:** <@${ticket.userId}> (\`${ticket.username}\`)\n**Cerrado por:** <@${userId}>\n**Mensajes:** ${msgCount}\n**Modulo:** ${ticket.moduleName ?? "General"}`,
+            color: 0x5865F2, timestamp: new Date().toISOString(),
+            footer: { text: `Ticket #${ticketId} · ${ticket.username}` },
+          }],
+        };
+
+        if (transcriptHtml) {
+          try {
+            const htmlBuf = Buffer.from(transcriptHtml, "utf8");
+            const form = new FormData();
+            form.append("payload_json", JSON.stringify(embedPayload));
+            form.append("files[0]", new Blob([htmlBuf], { type: "text/html" }), `transcript-${ticketId}.html`);
+            await axios.post(`${DISCORD_API}/channels/${cfg.transcriptChannelId}/messages`, form, {
+              headers: { Authorization: `Bot ${botToken.trim()}` },
+              validateStatus: () => true,
+            });
+          } catch {
+            await sendToChannel(cfg.transcriptChannelId, embedPayload, botToken);
+          }
+        } else {
+          await sendToChannel(cfg.transcriptChannelId, embedPayload, botToken);
+        }
       }
 
       await interaction.editReply({ content: "Ticket cerrado correctamente." });

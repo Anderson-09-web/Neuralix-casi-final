@@ -6,7 +6,22 @@ const AVATAR_SIZE = 120;
 const AVATAR_X = 40;
 const AVATAR_Y = (CARD_H - AVATAR_SIZE) / 2;
 
+function isSafeUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (!["http:", "https:"].includes(u.protocol)) return false;
+    const host = u.hostname.toLowerCase();
+    if (host === "localhost" || host === "127.0.0.1" || host === "::1") return false;
+    if (/^10\.\d+\.\d+\.\d+$/.test(host)) return false;
+    if (/^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/.test(host)) return false;
+    if (/^192\.168\.\d+\.\d+$/.test(host)) return false;
+    if (host.endsWith(".internal") || host.endsWith(".local")) return false;
+    return true;
+  } catch { return false; }
+}
+
 async function fetchImageBuffer(url: string): Promise<Buffer | null> {
+  if (!isSafeUrl(url)) return null;
   try {
     const res = await axios.get(url, { responseType: "arraybuffer", timeout: 5000, validateStatus: () => true });
     if (res.status === 200) return Buffer.from(res.data);
