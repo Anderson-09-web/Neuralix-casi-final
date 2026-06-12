@@ -18,6 +18,9 @@ export const welcomeConfigsTable = pgTable("welcome_configs", {
   autoRoleIds: text("auto_role_ids").array().notNull().default([]),
   dmEnabled: boolean("dm_enabled").notNull().default(false),
   dmMessage: text("dm_message"),
+  cardEnabled: boolean("card_enabled").notNull().default(false),
+  cardBackground: text("card_background"),
+  cardTextColor: text("card_text_color"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

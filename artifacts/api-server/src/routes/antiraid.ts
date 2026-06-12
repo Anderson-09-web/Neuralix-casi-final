@@ -20,6 +20,7 @@ const ALLOWED_FIELDS = new Set([
   "antiEmojiCreate", "antiEmojiDelete",
   "antiBanMass", "antiKickMass",
   "antiNuke", "nukeThreshold", "nukeAction",
+  "antiFlood", "floodLimit", "floodInterval", "floodAction", "deleteOnTrigger",
 ]);
 
 const DEFAULT_CONFIG = {
@@ -37,6 +38,7 @@ const DEFAULT_CONFIG = {
   antiEmojiCreate: false, antiEmojiDelete: false,
   antiBanMass: false, antiKickMass: false,
   antiNuke: false, nukeThreshold: 10, nukeAction: "strip_permissions",
+  antiFlood: false, floodLimit: 5, floodInterval: 3, floodAction: "mute", deleteOnTrigger: true,
 };
 
 function sanitize(cfg: any) {

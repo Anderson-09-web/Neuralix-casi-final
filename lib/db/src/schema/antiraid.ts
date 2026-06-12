@@ -50,6 +50,11 @@ export const antiraidConfigsTable = pgTable("antiraid_configs", {
   antiNuke: boolean("anti_nuke").notNull().default(false),
   nukeThreshold: integer("nuke_threshold").notNull().default(10),
   nukeAction: text("nuke_action").notNull().default("strip_permissions"),
+  antiFlood: boolean("anti_flood").notNull().default(false),
+  floodLimit: integer("flood_limit").notNull().default(5),
+  floodInterval: integer("flood_interval").notNull().default(3),
+  floodAction: text("flood_action").notNull().default("mute"),
+  deleteOnTrigger: boolean("delete_on_trigger").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

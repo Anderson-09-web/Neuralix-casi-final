@@ -118,13 +118,17 @@ router.get("/guilds/:guildId/tickets/modules", requireAuth, async (req, res) => 
 router.post("/guilds/:guildId/tickets/modules", requireAuth, async (req, res) => {
   const guildId = req.params.guildId as string;
   try {
-    const { name, description, emoji, welcomeMessage, supportRoleIds, categoryId, buttonLabel, buttonColor, buttonStyle, sortOrder } = req.body;
+    const { name, description, emoji, welcomeMessage, welcomeEmbedEnabled, welcomeEmbedTitle, welcomeEmbedDescription, welcomeEmbedColor, supportRoleIds, categoryId, buttonLabel, buttonColor, buttonStyle, sortOrder } = req.body;
     if (!name) { res.status(400).json({ error: "El nombre es obligatorio" }); return; }
     const [created] = await db.insert(ticketModulesTable).values({
       guildId, name,
       description: description || null,
       emoji: emoji || null,
       welcomeMessage: welcomeMessage || null,
+      welcomeEmbedEnabled: welcomeEmbedEnabled === true,
+      welcomeEmbedTitle: welcomeEmbedTitle || null,
+      welcomeEmbedDescription: welcomeEmbedDescription || null,
+      welcomeEmbedColor: welcomeEmbedColor || null,
       supportRoleIds: Array.isArray(supportRoleIds) ? supportRoleIds : [],
       categoryId: categoryId || null,
       buttonLabel: buttonLabel || null,
@@ -144,12 +148,16 @@ router.put("/guilds/:guildId/tickets/modules/:id", requireAuth, async (req, res)
   const id = Number(req.params.id as string);
   if (isNaN(id)) { res.status(400).json({ error: "ID invalido" }); return; }
   try {
-    const { name, description, emoji, welcomeMessage, supportRoleIds, categoryId, buttonLabel, buttonColor, buttonStyle, sortOrder, enabled } = req.body;
+    const { name, description, emoji, welcomeMessage, welcomeEmbedEnabled, welcomeEmbedTitle, welcomeEmbedDescription, welcomeEmbedColor, supportRoleIds, categoryId, buttonLabel, buttonColor, buttonStyle, sortOrder, enabled } = req.body;
     const [updated] = await db.update(ticketModulesTable).set({
       name,
       description: description || null,
       emoji: emoji || null,
       welcomeMessage: welcomeMessage || null,
+      welcomeEmbedEnabled: welcomeEmbedEnabled === true,
+      welcomeEmbedTitle: welcomeEmbedTitle || null,
+      welcomeEmbedDescription: welcomeEmbedDescription || null,
+      welcomeEmbedColor: welcomeEmbedColor || null,
       supportRoleIds: Array.isArray(supportRoleIds) ? supportRoleIds : [],
       categoryId: categoryId || null,
       buttonLabel: buttonLabel || null,

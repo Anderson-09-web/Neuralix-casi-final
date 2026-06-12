@@ -24,6 +24,8 @@ import giveawaysRouter from "./giveaways";
 import autoRolesRouter from "./auto-roles";
 import webhooksRouter from "./webhooks";
 import messagesRouter from "./messages";
+import ticketPanelsRouter from "./ticket-panels";
+import blacklistConfigRouter from "./blacklist-config";
 
 const router: IRouter = Router();
 
@@ -52,5 +54,7 @@ router.use(giveawaysRouter);
 router.use(autoRolesRouter);
 router.use(webhooksRouter);
 router.use(messagesRouter);
+router.use(ticketPanelsRouter);
+router.use(blacklistConfigRouter);
 
 export default router;

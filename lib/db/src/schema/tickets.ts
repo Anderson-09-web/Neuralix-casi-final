@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, integer, serial, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, integer, serial, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -59,6 +59,26 @@ export const ticketsTable = pgTable("tickets", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
+export const ticketPanelsTable = pgTable("ticket_panels", {
+  id: serial("id").primaryKey(),
+  guildId: text("guild_id").notNull(),
+  name: text("name").notNull(),
+  channelId: text("channel_id"),
+  embedTitle: text("embed_title"),
+  embedDescription: text("embed_description"),
+  embedColor: text("embed_color").default("#5865F2"),
+  embedImage: text("embed_image"),
+  embedFooter: text("embed_footer"),
+  buttonLabel: text("button_label").default("Abrir Ticket"),
+  buttonEmoji: text("button_emoji").default("🎫"),
+  buttonColor: text("button_color").default("PRIMARY"),
+  useModules: boolean("use_modules").notNull().default(false),
+  isDefault: boolean("is_default").notNull().default(false),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
 export const insertTicketConfigSchema = createInsertSchema(ticketConfigsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertTicketConfig = z.infer<typeof insertTicketConfigSchema>;
 export type TicketConfig = typeof ticketConfigsTable.$inferSelect;
@@ -66,3 +86,7 @@ export type TicketConfig = typeof ticketConfigsTable.$inferSelect;
 export const insertTicketSchema = createInsertSchema(ticketsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertTicket = z.infer<typeof insertTicketSchema>;
 export type Ticket = typeof ticketsTable.$inferSelect;
+
+export const insertTicketPanelSchema = createInsertSchema(ticketPanelsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertTicketPanel = z.infer<typeof insertTicketPanelSchema>;
+export type TicketPanel = typeof ticketPanelsTable.$inferSelect;

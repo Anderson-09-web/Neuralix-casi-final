@@ -22,6 +22,7 @@ import {
   guildConfigsTable,
   ticketConfigsTable,
   ticketModulesTable,
+  ticketPanelsTable,
   ticketsTable,
   verificationConfigsTable,
   logsConfigsTable,
@@ -34,13 +35,15 @@ import {
 import { eq, sql, and, count } from "drizzle-orm";
 import { logger } from "./lib/logger";
 import { setBotClient } from "./bot-state";
+import { generateWelcomeCard } from "./welcome-card";
 
 const DISCORD_API = "https://discord.com/api/v10";
 
 // ─── In-memory trackers ───────────────────────────────────────────────────────
-const joinTracker  = new Map<string, number[]>();
-const spamTracker  = new Map<string, number[]>();
-const nukeTracker  = new Map<string, { count: number; resetAt: number }>();
+const joinTracker   = new Map<string, number[]>();
+const spamTracker   = new Map<string, number[]>();
+const floodTracker  = new Map<string, Map<string, number[]>>();
+const nukeTracker   = new Map<string, { count: number; resetAt: number }>();
 const tempRoleTimers = new Map<string, NodeJS.Timeout>();
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -84,6 +87,13 @@ function buildWelcomePayload(
 async function sendToChannel(channelId: string, payload: Record<string, unknown>, botToken: string) {
   return axios.post(`${DISCORD_API}/channels/${channelId}/messages`, payload, {
     headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" },
+    validateStatus: () => true,
+  });
+}
+
+async function sendToChannelWithFile(channelId: string, formData: FormData, botToken: string) {
+  return axios.post(`${DISCORD_API}/channels/${channelId}/messages`, formData, {
+    headers: { Authorization: `Bot ${botToken.trim()}` },
     validateStatus: () => true,
   });
 }
@@ -167,25 +177,60 @@ async function addWarning(guildId: string, userId: string, username: string, rea
   } catch { return 0; }
 }
 
-async function generateTranscript(channelId: string, botToken: string): Promise<string> {
+function generateHtmlTranscript(messages: any[], ticketId: number, username: string): string {
+  const rows = messages.map((m: any) => {
+    const ts = new Date(m.timestamp).toLocaleString("es-ES");
+    const author = m.author?.username || "Desconocido";
+    const avatar = m.author?.avatar
+      ? `https://cdn.discordapp.com/avatars/${m.author.id}/${m.author.avatar}.png?size=32`
+      : `https://cdn.discordapp.com/embed/avatars/${Number(m.author?.discriminator || 0) % 5}.png`;
+    const content = m.content
+      ? m.content.replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      : m.embeds?.length
+        ? `<em>[Embed: ${m.embeds[0]?.title || "sin titulo"}]</em>`
+        : m.attachments?.length
+          ? `<em>[Adjunto]</em>`
+          : "";
+    return `<div class="msg"><img class="av" src="${avatar}" /><div class="body"><span class="author">${author}</span><span class="ts">${ts}</span><div class="content">${content}</div></div></div>`;
+  }).join("\n");
+
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Transcript — Ticket #${ticketId}</title><style>
+body{background:#1e1f2e;color:#dcddde;font-family:Whitney,Helvetica Neue,Helvetica,Arial,sans-serif;margin:0;padding:20px}
+h1{color:#fff;border-bottom:2px solid #5865F2;padding-bottom:10px}
+.meta{color:#72767d;margin-bottom:20px;font-size:14px}
+.msg{display:flex;gap:12px;margin-bottom:12px;padding:8px;border-radius:6px}
+.msg:hover{background:rgba(255,255,255,0.04)}
+.av{width:40px;height:40px;border-radius:50%;flex-shrink:0}
+.body{flex:1}
+.author{font-weight:700;color:#fff;margin-right:8px}
+.ts{color:#72767d;font-size:12px}
+.content{margin-top:4px;word-break:break-word;line-height:1.4}
+</style></head><body>
+<h1>Transcript — Ticket #${ticketId}</h1>
+<div class="meta">Usuario: ${username} · Total mensajes: ${messages.length} · Generado: ${new Date().toLocaleString("es-ES")}</div>
+${rows}
+</body></html>`;
+}
+
+async function generateTranscript(channelId: string, botToken: string): Promise<{ text: string; html: string }> {
   try {
     const res = await axios.get(`${DISCORD_API}/channels/${channelId}/messages?limit=100`, {
       headers: { Authorization: `Bot ${botToken.trim()}` },
       validateStatus: () => true,
     });
-    if (res.status !== 200 || !Array.isArray(res.data)) return "";
+    if (res.status !== 200 || !Array.isArray(res.data)) return { text: "", html: "" };
     const messages = (res.data as any[]).reverse();
-    return messages.map((m: any) => {
+    const text = messages.map((m: any) => {
       const ts = new Date(m.timestamp).toLocaleString("es-ES");
       const author = m.author?.username || "Desconocido";
       const content = m.content || (m.embeds?.length ? "[Embed]" : "[Adjunto]");
       return `[${ts}] ${author}: ${content}`;
     }).join("\n");
-  } catch { return ""; }
+    return { text, html: "" };
+  } catch { return { text: "", html: "" }; }
 }
 
 async function buildTicketComponents(ticketId: number, cfg: any): Promise<any[]> {
-  const components: any[] = [];
   const row1Buttons: any[] = [
     { type: 2, style: 4, label: "Cerrar Ticket", emoji: { name: "🔒" }, custom_id: `ticket_close_${ticketId}` },
   ];
@@ -195,8 +240,47 @@ async function buildTicketComponents(ticketId: number, cfg: any): Promise<any[]>
   if (cfg?.deleteEnabled !== false) {
     row1Buttons.push({ type: 2, style: 4, label: "Eliminar", emoji: { name: "🗑️" }, custom_id: `ticket_delete_${ticketId}` });
   }
-  components.push({ type: 1, components: row1Buttons });
-  return components;
+  return [{ type: 1, components: row1Buttons }];
+}
+
+// ─── Global Blacklist Sweep ────────────────────────────────────────────────────
+
+async function runBlacklistSweep(client: Client, botToken: string) {
+  try {
+    const blacklistEntries = await db.select().from(blacklistTable);
+    const active = blacklistEntries.filter((e) => !e.expiresAt || new Date() < new Date(e.expiresAt));
+    if (!active.length) return;
+
+    for (const entry of active) {
+      for (const [, guild] of client.guilds.cache) {
+        try {
+          const member = guild.members.cache.get(entry.userId) || await guild.members.fetch(entry.userId).catch(() => null);
+          if (!member) continue;
+
+          const [guildCfg] = await db.select().from(guildConfigsTable).where(eq(guildConfigsTable.guildId, guild.id));
+          const action = guildCfg?.blacklistAction || "ban";
+
+          if (action === "kick") {
+            await member.kick(`Blacklist Global: ${entry.reason}`);
+          } else {
+            await member.ban({ reason: `Blacklist Global: ${entry.reason}` });
+          }
+
+          const [logCfg] = await db.select().from(logsConfigsTable).where(eq(logsConfigsTable.guildId, guild.id));
+          const logChannel = getLogChannel(logCfg, "security");
+          if (logChannel) {
+            await sendLog(logChannel, {
+              title: `Blacklist Global — Usuario ${action === "kick" ? "Expulsado" : "Baneado"} (Sincronizacion)`,
+              description: `**Usuario:** \`${entry.username}\` (\`${entry.userId}\`)\n**Razon:** ${entry.reason}\n**Accion:** ${action}\n**Sistema:** Sincronizacion automatica`,
+              color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix Blacklist Global" },
+            }, botToken);
+          }
+        } catch {}
+      }
+    }
+  } catch (err) {
+    logger.error({ err }, "Error en blacklist sweep");
+  }
 }
 
 // ─── Bot factory ──────────────────────────────────────────────────────────────
@@ -222,6 +306,8 @@ export function startBot(): Client | undefined {
   client.on(Events.ClientReady, (c) => {
     setBotClient(client);
     logger.info({ tag: c.user.tag, guilds: c.guilds.cache.size }, "Bot de Discord listo");
+    setTimeout(() => runBlacklistSweep(client, botToken), 5000);
+    setInterval(() => runBlacklistSweep(client, botToken), 10 * 60_000);
   });
 
   // ─── Member Join ──────────────────────────────────────────────────────────
@@ -246,19 +332,24 @@ export function startBot(): Client | undefined {
       const memberCount = member.guild.memberCount ?? guildCfg?.memberCount ?? 0;
       const logChannel  = getLogChannel(logCfg, "members");
       const secChannel  = getLogChannel(logCfg, "security");
+      const blacklistAction = guildCfg?.blacklistAction || "ban";
 
       // ── Global Blacklist ─────────────────────────────────────────────────
       if (blacklistEntry && (!blacklistEntry.expiresAt || new Date() < new Date(blacklistEntry.expiresAt))) {
         try {
-          await (member as GuildMember).ban({ reason: `Blacklist Global: ${blacklistEntry.reason}` });
-          if (logChannel) {
-            await sendLog(logChannel, {
-              title: "Blacklist Global — Usuario Baneado",
-              description: `**Usuario:** \`${blacklistEntry.username}\` (\`${userId}\`)\n**Razon:** ${blacklistEntry.reason}\n**Baneado por:** ${blacklistEntry.addedByUsername ?? "Sistema"}`,
+          if (blacklistAction === "kick") {
+            await (member as GuildMember).kick(`Blacklist Global: ${blacklistEntry.reason}`);
+          } else {
+            await (member as GuildMember).ban({ reason: `Blacklist Global: ${blacklistEntry.reason}` });
+          }
+          if (secChannel || logChannel) {
+            await sendLog((secChannel || logChannel)!, {
+              title: `Blacklist Global — Usuario ${blacklistAction === "kick" ? "Expulsado" : "Baneado"}`,
+              description: `**Usuario:** \`${blacklistEntry.username}\` (\`${userId}\`)\n**Razon:** ${blacklistEntry.reason}\n**Accion:** ${blacklistAction}\n**Moderador original:** ${blacklistEntry.addedByUsername ?? "Sistema"}`,
               color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix Blacklist Global" },
             }, botToken);
           }
-        } catch (e) { logger.error({ e }, "Error al banear usuario de blacklist"); }
+        } catch (e) { logger.error({ e }, "Error al aplicar blacklist"); }
         return;
       }
 
@@ -266,7 +357,6 @@ export function startBot(): Client | undefined {
       if (antiraid?.enabled) {
         const whitelisted = await isWhitelisted(guildId, userId);
         if (!whitelisted) {
-          // AntiBot
           if (antiraid.antiBot && isBot) {
             const legacyWl = antiraid.antiBotWhitelist ?? [];
             if (!legacyWl.includes(userId)) {
@@ -281,7 +371,6 @@ export function startBot(): Client | undefined {
             }
           }
 
-          // AntiAlt
           if (antiraid.antiAlt && !isBot && member.user?.createdTimestamp) {
             const ageDays = (Date.now() - member.user.createdTimestamp) / 86_400_000;
             if (ageDays < (antiraid.antiAltMinAge ?? 7)) {
@@ -296,7 +385,6 @@ export function startBot(): Client | undefined {
             }
           }
 
-          // AntiJoin
           if (antiraid.antiJoin) {
             const now = Date.now();
             const windowMs  = (antiraid.antiJoinInterval ?? 10) * 1000;
@@ -320,7 +408,6 @@ export function startBot(): Client | undefined {
         }
       }
 
-      // ── Verificacion DM ───────────────────────────────────────────────────
       if (!isBot && verifCfg?.enabled) {
         try {
           const host = process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : "https://neuralix.replit.app";
@@ -331,7 +418,6 @@ export function startBot(): Client | undefined {
         } catch {}
       }
 
-      // ── Join Auto-Roles ───────────────────────────────────────────────────
       if (!isBot) {
         try {
           const joinRoles = await db.select().from(autoRolesTable)
@@ -343,10 +429,7 @@ export function startBot(): Client | undefined {
                 if (ar.temporary && ar.durationMinutes > 0) {
                   const key = `${guildId}:${userId}:${roleId}`;
                   const timer = setTimeout(async () => {
-                    try {
-                      const m = await member.guild.members.fetch(userId);
-                      await m.roles.remove(roleId);
-                    } catch {}
+                    try { const m = await member.guild.members.fetch(userId); await m.roles.remove(roleId); } catch {}
                     tempRoleTimers.delete(key);
                   }, ar.durationMinutes * 60_000);
                   tempRoleTimers.set(key, timer);
@@ -357,7 +440,6 @@ export function startBot(): Client | undefined {
         } catch {}
       }
 
-      // ── Welcome ───────────────────────────────────────────────────────────
       if (welcomeCfg?.enabled && welcomeCfg.channelId) {
         const opts = {
           guildName, mention: `<@${userId}>`, username,
@@ -366,7 +448,36 @@ export function startBot(): Client | undefined {
         };
         const payload = buildWelcomePayload(welcomeCfg, opts);
         if (!payload.content && !payload.embeds) payload.content = `Bienvenido <@${userId}> a **${guildName}**!`;
-        await sendToChannel(welcomeCfg.channelId, payload, botToken);
+
+        if ((welcomeCfg as any).cardEnabled) {
+          try {
+            const avatarUrl = member.user?.avatar
+              ? `https://cdn.discordapp.com/avatars/${userId}/${member.user.avatar}.png?size=128`
+              : null;
+            const cardBuf = await generateWelcomeCard({
+              username, tag: opts.tag, guildName, memberCount,
+              avatarUrl,
+              background: (welcomeCfg as any).cardBackground || null,
+              textColor: (welcomeCfg as any).cardTextColor || null,
+            });
+            if (cardBuf) {
+              const form = new FormData();
+              const payloadJson = JSON.stringify(payload);
+              form.append("payload_json", payloadJson);
+              form.append("files[0]", new Blob([cardBuf], { type: "image/png" }), "welcome-card.png");
+              await axios.post(`${DISCORD_API}/channels/${welcomeCfg.channelId}/messages`, form, {
+                headers: { Authorization: `Bot ${botToken.trim()}` },
+                validateStatus: () => true,
+              });
+            } else {
+              await sendToChannel(welcomeCfg.channelId, payload, botToken);
+            }
+          } catch {
+            await sendToChannel(welcomeCfg.channelId, payload, botToken);
+          }
+        } else {
+          await sendToChannel(welcomeCfg.channelId, payload, botToken);
+        }
 
         if (!isBot && welcomeCfg.autoRoleIds?.length) {
           for (const roleId of welcomeCfg.autoRoleIds) {
@@ -381,11 +492,10 @@ export function startBot(): Client | undefined {
         }
       }
 
-      // ── Log member join ───────────────────────────────────────────────────
       if (logChannel && logCfg?.logMembers) {
         await sendLog(logChannel, {
           title: "Miembro Unido",
-          description: `**Usuario:** \`${username}\` (<@${userId}>)\n**ID:** \`${userId}\`\n**Cuenta creada:** ${member.user?.createdAt?.toLocaleDateString("es-ES") ?? "Desconocido"}`,
+          description: `**Usuario:** \`${username}\` (<@${userId}>)\n**ID:** \`${userId}\`\n**Cuenta creada:** ${member.user?.createdAt?.toLocaleDateString("es-ES") ?? "Desconocido"}\n**Bot:** ${isBot ? "Si" : "No"}`,
           color: 0x57F287, timestamp: new Date().toISOString(), footer: { text: `Miembros: ${memberCount}` },
         }, botToken);
       }
@@ -430,13 +540,12 @@ export function startBot(): Client | undefined {
     }
   });
 
-  // ─── Member Update — nickname/role changes ────────────────────────────────
+  // ─── Member Update ────────────────────────────────────────────────────────
   client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
     const guildId = newMember.guild.id;
     try {
       const [logCfg] = await db.select().from(logsConfigsTable).where(eq(logsConfigsTable.guildId, guildId));
       if (!logCfg?.enabled) return;
-
       const logChannel = getLogChannel(logCfg, "members");
       if (!logChannel) return;
 
@@ -465,7 +574,7 @@ export function startBot(): Client | undefined {
     } catch {}
   });
 
-  // ─── Message Create — AntiSpam, AntiLinks, AntiMassMention, AutoMod ───────
+  // ─── Message Create — AntiSpam, AntiFlood, AntiLinks, AntiMassMention, AutoMod ──
   client.on(Events.MessageCreate, async (message: Message) => {
     if (!message.guild || message.author.bot) return;
     const guildId  = message.guild.id;
@@ -484,21 +593,60 @@ export function startBot(): Client | undefined {
 
       const logChannel  = getLogChannel(logCfg, "messages");
       const secChannel  = getLogChannel(logCfg, "security");
-      const automodLog  = automod?.logChannelId ?? secChannel;
-      const whitelisted = antiraid?.enabled ? await isWhitelisted(guildId, userId, memberRoleIds) : false;
+      const automodLog  = logCfg?.enabled ? (logCfg.moderationChannelId || logCfg.channelId || null) : null;
+      const whitelisted = antiraid?.enabled ? await isWhitelisted(guildId, userId, memberRoleIds) : true;
+
+      // ── AntiFlood ─────────────────────────────────────────────────────────
+      if (!whitelisted && antiraid?.enabled && antiraid.antiFlood) {
+        if (!floodTracker.has(guildId)) floodTracker.set(guildId, new Map());
+        const guildFlood = floodTracker.get(guildId)!;
+        const windowMs = (antiraid.floodInterval ?? 3) * 1000;
+        const limit = antiraid.floodLimit ?? 5;
+        const userMsgs = (guildFlood.get(userId) ?? []).filter((t) => now - t < windowMs);
+        userMsgs.push(now);
+        guildFlood.set(userId, userMsgs);
+
+        if (userMsgs.length >= limit) {
+          guildFlood.set(userId, []);
+          const action = antiraid.floodAction ?? "mute";
+          try {
+            if (antiraid.deleteOnTrigger) {
+              try {
+                const msgs = await message.channel.messages.fetch({ limit: 10 });
+                const userMsgsList = msgs.filter((m) => m.author.id === userId);
+                for (const [, m] of userMsgsList) { await m.delete().catch(() => {}); }
+              } catch {}
+            } else {
+              await message.delete().catch(() => {});
+            }
+            if (action === "ban") await message.member?.ban({ reason: "AntiRaid: Flood detectado" });
+            else if (action === "kick") await message.member?.kick("AntiRaid: Flood detectado");
+            else await message.member?.timeout(10 * 60_000, "AntiRaid: Flood");
+            await bumpStats(guildId, "blockedSpam");
+            if (secChannel && logCfg?.logSecurity) {
+              await sendLog(secChannel, {
+                title: "AntiFlood — Flood Detectado",
+                description: `**Usuario:** \`${username}\` (<@${userId}>)\n**Mensajes:** ${userMsgs.length} en ${antiraid.floodInterval}s\n**Accion:** ${action}\n**Canal:** <#${message.channelId}>`,
+                color: 0xFF6B35, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid" },
+              }, botToken);
+            }
+          } catch {}
+          return;
+        }
+      }
 
       // ── AntiSpam ──────────────────────────────────────────────────────────
       if (!whitelisted && antiraid?.enabled && antiraid.antiSpam) {
-        const windowMs = (antiraid.antiSpamInterval ?? 5) * 1000;
-        const limit    = antiraid.antiSpamLimit ?? 5;
-        const key      = `${guildId}:${userId}`;
-        const msgs     = (spamTracker.get(key) ?? []).filter((t) => now - t < windowMs);
+        const key = `${guildId}:${userId}`;
+        const windowMs  = (antiraid.antiSpamInterval ?? 5) * 1000;
+        const threshold = antiraid.antiSpamLimit ?? 5;
+        const msgs = (spamTracker.get(key) ?? []).filter((t) => now - t < windowMs);
         msgs.push(now);
         spamTracker.set(key, msgs);
-        if (msgs.length >= limit) {
-          spamTracker.delete(key);
+        if (msgs.length >= threshold) {
+          spamTracker.set(key, []);
           try {
-            await message.delete().catch(() => {});
+            if (antiraid.deleteOnTrigger) { await message.delete().catch(() => {}); }
             const action = antiraid.antiSpamAction ?? "mute";
             if (action === "ban") await message.member?.ban({ reason: "AntiRaid: Spam" });
             else if (action === "kick") await message.member?.kick("AntiRaid: Spam");
@@ -555,9 +703,7 @@ export function startBot(): Client | undefined {
       if (automod?.enabled && content) {
         const exemptRoles    = automod.exemptRoles ?? [];
         const exemptChannels = automod.exemptChannels ?? [];
-        if (exemptChannels.includes(message.channelId) || exemptRoles.some((r: string) => memberRoleIds.includes(r))) {
-          return;
-        }
+        if (exemptChannels.includes(message.channelId) || exemptRoles.some((r: string) => memberRoleIds.includes(r))) return;
 
         if (automod.badWordsEnabled && automod.badWords?.length) {
           const lower = content.toLowerCase();
@@ -610,7 +756,6 @@ export function startBot(): Client | undefined {
           }
         }
       }
-
     } catch (err) {
       logger.error({ err, guildId, userId }, "Error en messageCreate");
     }
@@ -627,7 +772,7 @@ export function startBot(): Client | undefined {
       if (!oldMsg.content || !newMsg.content || oldMsg.content === newMsg.content) return;
       await sendLog(logChannel, {
         title: "Mensaje Editado",
-        description: `**Usuario:** <@${newMsg.author?.id}>\n**Canal:** <#${newMsg.channelId}>\n**Antes:** ${oldMsg.content?.substring(0, 200) ?? "Desconocido"}\n**Despues:** ${newMsg.content?.substring(0, 200)}`,
+        description: `**Usuario:** <@${newMsg.author?.id}> (\`${newMsg.author?.username}\`)\n**Canal:** <#${newMsg.channelId}>\n**Antes:** ${oldMsg.content?.substring(0, 300) ?? "Desconocido"}\n**Despues:** ${newMsg.content?.substring(0, 300)}\n[Ver mensaje](${newMsg.url})`,
         color: 0x5865F2, timestamp: new Date().toISOString(), footer: { text: "Neuralix Logs" },
       }, botToken);
     } catch {}
@@ -641,10 +786,13 @@ export function startBot(): Client | undefined {
       const [logCfg] = await db.select().from(logsConfigsTable).where(eq(logsConfigsTable.guildId, guildId));
       const logChannel = getLogChannel(logCfg, "messages");
       if (!logChannel || !logCfg?.logMessages) return;
-      if (!message.content) return;
+      if (!message.content && !message.attachments?.size) return;
+      const desc = [`**Usuario:** <@${message.author?.id}> (\`${message.author?.username}\`)`, `**Canal:** <#${message.channelId}>`];
+      if (message.content) desc.push(`**Contenido:** ${message.content.substring(0, 400)}`);
+      if (message.attachments?.size) desc.push(`**Adjuntos:** ${message.attachments.size}`);
       await sendLog(logChannel, {
         title: "Mensaje Eliminado",
-        description: `**Usuario:** <@${message.author?.id}>\n**Canal:** <#${message.channelId}>\n**Contenido:** ${message.content.substring(0, 300)}`,
+        description: desc.join("\n"),
         color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix Logs" },
       }, botToken);
     } catch {}
@@ -670,6 +818,122 @@ export function startBot(): Client | undefined {
     } catch {}
   });
 
+  // ─── Guild Audit Log Entry — Enhanced Logging ─────────────────────────────
+  client.on(Events.GuildAuditLogEntryCreate, async (entry, guild) => {
+    const guildId = guild.id;
+    try {
+      const [logCfg] = await db.select().from(logsConfigsTable).where(eq(logsConfigsTable.guildId, guildId));
+      if (!logCfg?.enabled) return;
+
+      const executor = entry.executor;
+      const executorStr = executor ? `\`${executor.username}\` (<@${executor.id}>)` : "Desconocido";
+      const ts = new Date().toISOString();
+
+      switch (entry.action) {
+        // Webhooks
+        case AuditLogEvent.WebhookCreate: {
+          const ch = getLogChannel(logCfg, "channels");
+          if (ch && logCfg.logChannels) {
+            const target = entry.target as any;
+            await sendLog(ch, { title: "Webhook Creado", description: `**Nombre:** ${target?.name || "Desconocido"}\n**Responsable:** ${executorStr}\n**Canal:** ${target?.channelId ? `<#${target.channelId}>` : "Desconocido"}`, color: 0x57F287, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
+          }
+          break;
+        }
+        case AuditLogEvent.WebhookDelete: {
+          const ch = getLogChannel(logCfg, "channels");
+          if (ch && logCfg.logChannels) {
+            const target = entry.target as any;
+            await sendLog(ch, { title: "Webhook Eliminado", description: `**Nombre:** ${target?.name || "Desconocido"}\n**Responsable:** ${executorStr}`, color: 0xED4245, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
+          }
+          break;
+        }
+        case AuditLogEvent.WebhookUpdate: {
+          const ch = getLogChannel(logCfg, "channels");
+          if (ch && logCfg.logChannels) {
+            await sendLog(ch, { title: "Webhook Modificado", description: `**Responsable:** ${executorStr}`, color: 0xFEE75C, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
+          }
+          break;
+        }
+
+        // Guild settings
+        case AuditLogEvent.GuildUpdate: {
+          const ch = getLogChannel(logCfg, "moderation");
+          if (ch && logCfg.logModeration) {
+            const changes = entry.changes?.map((c) => `**${c.key}:** \`${String(c.old ?? "—")}\` → \`${String(c.new ?? "—")}\``).join("\n") || "Sin detalles";
+            await sendLog(ch, { title: "Servidor Modificado", description: `**Responsable:** ${executorStr}\n${changes}`, color: 0x5865F2, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
+          }
+          break;
+        }
+
+        // Role updates
+        case AuditLogEvent.RoleUpdate: {
+          const ch = getLogChannel(logCfg, "roles");
+          if (ch && logCfg.logRoles) {
+            const target = entry.target as any;
+            const changes = entry.changes?.map((c) => `**${c.key}:** \`${String(c.old ?? "—")}\` → \`${String(c.new ?? "—")}\``).join("\n") || "Sin detalles";
+            await sendLog(ch, { title: "Rol Actualizado", description: `**Rol:** @${target?.name || "Desconocido"}\n**Responsable:** ${executorStr}\n${changes}`, color: 0xFEE75C, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
+          }
+          break;
+        }
+
+        // Invites
+        case AuditLogEvent.InviteCreate: {
+          const ch = getLogChannel(logCfg, "members");
+          if (ch && logCfg.logInvites) {
+            const target = entry.target as any;
+            await sendLog(ch, { title: "Invitacion Creada", description: `**Codigo:** ${target?.code || "Desconocido"}\n**Creador:** ${executorStr}\n**Usos max:** ${target?.maxUses || "Ilimitado"}\n**Expira:** ${target?.maxAge ? `${target.maxAge / 3600}h` : "Nunca"}`, color: 0x57F287, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
+          }
+          break;
+        }
+        case AuditLogEvent.InviteDelete: {
+          const ch = getLogChannel(logCfg, "members");
+          if (ch && logCfg.logInvites) {
+            const target = entry.target as any;
+            await sendLog(ch, { title: "Invitacion Eliminada", description: `**Codigo:** ${target?.code || "Desconocido"}\n**Responsable:** ${executorStr}`, color: 0xED4245, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
+          }
+          break;
+        }
+
+        // Channel permission overrides
+        case AuditLogEvent.ChannelOverwriteCreate:
+        case AuditLogEvent.ChannelOverwriteUpdate:
+        case AuditLogEvent.ChannelOverwriteDelete: {
+          const ch = getLogChannel(logCfg, "channels");
+          if (ch && logCfg.logChannels) {
+            const actionNames = { [AuditLogEvent.ChannelOverwriteCreate]: "Creado", [AuditLogEvent.ChannelOverwriteUpdate]: "Actualizado", [AuditLogEvent.ChannelOverwriteDelete]: "Eliminado" };
+            const target = entry.target as any;
+            await sendLog(ch, { title: `Permiso de Canal ${actionNames[entry.action]}`, description: `**Canal:** ${target?.id ? `<#${target.id}>` : "Desconocido"}\n**Responsable:** ${executorStr}`, color: 0xFEE75C, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
+          }
+          break;
+        }
+
+        // Kicks
+        case AuditLogEvent.MemberKick: {
+          const ch = getLogChannel(logCfg, "moderation");
+          if (ch && logCfg.logModeration) {
+            const target = entry.target as any;
+            await sendLog(ch, { title: "Miembro Expulsado", description: `**Usuario:** \`${target?.username || "Desconocido"}\` (\`${target?.id}\`)\n**Responsable:** ${executorStr}\n**Razon:** ${entry.reason || "Sin razon"}`, color: 0xFEE75C, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
+          }
+          break;
+        }
+
+        // Timeouts
+        case AuditLogEvent.MemberUpdate: {
+          const ch = getLogChannel(logCfg, "moderation");
+          if (ch && logCfg.logModeration) {
+            const timeoutChange = entry.changes?.find((c) => c.key === "communication_disabled_until");
+            if (timeoutChange) {
+              const target = entry.target as any;
+              const action = timeoutChange.new ? "Silenciado" : "Silencio Levantado";
+              await sendLog(ch, { title: `Miembro ${action}`, description: `**Usuario:** \`${target?.username || "Desconocido"}\` (\`${target?.id}\`)\n**Responsable:** ${executorStr}\n**Hasta:** ${timeoutChange.new ? new Date(timeoutChange.new as string).toLocaleString("es-ES") : "—"}`, color: timeoutChange.new ? 0xFEE75C : 0x57F287, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
+            }
+          }
+          break;
+        }
+      }
+    } catch {}
+  });
+
   // ─── Channel Create ───────────────────────────────────────────────────────
   client.on(Events.ChannelCreate, async (channel) => {
     if (!("guild" in channel) || !channel.guild) return;
@@ -680,24 +944,15 @@ export function startBot(): Client | undefined {
         db.select().from(logsConfigsTable).where(eq(logsConfigsTable.guildId, guildId)).then(([r]) => r),
       ]);
       const logChannel = getLogChannel(logCfg, "channels");
-
-      let executorId: string | undefined;
-      let executorTag: string | undefined;
+      let executorId: string | undefined; let executorTag: string | undefined;
       try {
         const audit = await channel.guild.fetchAuditLogs({ type: AuditLogEvent.ChannelCreate, limit: 1 });
         const entry = audit.entries.first();
-        if (entry && Date.now() - entry.createdTimestamp < 5000) {
-          executorId = entry.executor?.id;
-          executorTag = entry.executor?.username;
-        }
+        if (entry && Date.now() - entry.createdTimestamp < 5000) { executorId = entry.executor?.id; executorTag = entry.executor?.username; }
       } catch {}
 
       if (logChannel && logCfg?.logChannels) {
-        await sendLog(logChannel, {
-          title: "Canal Creado",
-          description: `**Canal:** <#${channel.id}> (#${(channel as any).name})\n**Tipo:** ${channel.type}\n**Responsable:** ${executorTag ? `\`${executorTag}\`` : "Desconocido"}`,
-          color: 0x57F287, timestamp: new Date().toISOString(), footer: { text: "Neuralix Logs" },
-        }, botToken);
+        await sendLog(logChannel, { title: "Canal Creado", description: `**Canal:** <#${channel.id}> (#${(channel as any).name})\n**Tipo:** ${channel.type}\n**Responsable:** ${executorTag ? `\`${executorTag}\`` : "Desconocido"}`, color: 0x57F287, timestamp: new Date().toISOString(), footer: { text: "Neuralix Logs" } }, botToken);
       }
 
       if (antiraid?.enabled && antiraid.antiChannelCreate && executorId) {
@@ -713,9 +968,7 @@ export function startBot(): Client | undefined {
                 else if (antiraid.nukeAction === "kick") await member.kick("AntiNuke");
                 else await member.roles.set([], "AntiNuke: Permisos revocados");
               }
-              if (secChannel) {
-                await sendLog(secChannel, { title: "AntiNuke — Canales Masivos", description: `**Responsable:** <@${executorId}>\n**Accion:** ${antiraid.nukeAction}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiNuke" } }, botToken);
-              }
+              if (secChannel) { await sendLog(secChannel, { title: "AntiNuke — Canales Masivos", description: `**Responsable:** <@${executorId}>\n**Accion:** ${antiraid.nukeAction}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiNuke" } }, botToken); }
             } catch {}
           }
         }
@@ -733,24 +986,15 @@ export function startBot(): Client | undefined {
         db.select().from(logsConfigsTable).where(eq(logsConfigsTable.guildId, guildId)).then(([r]) => r),
       ]);
       const logChannel = getLogChannel(logCfg, "channels");
-
-      let executorId: string | undefined;
-      let executorTag: string | undefined;
+      let executorId: string | undefined; let executorTag: string | undefined;
       try {
         const audit = await channel.guild.fetchAuditLogs({ type: AuditLogEvent.ChannelDelete, limit: 1 });
         const entry = audit.entries.first();
-        if (entry && Date.now() - entry.createdTimestamp < 5000) {
-          executorId = entry.executor?.id;
-          executorTag = entry.executor?.username;
-        }
+        if (entry && Date.now() - entry.createdTimestamp < 5000) { executorId = entry.executor?.id; executorTag = entry.executor?.username; }
       } catch {}
 
       if (logChannel && logCfg?.logChannels) {
-        await sendLog(logChannel, {
-          title: "Canal Eliminado",
-          description: `**Canal:** #${(channel as any).name ?? "desconocido"}\n**Responsable:** ${executorTag ? `\`${executorTag}\`` : "Desconocido"}`,
-          color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix Logs" },
-        }, botToken);
+        await sendLog(logChannel, { title: "Canal Eliminado", description: `**Canal:** #${(channel as any).name ?? "desconocido"}\n**Responsable:** ${executorTag ? `\`${executorTag}\`` : "Desconocido"}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix Logs" } }, botToken);
       }
 
       if (antiraid?.enabled && executorId && (antiraid.antiNuke || antiraid.antiChannelDelete)) {
@@ -766,9 +1010,7 @@ export function startBot(): Client | undefined {
                 else if (antiraid.nukeAction === "kick") await member.kick("AntiNuke");
                 else await member.roles.set([], "AntiNuke: Permisos revocados");
               }
-              if (secChannel) {
-                await sendLog(secChannel, { title: "AntiNuke — Destruccion Masiva", description: `**Responsable:** <@${executorId}>\n**Accion:** ${antiraid.nukeAction}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiNuke" } }, botToken);
-              }
+              if (secChannel) { await sendLog(secChannel, { title: "AntiNuke — Destruccion Masiva", description: `**Responsable:** <@${executorId}>\n**Accion:** ${antiraid.nukeAction}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiNuke" } }, botToken); }
             } catch {}
           }
         }
@@ -786,24 +1028,15 @@ export function startBot(): Client | undefined {
       ]);
       const logChannel = getLogChannel(logCfg, "roles");
       const secChannel = getLogChannel(logCfg, "security");
-
-      let executorId: string | undefined;
-      let executorTag: string | undefined;
+      let executorId: string | undefined; let executorTag: string | undefined;
       try {
         const audit = await role.guild.fetchAuditLogs({ type: AuditLogEvent.RoleCreate, limit: 1 });
         const entry = audit.entries.first();
-        if (entry && Date.now() - entry.createdTimestamp < 5000) {
-          executorId = entry.executor?.id;
-          executorTag = entry.executor?.username;
-        }
+        if (entry && Date.now() - entry.createdTimestamp < 5000) { executorId = entry.executor?.id; executorTag = entry.executor?.username; }
       } catch {}
 
       if (logChannel && logCfg?.logRoles) {
-        await sendLog(logChannel, {
-          title: "Rol Creado",
-          description: `**Rol:** @${role.name}\n**ID:** \`${role.id}\`\n**Responsable:** ${executorTag ? `\`${executorTag}\`` : "Desconocido"}`,
-          color: 0x57F287, timestamp: new Date().toISOString(), footer: { text: "Neuralix Logs" },
-        }, botToken);
+        await sendLog(logChannel, { title: "Rol Creado", description: `**Rol:** @${role.name}\n**ID:** \`${role.id}\`\n**Responsable:** ${executorTag ? `\`${executorTag}\`` : "Desconocido"}`, color: 0x57F287, timestamp: new Date().toISOString(), footer: { text: "Neuralix Logs" } }, botToken);
       }
 
       if (antiraid?.enabled && antiraid.antiRoleCreate && executorId) {
@@ -817,9 +1050,7 @@ export function startBot(): Client | undefined {
               else if (antiraid.nukeAction === "kick") await member.kick("AntiNuke").catch(() => {});
               else await member.roles.set([], "AntiNuke").catch(() => {});
             }
-            if (secChannel) {
-              await sendLog(secChannel, { title: "AntiNuke — Roles Masivos", description: `**Responsable:** <@${executorId}>\n**Accion:** ${antiraid.nukeAction}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiNuke" } }, botToken);
-            }
+            if (secChannel) { await sendLog(secChannel, { title: "AntiNuke — Roles Masivos", description: `**Responsable:** <@${executorId}>\n**Accion:** ${antiraid.nukeAction}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiNuke" } }, botToken); }
           }
         }
       }
@@ -836,24 +1067,15 @@ export function startBot(): Client | undefined {
       ]);
       const logChannel = getLogChannel(logCfg, "roles");
       const secChannel = getLogChannel(logCfg, "security");
-
-      let executorId: string | undefined;
-      let executorTag: string | undefined;
+      let executorId: string | undefined; let executorTag: string | undefined;
       try {
         const audit = await role.guild.fetchAuditLogs({ type: AuditLogEvent.RoleDelete, limit: 1 });
         const entry = audit.entries.first();
-        if (entry && Date.now() - entry.createdTimestamp < 5000) {
-          executorId = entry.executor?.id;
-          executorTag = entry.executor?.username;
-        }
+        if (entry && Date.now() - entry.createdTimestamp < 5000) { executorId = entry.executor?.id; executorTag = entry.executor?.username; }
       } catch {}
 
       if (logChannel && logCfg?.logRoles) {
-        await sendLog(logChannel, {
-          title: "Rol Eliminado",
-          description: `**Rol:** @${role.name}\n**Responsable:** ${executorTag ? `\`${executorTag}\`` : "Desconocido"}`,
-          color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix Logs" },
-        }, botToken);
+        await sendLog(logChannel, { title: "Rol Eliminado", description: `**Rol:** @${role.name}\n**Responsable:** ${executorTag ? `\`${executorTag}\`` : "Desconocido"}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix Logs" } }, botToken);
       }
 
       if (antiraid?.enabled && executorId && (antiraid.antiNuke || antiraid.antiRoleDelete)) {
@@ -867,9 +1089,7 @@ export function startBot(): Client | undefined {
               else if (antiraid.nukeAction === "kick") await member.kick("AntiNuke").catch(() => {});
               else await member.roles.set([], "AntiNuke").catch(() => {});
             }
-            if (secChannel) {
-              await sendLog(secChannel, { title: "AntiNuke — Roles Eliminados", description: `**Responsable:** <@${executorId}>\n**Accion:** ${antiraid.nukeAction}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiNuke" } }, botToken);
-            }
+            if (secChannel) { await sendLog(secChannel, { title: "AntiNuke — Roles Eliminados", description: `**Responsable:** <@${executorId}>\n**Accion:** ${antiraid.nukeAction}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiNuke" } }, botToken); }
           }
         }
       }
@@ -886,7 +1106,6 @@ export function startBot(): Client | undefined {
       ]);
       const logChannel = getLogChannel(logCfg, "moderation");
       const secChannel = getLogChannel(logCfg, "security");
-
       let executorId: string | undefined;
       try {
         const audit = await ban.guild.fetchAuditLogs({ type: AuditLogEvent.MemberBanAdd, limit: 1 });
@@ -895,11 +1114,7 @@ export function startBot(): Client | undefined {
       } catch {}
 
       if (logChannel && logCfg?.logModeration) {
-        await sendLog(logChannel, {
-          title: "Miembro Baneado",
-          description: `**Usuario:** \`${ban.user.username}\` (\`${ban.user.id}\`)\n**Razon:** ${ban.reason ?? "Sin razon"}`,
-          color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix Logs" },
-        }, botToken);
+        await sendLog(logChannel, { title: "Miembro Baneado", description: `**Usuario:** \`${ban.user.username}\` (\`${ban.user.id}\`)\n**Razon:** ${ban.reason ?? "Sin razon"}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix Logs" } }, botToken);
       }
 
       if (antiraid?.enabled && executorId && (antiraid.antiNuke || antiraid.antiBanMass)) {
@@ -913,9 +1128,7 @@ export function startBot(): Client | undefined {
               else if (antiraid.nukeAction === "kick") await member.kick("AntiNuke").catch(() => {});
               else await member.roles.set([], "AntiNuke").catch(() => {});
             }
-            if (secChannel) {
-              await sendLog(secChannel, { title: "AntiNuke — Bans Masivos", description: `**Responsable:** <@${executorId}>\n**Accion:** ${antiraid.nukeAction}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiNuke" } }, botToken);
-            }
+            if (secChannel) { await sendLog(secChannel, { title: "AntiNuke — Bans Masivos", description: `**Responsable:** <@${executorId}>\n**Accion:** ${antiraid.nukeAction}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiNuke" } }, botToken); }
           }
         }
       }
@@ -941,27 +1154,29 @@ export function startBot(): Client | undefined {
   });
 
   // ─── Ticket open helper ───────────────────────────────────────────────────
-  async function handleTicketOpen(interaction: any, guildId: string, userId: string, username: string, moduleId: number | null) {
+  async function handleTicketOpen(interaction: any, guildId: string, userId: string, username: string, moduleId: number | null, panelId?: number | null) {
     await interaction.deferReply({ ephemeral: true });
     try {
       const [cfg] = await db.select().from(ticketConfigsTable).where(eq(ticketConfigsTable.guildId, guildId));
-      if (!cfg?.enabled) {
-        await interaction.editReply({ content: "El sistema de tickets no esta activo." });
-        return;
-      }
+      if (!cfg?.enabled) { await interaction.editReply({ content: "El sistema de tickets no esta activo." }); return; }
 
       const openTickets = await db.select().from(ticketsTable).where(
         and(eq(ticketsTable.guildId, guildId), eq(ticketsTable.userId, userId), eq(ticketsTable.status, "open")),
       );
       if (openTickets.length >= (cfg.maxTicketsPerUser ?? 1)) {
-        await interaction.editReply({ content: `Ya tienes ${openTickets.length} ticket(s) abierto(s). Maximo: ${cfg.maxTicketsPerUser}.` });
-        return;
+        await interaction.editReply({ content: `Ya tienes ${openTickets.length} ticket(s) abierto(s). Maximo: ${cfg.maxTicketsPerUser}.` }); return;
       }
 
       let mod: any = null;
       if (moduleId) {
         const [m] = await db.select().from(ticketModulesTable).where(and(eq(ticketModulesTable.id, moduleId), eq(ticketModulesTable.guildId, guildId)));
         mod = m;
+      }
+
+      let panel: any = null;
+      if (panelId) {
+        const [p] = await db.select().from(ticketPanelsTable).where(and(eq(ticketPanelsTable.id, panelId), eq(ticketPanelsTable.guildId, guildId)));
+        panel = p;
       }
 
       const safeUsername = username.toLowerCase().replace(/[^a-z0-9-]/g, "").substring(0, 20) || "usuario";
@@ -986,33 +1201,37 @@ export function startBot(): Client | undefined {
       });
 
       const [ticket] = await db.insert(ticketsTable).values({
-        guildId,
-        channelId: ticketChannel.id,
-        userId,
-        username,
+        guildId, channelId: ticketChannel.id, userId, username,
         subject: mod ? `[${mod.name}] Ticket de ${username}` : `Ticket de ${username}`,
         status: "open",
         moduleId: mod?.id ?? null,
         moduleName: mod?.name ?? null,
       }).returning();
 
-      const welcomeMsg = mod?.welcomeMessage || cfg.openMessage || "Hola <@{user}>, tu ticket fue creado. Pronto te atendemos.";
+      const welcomeMsg = mod?.welcomeMessage || cfg.openMessage || `Hola <@${userId}>, tu ticket fue creado. Pronto te atendemos.`;
       const openMsg = welcomeMsg.replace("{user}", userId).replace("{username}", username);
       const mentionParts: string[] = [];
-      if (cfg.mentionSupport) {
-        for (const rid of supportRoleIds) mentionParts.push(`<@&${rid}>`);
-      }
+      if (cfg.mentionSupport) { for (const rid of supportRoleIds) mentionParts.push(`<@&${rid}>`); }
 
       const components = await buildTicketComponents(ticket.id, cfg);
 
-      await ticketChannel.send({
-        content: `${mentionParts.join(" ")} ${openMsg}`.trim(),
-        components,
-      } as any);
+      await ticketChannel.send({ content: `${mentionParts.join(" ")} ${openMsg}`.trim(), components } as any);
+
+      // Per-module welcome embed
+      if (mod?.welcomeEmbedEnabled && (mod.welcomeEmbedTitle || mod.welcomeEmbedDescription)) {
+        await ticketChannel.send({
+          embeds: [{
+            title: mod.welcomeEmbedTitle || null,
+            description: (mod.welcomeEmbedDescription || "").replace("{user}", `<@${userId}>`).replace("{username}", username),
+            color: hexColor(mod.welcomeEmbedColor),
+            footer: { text: `Ticket #${ticket.id} · ${mod.name}` },
+          }],
+        } as any).catch(() => {});
+      }
 
       if (cfg.logsChannelId) {
         await sendToChannel(cfg.logsChannelId, {
-          embeds: [{ title: "Nuevo Ticket", description: `**Usuario:** <@${userId}>\n**Canal:** <#${ticketChannel.id}>\n**ID:** #${ticket.id}${mod ? `\n**Modulo:** ${mod.name}` : ""}`, color: 0x5865F2, timestamp: new Date().toISOString(), footer: { text: "Neuralix Tickets" } }],
+          embeds: [{ title: "Nuevo Ticket", description: `**Usuario:** <@${userId}>\n**Canal:** <#${ticketChannel.id}>\n**ID:** #${ticket.id}${mod ? `\n**Modulo:** ${mod.name}` : ""}${panel ? `\n**Panel:** ${panel.name}` : ""}`, color: 0x5865F2, timestamp: new Date().toISOString(), footer: { text: "Neuralix Tickets" } }],
         }, botToken);
       }
 
@@ -1041,12 +1260,14 @@ export function startBot(): Client | undefined {
         await interaction.editReply({ content: "No tienes permisos para cerrar este ticket." }); return;
       }
 
-      let transcript = "";
+      let transcriptText = "";
+      let transcriptHtml = "";
       if (cfg?.autoTranscript) {
-        transcript = await generateTranscript(interaction.channelId, botToken);
+        const result = await generateTranscript(interaction.channelId, botToken);
+        transcriptText = result.text;
       }
 
-      await db.update(ticketsTable).set({ status: "closed", closedAt: new Date(), transcript: transcript || null }).where(eq(ticketsTable.id, ticketId));
+      await db.update(ticketsTable).set({ status: "closed", closedAt: new Date(), transcript: transcriptText || null }).where(eq(ticketsTable.id, ticketId));
 
       try {
         const ch = interaction.channel;
@@ -1063,11 +1284,10 @@ export function startBot(): Client | undefined {
         }
       } catch {}
 
-      if (cfg?.transcriptChannelId && transcript) {
-        const chunks = transcript.match(/.{1,1800}/gs) ?? [transcript];
-        const firstChunk = chunks[0];
+      if (cfg?.transcriptChannelId && transcriptText) {
+        const preview = transcriptText.substring(0, 800);
         await sendToChannel(cfg.transcriptChannelId, {
-          embeds: [{ title: `Transcript — Ticket #${ticketId}`, description: `**Usuario:** <@${ticket.userId}> (\`${ticket.username}\`)\n**Cerrado por:** <@${userId}>\n\`\`\`\n${firstChunk.substring(0, 1000)}\n\`\`\``, color: 0x5865F2, timestamp: new Date().toISOString(), footer: { text: `Ticket #${ticketId} · ${ticket.username}` } }],
+          embeds: [{ title: `Transcript — Ticket #${ticketId}`, description: `**Usuario:** <@${ticket.userId}> (\`${ticket.username}\`)\n**Cerrado por:** <@${userId}>\n**Mensajes:** ${transcriptText.split("\n").length}\n\n\`\`\`\n${preview}${preview.length < transcriptText.length ? "\n...(ver adjunto completo)" : ""}\n\`\`\``, color: 0x5865F2, timestamp: new Date().toISOString(), footer: { text: `Ticket #${ticketId} · ${ticket.username}` } }],
         }, botToken);
       }
 
@@ -1078,84 +1298,55 @@ export function startBot(): Client | undefined {
     }
   }
 
-  // ─── Ticket claim helper ──────────────────────────────────────────────────
   async function handleTicketClaim(interaction: any, guildId: string, ticketId: number, userId: string, username: string) {
     await interaction.deferReply({ ephemeral: true });
     try {
       const [ticket] = await db.select().from(ticketsTable).where(and(eq(ticketsTable.id, ticketId), eq(ticketsTable.guildId, guildId)));
       if (!ticket) { await interaction.editReply({ content: "Ticket no encontrado." }); return; }
       if (ticket.claimedBy) { await interaction.editReply({ content: `Este ticket ya fue reclamado por <@${ticket.claimedBy}>.` }); return; }
-
       await db.update(ticketsTable).set({ claimedBy: userId, claimedByUsername: username }).where(eq(ticketsTable.id, ticketId));
-
-      await interaction.channel?.send({
-        embeds: [{ title: "Ticket Reclamado", description: `<@${userId}> esta atendiendo este ticket.`, color: 0x57F287, timestamp: new Date().toISOString(), footer: { text: "Neuralix Tickets" } }],
-      } as any).catch(() => {});
-
+      await interaction.channel?.send({ embeds: [{ title: "Ticket Reclamado", description: `<@${userId}> esta atendiendo este ticket.`, color: 0x57F287, timestamp: new Date().toISOString(), footer: { text: "Neuralix Tickets" } }] } as any).catch(() => {});
       await interaction.editReply({ content: "Has reclamado este ticket." });
-    } catch (err) {
-      await interaction.editReply({ content: "Error al reclamar el ticket." }).catch(() => {});
-    }
+    } catch { await interaction.editReply({ content: "Error al reclamar el ticket." }).catch(() => {}); }
   }
 
-  // ─── Ticket delete helper ─────────────────────────────────────────────────
   async function handleTicketDelete(interaction: any, guildId: string, ticketId: number, userId: string, username: string) {
     await interaction.deferReply({ ephemeral: true });
     try {
       const [ticket] = await db.select().from(ticketsTable).where(and(eq(ticketsTable.id, ticketId), eq(ticketsTable.guildId, guildId)));
       if (!ticket) { await interaction.editReply({ content: "Ticket no encontrado." }); return; }
-
       const [cfg] = await db.select().from(ticketConfigsTable).where(eq(ticketConfigsTable.guildId, guildId));
       const supportRoleIds = cfg?.supportRoleIds?.length ? cfg.supportRoleIds : (cfg?.supportRoleId ? [cfg.supportRoleId] : []);
       const member = interaction.guild?.members.cache.get(userId) || await interaction.guild?.members.fetch(userId).catch(() => null);
       const memberRoles = member?.roles?.cache?.map((r: any) => r.id) ?? [];
       const isSupport = supportRoleIds.some((rid: string) => memberRoles.includes(rid));
-      if (!isSupport && !member?.permissions?.has?.("ManageChannels")) {
-        await interaction.editReply({ content: "No tienes permisos para eliminar este ticket." }); return;
-      }
-
+      if (!isSupport && !member?.permissions?.has?.("ManageChannels")) { await interaction.editReply({ content: "No tienes permisos para eliminar este ticket." }); return; }
       await interaction.editReply({ content: "Canal de ticket sera eliminado en 5 segundos..." });
       await db.update(ticketsTable).set({ status: "deleted", closedAt: new Date() }).where(eq(ticketsTable.id, ticketId));
-
       try {
         await interaction.channel?.send({ content: "Este canal sera eliminado en **5 segundos**..." }).catch(() => {});
-        setTimeout(async () => {
-          try { await interaction.channel?.delete("Ticket eliminado"); } catch {}
-        }, 5000);
+        setTimeout(async () => { try { await interaction.channel?.delete("Ticket eliminado"); } catch {} }, 5000);
       } catch {}
-    } catch (err) {
-      await interaction.editReply({ content: "Error al eliminar el ticket." }).catch(() => {});
-    }
+    } catch { await interaction.editReply({ content: "Error al eliminar el ticket." }).catch(() => {}); }
   }
 
-  // ─── Ticket reopen helper ─────────────────────────────────────────────────
   async function handleTicketReopen(interaction: any, guildId: string, ticketId: number, userId: string, username: string) {
     await interaction.deferReply({ ephemeral: true });
     try {
       const [ticket] = await db.select().from(ticketsTable).where(and(eq(ticketsTable.id, ticketId), eq(ticketsTable.guildId, guildId)));
       if (!ticket) { await interaction.editReply({ content: "Ticket no encontrado." }); return; }
       if (ticket.status === "open") { await interaction.editReply({ content: "El ticket ya esta abierto." }); return; }
-
       await db.update(ticketsTable).set({ status: "open", closedAt: null }).where(eq(ticketsTable.id, ticketId));
-
       try {
         await interaction.channel?.permissionOverwrites.edit(ticket.userId, { SendMessages: true }).catch(() => {});
         const currentName: string = (interaction.channel as any)?.name || "";
-        if (currentName.startsWith("closed-")) {
-          await (interaction.channel as any)?.setName(currentName.replace("closed-", "")).catch(() => {});
-        }
+        if (currentName.startsWith("closed-")) { await (interaction.channel as any)?.setName(currentName.replace("closed-", "")).catch(() => {}); }
         const [cfg] = await db.select().from(ticketConfigsTable).where(eq(ticketConfigsTable.guildId, guildId));
         const components = await buildTicketComponents(ticketId, cfg);
-        await interaction.channel?.send({
-          embeds: [{ title: "Ticket Reabierto", description: `Reabierto por <@${userId}>`, color: 0x57F287, timestamp: new Date().toISOString(), footer: { text: "Neuralix Tickets" } }],
-          components,
-        } as any).catch(() => {});
+        await interaction.channel?.send({ embeds: [{ title: "Ticket Reabierto", description: `Reabierto por <@${userId}>`, color: 0x57F287, timestamp: new Date().toISOString(), footer: { text: "Neuralix Tickets" } }], components } as any).catch(() => {});
       } catch {}
-
       await interaction.editReply({ content: "Ticket reabierto correctamente." });
-    } catch (err) {
-      await interaction.editReply({ content: "Error al reabrir el ticket." }).catch(() => {});
-    }
+    } catch { await interaction.editReply({ content: "Error al reabrir el ticket." }).catch(() => {}); }
   }
 
   // ─── Interaction Create ───────────────────────────────────────────────────
@@ -1175,21 +1366,14 @@ export function startBot(): Client | undefined {
         if (!ar || !ar.enabled) { await interaction.editReply({ content: "Este auto-rol no esta disponible." }); return; }
         const member = interaction.guild?.members.cache.get(userId) || await interaction.guild?.members.fetch(userId).catch(() => null);
         if (!member) { await interaction.editReply({ content: "No se pudo obtener tu informacion de miembro." }); return; }
-        const addedRoles: string[] = [];
-        const removedRoles: string[] = [];
+        const addedRoles: string[] = []; const removedRoles: string[] = [];
         for (const rid of (ar.roleIds ?? [])) {
-          if (member.roles.cache.has(rid)) {
-            await member.roles.remove(rid).catch(() => {});
-            removedRoles.push(`<@&${rid}>`);
-          } else {
-            await member.roles.add(rid).catch(() => {});
-            addedRoles.push(`<@&${rid}>`);
+          if (member.roles.cache.has(rid)) { await member.roles.remove(rid).catch(() => {}); removedRoles.push(`<@&${rid}>`); }
+          else {
+            await member.roles.add(rid).catch(() => {}); addedRoles.push(`<@&${rid}>`);
             if (ar.temporary && ar.durationMinutes > 0) {
               const key = `${guildId}:${userId}:${rid}`;
-              const timer = setTimeout(async () => {
-                try { await member.roles.remove(rid); } catch {}
-                tempRoleTimers.delete(key);
-              }, ar.durationMinutes * 60_000);
+              const timer = setTimeout(async () => { try { await member.roles.remove(rid); } catch {} tempRoleTimers.delete(key); }, ar.durationMinutes * 60_000);
               tempRoleTimers.set(key, timer);
             }
           }
@@ -1198,27 +1382,30 @@ export function startBot(): Client | undefined {
         if (addedRoles.length) lines.push(`Roles asignados: ${addedRoles.join(", ")}`);
         if (removedRoles.length) lines.push(`Roles removidos: ${removedRoles.join(", ")}`);
         await interaction.editReply({ content: lines.join("\n") || "Sin cambios." });
-      } catch (err) {
-        await interaction.editReply({ content: "Error al gestionar el rol." }).catch(() => {});
-      }
+      } catch { await interaction.editReply({ content: "Error al gestionar el rol." }).catch(() => {}); }
       return;
     }
 
     // ── Ticket select menu ────────────────────────────────────────────────
     if (interaction.isStringSelectMenu() && interaction.customId === "ticket_select_module") {
       const moduleId = Number(interaction.values[0]);
-      if (!isNaN(moduleId)) {
-        await handleTicketOpen(interaction, guildId, userId, username, moduleId);
-      }
+      if (!isNaN(moduleId)) await handleTicketOpen(interaction, guildId, userId, username, moduleId);
       return;
     }
 
     if (!interaction.isButton()) return;
     const { customId } = interaction;
 
-    // ── Open ticket ───────────────────────────────────────────────────────
+    // ── Open ticket (single panel) ────────────────────────────────────────
     if (customId === "ticket_open" || customId === "ticket_open_test") {
       await handleTicketOpen(interaction, guildId, userId, username, null);
+      return;
+    }
+
+    // ── Open ticket (panel-specific) ──────────────────────────────────────
+    if (customId.startsWith("ticket_panel_")) {
+      const panelId = Number(customId.replace("ticket_panel_", ""));
+      if (!isNaN(panelId)) await handleTicketOpen(interaction, guildId, userId, username, null, panelId);
       return;
     }
 
@@ -1228,28 +1415,24 @@ export function startBot(): Client | undefined {
       return;
     }
 
-    // ── Close ticket ──────────────────────────────────────────────────────
     if (customId.startsWith("ticket_close_")) {
       const ticketId = Number(customId.replace("ticket_close_", ""));
       if (!isNaN(ticketId)) await handleTicketClose(interaction, guildId, ticketId, userId, username);
       return;
     }
 
-    // ── Claim ticket ──────────────────────────────────────────────────────
     if (customId.startsWith("ticket_claim_")) {
       const ticketId = Number(customId.replace("ticket_claim_", ""));
       if (!isNaN(ticketId)) await handleTicketClaim(interaction, guildId, ticketId, userId, username);
       return;
     }
 
-    // ── Delete ticket ─────────────────────────────────────────────────────
     if (customId.startsWith("ticket_delete_")) {
       const ticketId = Number(customId.replace("ticket_delete_", ""));
       if (!isNaN(ticketId)) await handleTicketDelete(interaction, guildId, ticketId, userId, username);
       return;
     }
 
-    // ── Reopen ticket ─────────────────────────────────────────────────────
     if (customId.startsWith("ticket_reopen_")) {
       const ticketId = Number(customId.replace("ticket_reopen_", ""));
       if (!isNaN(ticketId)) await handleTicketReopen(interaction, guildId, ticketId, userId, username);
