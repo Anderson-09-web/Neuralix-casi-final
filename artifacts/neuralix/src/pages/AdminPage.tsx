@@ -324,8 +324,14 @@ export default function AdminPage() {
   const [sweeping, setSweeping] = useState(false);
   const [sweepResult, setSweepResult] = useState<any>(null);
 
+  /* Servidores pagination */
+  const [servidoresPage, setServidoresPage] = useState(0);
+  const SERVIDORES_PAGE_SIZE = 20;
+
   /* Acciones Masivas */
   const [broadcastMsg, setBroadcastMsg] = useState("");
+  const [broadcastTitle, setBroadcastTitle] = useState("");
+  const [broadcastColor, setBroadcastColor] = useState("#5865F2");
   const [broadcasting, setBroadcasting] = useState(false);
   const [broadcastResult, setBroadcastResult] = useState<any>(null);
   const [csvBlacklistText, setCsvBlacklistText] = useState("");
@@ -352,20 +358,24 @@ export default function AdminPage() {
   }, []);
 
   const handleBroadcast = async () => {
-    if (!broadcastMsg.trim()) return;
+    if (!broadcastMsg.trim() && !broadcastTitle.trim()) return;
     setBroadcasting(true);
     setBroadcastResult(null);
     try {
       const res = await fetch("/api/admin/broadcast", {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: broadcastMsg }),
+        body: JSON.stringify({
+          message: broadcastMsg,
+          embedTitle: broadcastTitle,
+          embedColor: broadcastColor,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setBroadcastResult(data);
         toast({ title: `Mensaje enviado a ${data.sent} servidores` });
-        setBroadcastMsg("");
+        setBroadcastMsg(""); setBroadcastTitle(""); setBroadcastColor("#5865F2");
       } else {
         toast({ title: data.error || "Error al enviar broadcast", variant: "destructive" });
       }
@@ -1204,73 +1214,96 @@ export default function AdminPage() {
               <p className="font-semibold">Sin servidores</p>
               <p className="text-sm text-muted-foreground mt-1">Ninguna guild ha configurado el bot aun</p>
             </div>
-          ) : (
-            <div className="overflow-auto rounded-xl border border-card-border">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-secondary/30">
-                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Servidor</th>
-                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground hidden sm:table-cell">ID</th>
-                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground hidden md:table-cell">Miembros</th>
-                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground hidden lg:table-cell">Bot unido</th>
-                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground hidden md:table-cell">Accion BL</th>
-                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Tickets</th>
-                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Plan</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {guildsList.map((g: any) => (
-                    <tr key={g.guildId} className="border-b border-border last:border-0 hover:bg-secondary/20 transition-colors">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2.5">
-                          {g.iconURL ? (
-                            <img src={g.iconURL} alt="" className="w-8 h-8 rounded-full flex-shrink-0" />
-                          ) : (
-                            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                              <Globe className="w-3.5 h-3.5 text-primary" />
+          ) : (() => {
+            const totalPages = Math.ceil(guildsList.length / SERVIDORES_PAGE_SIZE);
+            const pageItems = guildsList.slice(servidoresPage * SERVIDORES_PAGE_SIZE, (servidoresPage + 1) * SERVIDORES_PAGE_SIZE);
+            return (
+              <>
+                <div className="overflow-auto rounded-xl border border-card-border">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border bg-secondary/30">
+                        <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Servidor</th>
+                        <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground hidden sm:table-cell">ID</th>
+                        <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground hidden md:table-cell">Miembros</th>
+                        <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground hidden lg:table-cell">Unido</th>
+                        <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground hidden md:table-cell">BL</th>
+                        <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Tickets</th>
+                        <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Plan</th>
+                        <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pageItems.map((g: any) => (
+                        <tr key={g.guildId} className="border-b border-border last:border-0 hover:bg-secondary/20 transition-colors">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2.5">
+                              {g.iconURL ? (
+                                <img src={g.iconURL} alt="" className="w-8 h-8 rounded-full flex-shrink-0" />
+                              ) : (
+                                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                  <Globe className="w-3.5 h-3.5 text-primary" />
+                                </div>
+                              )}
+                              <span className="font-medium truncate max-w-[140px]">{g.name || g.guildId}</span>
                             </div>
-                          )}
-                          <span className="font-medium truncate max-w-[140px]">{g.name || g.guildId}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 hidden sm:table-cell">
-                        <span className="font-mono text-xs text-muted-foreground">{g.guildId}</span>
-                      </td>
-                      <td className="px-4 py-3 hidden md:table-cell text-muted-foreground">
-                        {g.memberCount != null ? g.memberCount.toLocaleString("es") : "—"}
-                      </td>
-                      <td className="px-4 py-3 hidden lg:table-cell text-muted-foreground text-xs">
-                        {g.botJoinedAt ? new Date(g.botJoinedAt).toLocaleDateString("es") : "—"}
-                      </td>
-                      <td className="px-4 py-3 hidden md:table-cell">
-                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                          g.blacklistAction === "ban" ? "bg-red-500/15 text-red-400" :
-                          g.blacklistAction === "kick" ? "bg-orange-500/15 text-orange-400" :
-                          g.blacklistAction === "timeout" ? "bg-yellow-500/15 text-yellow-400" :
-                          "bg-secondary text-muted-foreground"
-                        }`}>
-                          {g.blacklistAction || "ban"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">{g.tickets ?? 0}</td>
-                      <td className="px-4 py-3">
-                        {g.premiumActive ? (
-                          <div>
-                            <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-yellow-500/15 text-yellow-400 flex items-center gap-1 w-fit">
-                              <Star className="w-2.5 h-2.5" />{g.premiumPlan || "Premium"}
+                          </td>
+                          <td className="px-4 py-3 hidden sm:table-cell">
+                            <span className="font-mono text-xs text-muted-foreground">{g.guildId}</span>
+                          </td>
+                          <td className="px-4 py-3 hidden md:table-cell text-muted-foreground">
+                            {g.memberCount != null ? g.memberCount.toLocaleString("es") : "—"}
+                          </td>
+                          <td className="px-4 py-3 hidden lg:table-cell text-muted-foreground text-xs">
+                            {g.botJoinedAt ? new Date(g.botJoinedAt).toLocaleDateString("es") : "—"}
+                          </td>
+                          <td className="px-4 py-3 hidden md:table-cell">
+                            <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                              g.blacklistAction === "ban" ? "bg-red-500/15 text-red-400" :
+                              g.blacklistAction === "kick" ? "bg-orange-500/15 text-orange-400" :
+                              g.blacklistAction === "timeout" ? "bg-yellow-500/15 text-yellow-400" :
+                              "bg-secondary text-muted-foreground"
+                            }`}>
+                              {g.blacklistAction || "ban"}
                             </span>
-                            {g.premiumExpiresAt && <p className="text-xs text-muted-foreground mt-0.5">Exp: {new Date(g.premiumExpiresAt).toLocaleDateString("es")}</p>}
-                          </div>
-                        ) : (
-                          <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">Gratis</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground">{g.tickets ?? 0}</td>
+                          <td className="px-4 py-3">
+                            {g.premiumActive ? (
+                              <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-yellow-500/15 text-yellow-400 flex items-center gap-1 w-fit">
+                                <Star className="w-2.5 h-2.5" />{g.premiumPlan || "Premium"}
+                              </span>
+                            ) : (
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">Gratis</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <a
+                              href={`/servers/${g.guildId}`}
+                              className="text-xs text-primary hover:underline flex items-center gap-1"
+                            >
+                              <ChevronRight className="w-3 h-3" />Dashboard
+                            </a>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between pt-1">
+                    <p className="text-xs text-muted-foreground">
+                      Mostrando {servidoresPage * SERVIDORES_PAGE_SIZE + 1}–{Math.min((servidoresPage + 1) * SERVIDORES_PAGE_SIZE, guildsList.length)} de {guildsList.length}
+                    </p>
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={servidoresPage === 0} onClick={() => setServidoresPage(p => p - 1)}>Anterior</Button>
+                      <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={servidoresPage >= totalPages - 1} onClick={() => setServidoresPage(p => p + 1)}>Siguiente</Button>
+                    </div>
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
 
@@ -1287,8 +1320,21 @@ export default function AdminPage() {
                 Envia un mensaje al canal del sistema (o el primer canal disponible) de todos los servidores donde el bot esta activo.
               </p>
             </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs mb-1.5 block">Titulo del embed (opcional)</Label>
+                <Input placeholder="Mantenimiento programado" value={broadcastTitle} onChange={(e) => setBroadcastTitle(e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs mb-1.5 block">Color del embed (hex)</Label>
+                <div className="flex gap-2">
+                  <Input placeholder="#5865F2" value={broadcastColor} onChange={(e) => setBroadcastColor(e.target.value)} />
+                  {broadcastColor && <div className="w-9 h-9 rounded-lg border border-border flex-shrink-0" style={{ backgroundColor: broadcastColor }} />}
+                </div>
+              </div>
+            </div>
             <div>
-              <Label className="text-xs mb-1.5 block">Mensaje a enviar</Label>
+              <Label className="text-xs mb-1.5 block">Cuerpo del mensaje / descripcion del embed</Label>
               <Textarea
                 placeholder="Escribe el mensaje de broadcast aqui..."
                 value={broadcastMsg}
@@ -1307,12 +1353,12 @@ export default function AdminPage() {
               </div>
             )}
             <div className="flex gap-2">
-              <Button onClick={handleBroadcast} disabled={broadcasting || !broadcastMsg.trim()} className="gap-2">
+              <Button onClick={handleBroadcast} disabled={broadcasting || (!broadcastMsg.trim() && !broadcastTitle.trim())} className="gap-2">
                 {broadcasting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                 {broadcasting ? "Enviando..." : "Enviar broadcast"}
               </Button>
-              {broadcastMsg && (
-                <Button variant="ghost" onClick={() => { setBroadcastMsg(""); setBroadcastResult(null); }}>Limpiar</Button>
+              {(broadcastMsg || broadcastTitle) && (
+                <Button variant="ghost" onClick={() => { setBroadcastMsg(""); setBroadcastTitle(""); setBroadcastColor("#5865F2"); setBroadcastResult(null); }}>Limpiar</Button>
               )}
             </div>
           </div>

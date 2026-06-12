@@ -171,8 +171,8 @@ router.get("/admin/guilds", requireOwner, async (_req, res) => {
 
 // ─── Mass actions ────────────────────────────────────────────────────────────
 router.post("/admin/broadcast", requireOwner, async (req, res) => {
-  const { message } = req.body as { message: string };
-  if (!message?.trim()) { res.status(400).json({ error: "message requerido" }); return; }
+  const { message, embedTitle, embedColor } = req.body as { message?: string; embedTitle?: string; embedColor?: string };
+  if (!message?.trim() && !embedTitle?.trim()) { res.status(400).json({ error: "message o embedTitle requerido" }); return; }
   try {
     const { getBotClient } = await import("../bot-state");
     const client = getBotClient();
@@ -181,6 +181,19 @@ router.post("/admin/broadcast", requireOwner, async (req, res) => {
     const guilds = await db.select({ guildId: guildConfigsTable.guildId }).from(guildConfigsTable);
     let sent = 0;
     let failed = 0;
+
+    const hexColor = embedColor ? parseInt(embedColor.replace("#", ""), 16) : 0x5865F2;
+    const useEmbed = !!(embedTitle?.trim() || message?.trim());
+    const payload: any = {};
+    if (message?.trim() && !embedTitle?.trim()) {
+      payload.content = message;
+    } else {
+      payload.embeds = [{
+        title: embedTitle || undefined,
+        description: message || undefined,
+        color: hexColor,
+      }];
+    }
 
     await Promise.allSettled(
       guilds.map(async ({ guildId }) => {
@@ -191,7 +204,7 @@ router.post("/admin/broadcast", requireOwner, async (req, res) => {
             (c: any) => c.isTextBased() && c.permissionsFor(guild.members.me!)?.has("SendMessages")
           );
           if (!sysChannel || !("send" in sysChannel)) { failed++; return; }
-          await (sysChannel as any).send({ content: message });
+          await (sysChannel as any).send(payload);
           sent++;
         } catch { failed++; }
       })

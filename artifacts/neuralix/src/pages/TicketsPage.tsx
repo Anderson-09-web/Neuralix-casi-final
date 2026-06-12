@@ -24,7 +24,7 @@ type Tab = typeof TABS[number]["id"];
 
 const BUTTON_COLORS = ["PRIMARY", "SECONDARY", "SUCCESS", "DANGER"] as const;
 const emptyModule = { name: "", description: "", emoji: "", welcomeMessage: "", welcomeEmbedEnabled: false, welcomeEmbedTitle: "", welcomeEmbedDescription: "", welcomeEmbedColor: "", supportRoleIds: "", categoryId: "", buttonLabel: "", buttonColor: "PRIMARY", sortOrder: "0" };
-const emptyPanel = { name: "", description: "", channelId: "", buttonLabel: "Abrir Ticket", buttonColor: "PRIMARY", buttonEmoji: "", embedTitle: "", embedDescription: "", embedColor: "#5865F2", embedFooter: "", embedImage: "", sortOrder: "0" };
+const emptyPanel = { name: "", description: "", channelId: "", buttonLabel: "Abrir Ticket", buttonColor: "PRIMARY", buttonEmoji: "", embedTitle: "", embedDescription: "", embedColor: "#5865F2", embedFooter: "", embedImage: "", useModules: false, sortOrder: "0" };
 
 function NativeSelect({ value, onChange, children }: { value: string; onChange: (v: string) => void; children: React.ReactNode }) {
   return (
@@ -140,6 +140,7 @@ export default function TicketsPage() {
       embedColor: panelForm.embedColor,
       embedFooter: panelForm.embedFooter,
       embedImage: panelForm.embedImage,
+      useModules: panelForm.useModules,
       sortOrder: Number(panelForm.sortOrder) || 0,
     };
     if (!body.name) { toast({ title: "Nombre del panel requerido", variant: "destructive" }); return; }
@@ -182,7 +183,7 @@ export default function TicketsPage() {
       buttonColor: p.buttonColor || "PRIMARY", buttonEmoji: p.buttonEmoji || "",
       embedTitle: p.embedTitle || "", embedDescription: p.embedDescription || "",
       embedColor: p.embedColor || "#5865F2", embedFooter: p.embedFooter || "",
-      embedImage: p.embedImage || "", sortOrder: String(p.sortOrder || 0),
+      embedImage: p.embedImage || "", useModules: !!p.useModules, sortOrder: String(p.sortOrder || 0),
     });
     setEditingPanelId(p.id);
     setShowPanelForm(true);
@@ -352,6 +353,13 @@ export default function TicketsPage() {
                       <Label className="text-xs mb-1.5 block">Orden</Label>
                       <input type="number" min="0" className="h-9 w-24 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.sortOrder} onChange={(e) => setPF("sortOrder")(e.target.value)} />
                     </div>
+                    <div className="md:col-span-2 flex items-center justify-between py-1">
+                      <div>
+                        <p className="text-sm font-medium">Usar modulos de tickets</p>
+                        <p className="text-xs text-muted-foreground">Muestra un selector de modulos al abrir un ticket desde este panel</p>
+                      </div>
+                      <Switch checked={panelForm.useModules} onCheckedChange={(v) => setPF("useModules")(v)} />
+                    </div>
                   </div>
                   <div className="flex gap-2 pt-1">
                     <Button size="sm" onClick={savePanel}>Guardar</Button>
@@ -376,7 +384,11 @@ export default function TicketsPage() {
                             <PanelIcon className="w-4 h-4" style={{ color: p.embedColor || "#5865F2" }} />
                           </div>
                           <div className="min-w-0">
-                            <p className="font-medium text-sm">{p.name}</p>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-medium text-sm">{p.name}</p>
+                              {p.useModules && <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-primary/15 text-primary">Modulos</span>}
+                              {p._moduleCount != null && <span className="text-xs text-muted-foreground">{p._moduleCount} modulo{p._moduleCount !== 1 ? "s" : ""}</span>}
+                            </div>
                             {p.embedTitle && <p className="text-xs text-muted-foreground mt-0.5">{p.embedTitle}</p>}
                             {p.description && <p className="text-xs text-muted-foreground/60 mt-0.5">{p.description}</p>}
                             {p.channelId && (

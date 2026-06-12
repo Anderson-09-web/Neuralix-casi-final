@@ -98,6 +98,59 @@ export default function GoodbyePage() {
           </div>
         </div>
 
+        {/* Card section */}
+        <div className="bg-card border border-card-border rounded-xl p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold text-sm">Tarjeta de Despedida</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">Imagen personalizada que se envia al despedir a un miembro</p>
+            </div>
+            <Switch checked={cfg.cardEnabled ?? false} onCheckedChange={set("cardEnabled")} data-testid="toggle-goodbye-card" />
+          </div>
+          {cfg.cardEnabled && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-medium mb-1.5 block text-muted-foreground">Color de fondo (hex)</label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="#1e1b4b"
+                      value={cfg.cardBackground || ""}
+                      onChange={(e) => set("cardBackground")(e.target.value)}
+                      data-testid="input-goodbye-card-bg"
+                    />
+                    {cfg.cardBackground && <div className="w-10 h-10 rounded-lg border border-border flex-shrink-0" style={{ backgroundColor: cfg.cardBackground }} />}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-medium mb-1.5 block text-muted-foreground">Color de texto (hex)</label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="#ffffff"
+                      value={cfg.cardTextColor || ""}
+                      onChange={(e) => set("cardTextColor")(e.target.value)}
+                      data-testid="input-goodbye-card-text"
+                    />
+                    {cfg.cardTextColor && <div className="w-10 h-10 rounded-lg border border-border flex-shrink-0" style={{ backgroundColor: cfg.cardTextColor }} />}
+                  </div>
+                </div>
+              </div>
+              {/* Live card preview */}
+              <div className="rounded-xl overflow-hidden border border-border">
+                <div className="flex items-center gap-4 p-5" style={{ background: cfg.cardBackground || "#1e1b4b", minHeight: 100 }}>
+                  <div className="w-16 h-16 rounded-full bg-white/10 border-2 border-white/30 flex items-center justify-center flex-shrink-0 text-2xl font-black" style={{ color: cfg.cardTextColor || "#ffffff" }}>
+                    U
+                  </div>
+                  <div>
+                    <p className="text-lg font-black leading-tight" style={{ color: cfg.cardTextColor || "#ffffff" }}>Hasta luego, UsuarioPrueba</p>
+                    <p className="text-sm opacity-70 mt-0.5" style={{ color: cfg.cardTextColor || "#ffffff" }}>Nos quedan 99 miembros en el servidor</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="bg-card border border-card-border rounded-xl p-6 space-y-5">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-sm">Embed</h3>
