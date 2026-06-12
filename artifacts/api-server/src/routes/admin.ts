@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, usersTable, guildConfigsTable, ticketsTable, licensesTable, blacklistTable, backupsTable, supportTicketsTable, secondaryAdminsTable, adminActivityLogsTable } from "@workspace/db";
+import { db, usersTable, guildConfigsTable, ticketsTable, licensesTable, blacklistTable, backupsTable, supportTicketsTable, secondaryAdminsTable, adminActivityLogsTable, logsConfigsTable } from "@workspace/db";
 import { eq, and, count, desc, sql } from "drizzle-orm";
 import { requireOwner, requireAdminAccess } from "../lib/auth";
 import type { AdminPermission } from "@workspace/db";
@@ -187,11 +187,13 @@ router.post("/admin/broadcast", requireOwner, async (req, res) => {
     if (!client) { res.status(503).json({ error: "Bot no conectado" }); return; }
 
     const guilds = await db.select({ guildId: guildConfigsTable.guildId }).from(guildConfigsTable);
+    const logConfigs = await db.select({ guildId: logsConfigsTable.guildId, channelId: logsConfigsTable.channelId }).from(logsConfigsTable);
+    const logChannelMap = new Map(logConfigs.map((c) => [c.guildId, c.channelId]));
+
     let sent = 0;
     let failed = 0;
 
     const hexColor = embedColor ? parseInt(embedColor.replace("#", ""), 16) : 0x5865F2;
-    const useEmbed = !!(embedTitle?.trim() || message?.trim());
     const payload: any = {};
     if (message?.trim() && !embedTitle?.trim()) {
       payload.content = message;
@@ -208,11 +210,14 @@ router.post("/admin/broadcast", requireOwner, async (req, res) => {
         try {
           const guild = client.guilds.cache.get(guildId);
           if (!guild) { failed++; return; }
-          const sysChannel = guild.systemChannel || guild.channels.cache.find(
-            (c: any) => c.isTextBased() && c.permissionsFor(guild.members.me!)?.has("SendMessages")
-          );
-          if (!sysChannel || !("send" in sysChannel)) { failed++; return; }
-          await (sysChannel as any).send(payload);
+          const logChannelId = logChannelMap.get(guildId);
+          const targetChannel = (logChannelId ? guild.channels.cache.get(logChannelId) : null)
+            || guild.systemChannel
+            || guild.channels.cache.find(
+              (c: any) => c.isTextBased() && c.permissionsFor(guild.members.me!)?.has("SendMessages")
+            );
+          if (!targetChannel || !("send" in targetChannel)) { failed++; return; }
+          await (targetChannel as any).send(payload);
           sent++;
         } catch { failed++; }
       })

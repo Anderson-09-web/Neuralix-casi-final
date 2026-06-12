@@ -337,6 +337,7 @@ export default function AdminPage() {
   const [csvBlacklistText, setCsvBlacklistText] = useState("");
   const [csvImporting, setCsvImporting] = useState(false);
   const [csvImportResult, setCsvImportResult] = useState<any>(null);
+  const csvFileRef = useRef<HTMLInputElement>(null);
   const [bulkRevokePlan, setBulkRevokePlan] = useState("");
   const [bulkRevoking, setBulkRevoking] = useState(false);
   const [bulkRevokeResult, setBulkRevokeResult] = useState<number | null>(null);
@@ -866,11 +867,6 @@ export default function AdminPage() {
                       ? <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-yellow-500/15 text-yellow-400">{b.durationDays}d</span>
                       : <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-red-500/15 text-red-400">Perm</span>
                     }
-                    <span className={`text-xs px-1.5 py-0.5 rounded font-medium hidden sm:inline ${
-                      b.enforcementAction === "kick" ? "bg-orange-500/15 text-orange-400" :
-                      b.enforcementAction === "timeout" ? "bg-yellow-500/15 text-yellow-400" :
-                      "bg-red-500/15 text-red-400"
-                    }`}>{b.enforcementAction || "ban"}</span>
                     <span className="text-xs text-muted-foreground hidden sm:block">{new Date(b.createdAt).toLocaleDateString("es")}</span>
                     <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive"
                       onClick={(e) => { e.stopPropagation(); removeBlacklist.mutate({ userId: b.userId }, { onSuccess: () => { toast({ title: "Eliminado de blacklist" }); qc.invalidateQueries({ queryKey: getGetBlacklistQueryKey() }); }, onError: onErr("Error al eliminar") }); }}>
@@ -1378,20 +1374,49 @@ export default function AdminPage() {
                 <Ban className="w-4 h-4 text-red-400" /> Importar blacklist masiva (CSV)
               </h3>
               <p className="text-xs text-muted-foreground mt-1">
-                Pega IDs de Discord separados por comas o saltos de linea para agregar multiples usuarios a la blacklist global de una vez.
+                Sube un archivo CSV con una columna de IDs de Discord para agregar multiples usuarios a la blacklist global. Formato: una ID por linea, o separadas por coma.
               </p>
             </div>
             <div>
-              <Label className="text-xs mb-1.5 block">IDs de Discord (uno por linea o separados por coma)</Label>
-              <Textarea
-                placeholder={"123456789012345678\n987654321098765432\n..."}
-                value={csvBlacklistText}
-                onChange={(e) => setCsvBlacklistText(e.target.value)}
-                rows={5}
+              <Label className="text-xs mb-1.5 block">Archivo CSV</Label>
+              <input
+                ref={csvFileRef}
+                type="file"
+                accept=".csv,.txt"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = (ev) => {
+                    const text = (ev.target?.result as string) || "";
+                    setCsvBlacklistText(text);
+                  };
+                  reader.readAsText(file);
+                }}
               />
-              <p className="text-xs text-muted-foreground mt-1">
-                {csvBlacklistText.trim() ? `${csvBlacklistText.split(/[\n,]+/).map(s => s.trim()).filter(s => /^\d{17,20}$/.test(s)).length} IDs validos detectados` : "Sin IDs"}
-              </p>
+              <div className="flex gap-2 items-center">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => csvFileRef.current?.click()}
+                >
+                  <FileText className="w-4 h-4" />
+                  {csvBlacklistText ? "Cambiar archivo" : "Seleccionar archivo CSV"}
+                </Button>
+                {csvBlacklistText && (
+                  <span className="text-xs text-green-400">
+                    {csvBlacklistText.split(/[\n,]+/).map(s => s.trim()).filter(s => /^\d{17,20}$/.test(s)).length} IDs validos detectados
+                  </span>
+                )}
+              </div>
+              {csvBlacklistText && (
+                <p className="text-xs text-muted-foreground mt-1.5 font-mono truncate">
+                  Preview: {csvBlacklistText.slice(0, 80)}{csvBlacklistText.length > 80 ? "..." : ""}
+                </p>
+              )}
             </div>
             {csvImportResult && (
               <div className="rounded-lg border border-border bg-secondary/30 px-4 py-3">
