@@ -6,16 +6,36 @@ const AVATAR_SIZE = 120;
 const AVATAR_X = 40;
 const AVATAR_Y = (CARD_H - AVATAR_SIZE) / 2;
 
+const BLOCKED_HOST_PATTERNS = [
+  /^localhost$/i,
+  /^127\./,
+  /^0\.0\.0\.0$/,
+  /^::1$/,
+  /^0:0:0:0:0:0:0:1$/,
+  /^10\.\d+\.\d+\.\d+$/,
+  /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/,
+  /^192\.168\.\d+\.\d+$/,
+  /^169\.254\./,
+  /^fd[0-9a-f]{2}:/i,
+  /^fe80:/i,
+  /^fc[0-9a-f]{2}:/i,
+];
+
+const BLOCKED_HOST_SUFFIXES = [".internal", ".local", ".localhost", ".corp", ".home", ".lan", ".intranet"];
+
 function isSafeUrl(url: string): boolean {
   try {
     const u = new URL(url);
     if (!["http:", "https:"].includes(u.protocol)) return false;
-    const host = u.hostname.toLowerCase();
-    if (host === "localhost" || host === "127.0.0.1" || host === "::1") return false;
-    if (/^10\.\d+\.\d+\.\d+$/.test(host)) return false;
-    if (/^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/.test(host)) return false;
-    if (/^192\.168\.\d+\.\d+$/.test(host)) return false;
-    if (host.endsWith(".internal") || host.endsWith(".local")) return false;
+    const host = u.hostname.toLowerCase().replace(/\.$/, "");
+    for (const pattern of BLOCKED_HOST_PATTERNS) {
+      if (pattern.test(host)) return false;
+    }
+    for (const suffix of BLOCKED_HOST_SUFFIXES) {
+      if (host === suffix.slice(1) || host.endsWith(suffix)) return false;
+    }
+    const port = u.port ? Number(u.port) : (u.protocol === "https:" ? 443 : 80);
+    if (port === 2375 || port === 2376 || port === 9200 || port === 6379 || port === 5432 || port === 3306) return false;
     return true;
   } catch { return false; }
 }

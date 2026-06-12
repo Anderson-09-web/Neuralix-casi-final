@@ -1273,7 +1273,8 @@ export function startBot(): Client | undefined {
         transcriptHtml = result.html;
       }
 
-      await db.update(ticketsTable).set({ status: "closed", closedAt: new Date(), transcript: transcriptText || null }).where(eq(ticketsTable.id, ticketId));
+      const transcriptToStore = transcriptHtml || transcriptText || null;
+      await db.update(ticketsTable).set({ status: "closed", closedAt: new Date(), transcript: transcriptToStore }).where(eq(ticketsTable.id, ticketId));
 
       try {
         const ch = interaction.channel;

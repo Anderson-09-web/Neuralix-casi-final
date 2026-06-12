@@ -22,6 +22,13 @@ router.put("/guilds/:guildId/blacklist-config", requireAuth, async (req, res) =>
     const [existing] = await db.select().from(guildConfigsTable).where(eq(guildConfigsTable.guildId, guildId));
     if (existing) {
       await db.update(guildConfigsTable).set({ blacklistAction: action }).where(eq(guildConfigsTable.guildId, guildId));
+    } else {
+      await db.insert(guildConfigsTable).values({
+        guildId,
+        guildName: "Desconocido",
+        memberCount: 0,
+        blacklistAction: action,
+      }).onConflictDoUpdate({ target: guildConfigsTable.guildId, set: { blacklistAction: action } });
     }
     res.json({ guildId, blacklistAction: action });
   } catch (err: any) {
