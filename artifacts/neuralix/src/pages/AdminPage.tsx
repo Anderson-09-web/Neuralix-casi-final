@@ -679,6 +679,7 @@ export default function AdminPage() {
             ["Backups totales", stats?.totalBackups ?? 0, "text-blue-400"],
             ["Admins activos", (stats as any)?.totalAdmins ?? 0, "text-purple-400"],
             ["Tickets Discord", (stats as any)?.totalTickets ?? 0, "text-orange-400"],
+            ["Acciones este mes", (stats as any)?.monthlyActions ?? 0, "text-teal-400"],
           ].map(([label, val, cls]) => (
             <div key={label as string} className="bg-card border border-card-border rounded-xl p-4">
               <p className="text-xs text-muted-foreground">{label}</p>
@@ -865,6 +866,11 @@ export default function AdminPage() {
                       ? <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-yellow-500/15 text-yellow-400">{b.durationDays}d</span>
                       : <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-red-500/15 text-red-400">Perm</span>
                     }
+                    <span className={`text-xs px-1.5 py-0.5 rounded font-medium hidden sm:inline ${
+                      b.enforcementAction === "kick" ? "bg-orange-500/15 text-orange-400" :
+                      b.enforcementAction === "timeout" ? "bg-yellow-500/15 text-yellow-400" :
+                      "bg-red-500/15 text-red-400"
+                    }`}>{b.enforcementAction || "ban"}</span>
                     <span className="text-xs text-muted-foreground hidden sm:block">{new Date(b.createdAt).toLocaleDateString("es")}</span>
                     <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive"
                       onClick={(e) => { e.stopPropagation(); removeBlacklist.mutate({ userId: b.userId }, { onSuccess: () => { toast({ title: "Eliminado de blacklist" }); qc.invalidateQueries({ queryKey: getGetBlacklistQueryKey() }); }, onError: onErr("Error al eliminar") }); }}>

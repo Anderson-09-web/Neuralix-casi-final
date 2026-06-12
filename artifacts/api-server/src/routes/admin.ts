@@ -30,6 +30,13 @@ router.get("/admin/stats", requireAdminAccess("view_stats"), async (_req, res) =
   const [openSupport] = await db.select({ count: count() }).from(supportTicketsTable).where(eq(supportTicketsTable.status, "open"));
   const [totalLogs] = await db.select({ count: count() }).from(adminActivityLogsTable);
 
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const [monthlyActions] = await db
+    .select({ count: count() })
+    .from(adminActivityLogsTable)
+    .where(sql`${adminActivityLogsTable.createdAt} >= ${monthStart}`);
+
   res.json({
     totalGuilds: guilds?.count || 0,
     totalUsers: users?.count || 0,
@@ -40,6 +47,7 @@ router.get("/admin/stats", requireAdminAccess("view_stats"), async (_req, res) =
     totalAdmins: adminsCount?.count || 0,
     openSupport: openSupport?.count || 0,
     totalActivityLogs: totalLogs?.count || 0,
+    monthlyActions: monthlyActions?.count || 0,
   });
 });
 

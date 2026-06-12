@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 
 const POLL_INTERVAL = 30_000;
 const STATUS_POLL   = 15_000;
@@ -53,6 +54,7 @@ function StatusDot({ ok }: { ok: boolean }) {
 }
 
 function SecurityGlobalCard({ guildId }: { guildId: string }) {
+  const { toast } = useToast();
   const [config, setConfig] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [localAction, setLocalAction] = useState("ban");
@@ -67,13 +69,21 @@ function SecurityGlobalCard({ guildId }: { guildId: string }) {
   const save = async () => {
     setSaving(true);
     try {
-      await fetch(`/api/guilds/${guildId}/blacklist-config`, {
+      const res = await fetch(`/api/guilds/${guildId}/blacklist-config`, {
         method: "PUT", credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ blacklistAction: localAction }),
       });
-      setConfig((c: any) => ({ ...c, blacklistAction: localAction }));
-    } catch {}
+      if (res.ok) {
+        setConfig((c: any) => ({ ...c, blacklistAction: localAction }));
+        toast({ title: "Configuracion de seguridad guardada" });
+      } else {
+        const d = await res.json().catch(() => ({}));
+        toast({ title: d.error || "Error al guardar configuracion", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Error de red al guardar", variant: "destructive" });
+    }
     setSaving(false);
   };
 

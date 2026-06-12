@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, ticketPanelsTable, ticketModulesTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, count } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import axios from "axios";
 
@@ -12,7 +12,16 @@ router.get("/guilds/:guildId/tickets/panels", requireAuth, async (req, res) => {
     const panels = await db.select().from(ticketPanelsTable)
       .where(eq(ticketPanelsTable.guildId, guildId))
       .orderBy(ticketPanelsTable.sortOrder);
-    res.json(panels);
+
+    const moduleCounts = await db
+      .select({ panelId: ticketModulesTable.panelId, cnt: count() })
+      .from(ticketModulesTable)
+      .where(eq(ticketModulesTable.guildId, guildId))
+      .groupBy(ticketModulesTable.panelId);
+
+    const countMap = new Map(moduleCounts.map((r) => [r.panelId, Number(r.cnt)]));
+    const result = panels.map((p) => ({ ...p, _moduleCount: countMap.get(p.id) ?? 0 }));
+    res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err?.message || "Error al obtener paneles" });
   }
