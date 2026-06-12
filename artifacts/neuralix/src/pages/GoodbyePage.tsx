@@ -95,6 +95,9 @@ export default function GoodbyePage() {
               rows={4}
               data-testid="textarea-goodbye-message"
             />
+            <p className="text-xs text-muted-foreground mt-1">
+              Variables: <code className="text-primary/80">{"{user}"}</code> <code className="text-primary/80">{"{username}"}</code> <code className="text-primary/80">{"{server}"}</code> <code className="text-primary/80">{"{membercount}"}</code> <code className="text-primary/80">{"{date}"}</code> <code className="text-primary/80">{"{time}"}</code>
+            </p>
           </div>
         </div>
 
@@ -109,6 +112,15 @@ export default function GoodbyePage() {
           </div>
           {cfg.cardEnabled && (
             <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium mb-1.5 block text-muted-foreground">Imagen de fondo (URL)</label>
+                <Input
+                  placeholder="https://cdn.discordapp.com/attachments/... (opcional)"
+                  value={cfg.cardBackgroundUrl || ""}
+                  onChange={(e) => set("cardBackgroundUrl")(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground mt-1">Si se provee una URL, se usara como fondo en lugar del color solido.</p>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-medium mb-1.5 block text-muted-foreground">Color de fondo (hex)</label>
@@ -119,7 +131,7 @@ export default function GoodbyePage() {
                       onChange={(e) => set("cardBackground")(e.target.value)}
                       data-testid="input-goodbye-card-bg"
                     />
-                    {cfg.cardBackground && <div className="w-10 h-10 rounded-lg border border-border flex-shrink-0" style={{ backgroundColor: cfg.cardBackground }} />}
+                    <div className="w-10 h-10 rounded-lg border border-border flex-shrink-0" style={{ backgroundColor: cfg.cardBackground || "#1e1b4b" }} />
                   </div>
                 </div>
                 <div>
@@ -131,21 +143,55 @@ export default function GoodbyePage() {
                       onChange={(e) => set("cardTextColor")(e.target.value)}
                       data-testid="input-goodbye-card-text"
                     />
-                    {cfg.cardTextColor && <div className="w-10 h-10 rounded-lg border border-border flex-shrink-0" style={{ backgroundColor: cfg.cardTextColor }} />}
+                    <div className="w-10 h-10 rounded-lg border border-border flex-shrink-0" style={{ backgroundColor: cfg.cardTextColor || "#ffffff" }} />
                   </div>
                 </div>
               </div>
-              {/* Live card preview */}
-              <div className="rounded-xl overflow-hidden border border-border">
-                <div className="flex items-center gap-4 p-5" style={{ background: cfg.cardBackground || "#1e1b4b", minHeight: 100 }}>
-                  <div className="w-16 h-16 rounded-full bg-white/10 border-2 border-white/30 flex items-center justify-center flex-shrink-0 text-2xl font-black" style={{ color: cfg.cardTextColor || "#ffffff" }}>
-                    U
-                  </div>
-                  <div>
-                    <p className="text-lg font-black leading-tight" style={{ color: cfg.cardTextColor || "#ffffff" }}>Hasta luego, UsuarioPrueba</p>
-                    <p className="text-sm opacity-70 mt-0.5" style={{ color: cfg.cardTextColor || "#ffffff" }}>Nos quedan 99 miembros en el servidor</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-medium mb-1.5 block text-muted-foreground">Color del borde del avatar (hex)</label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="#ED4245"
+                      value={cfg.cardAvatarBorderColor || ""}
+                      onChange={(e) => set("cardAvatarBorderColor")(e.target.value)}
+                    />
+                    <div className="w-10 h-10 rounded-full border-2 flex-shrink-0" style={{ borderColor: cfg.cardAvatarBorderColor || "#ED4245" }} />
                   </div>
                 </div>
+                <div>
+                  <label className="text-xs font-medium mb-1.5 block text-muted-foreground">Texto de despedida personalizado</label>
+                  <Input
+                    placeholder="Hasta luego..."
+                    value={cfg.cardGoodbyeText || ""}
+                    onChange={(e) => set("cardGoodbyeText")(e.target.value)}
+                  />
+                </div>
+              </div>
+              {/* Live card preview */}
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Vista previa</p>
+                <div className="rounded-xl overflow-hidden border border-border relative"
+                  style={{
+                    background: cfg.cardBackgroundUrl ? `url(${cfg.cardBackgroundUrl}) center/cover` : (cfg.cardBackground || "#1e1b4b"),
+                    minHeight: 120,
+                  }}>
+                  {cfg.cardBackgroundUrl && <div className="absolute inset-0 bg-black/40 rounded-xl" />}
+                  <div className="relative flex items-center gap-5 px-8 py-7">
+                    <div className="w-16 h-16 rounded-full bg-white/20 border-4 flex items-center justify-center flex-shrink-0 text-2xl font-black"
+                      style={{ color: cfg.cardTextColor || "#ffffff", borderColor: cfg.cardAvatarBorderColor || "#ED4245" }}>
+                      U
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-widest opacity-70" style={{ color: cfg.cardTextColor || "#ffffff" }}>
+                        {cfg.cardGoodbyeText || "Hasta luego..."}
+                      </p>
+                      <p className="text-xl font-black leading-tight" style={{ color: cfg.cardTextColor || "#ffffff" }}>UsuarioPrueba</p>
+                      <p className="text-sm opacity-60 mt-0.5" style={{ color: cfg.cardTextColor || "#ffffff" }}>Nos quedan 99 miembros</p>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground/50 mt-1.5">La tarjeta real se genera como imagen PNG con el avatar del usuario.</p>
               </div>
             </div>
           )}

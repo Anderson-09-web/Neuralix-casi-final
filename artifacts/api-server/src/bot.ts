@@ -31,6 +31,7 @@ import {
   automodConfigsTable,
   giveawaysTable,
   autoRolesTable,
+  logEntriesTable,
 } from "@workspace/db";
 import { eq, sql, and, count } from "drizzle-orm";
 import { logger } from "./lib/logger";
@@ -44,21 +45,31 @@ const joinTracker   = new Map<string, number[]>();
 const spamTracker   = new Map<string, number[]>();
 const floodTracker  = new Map<string, Map<string, number[]>>();
 const nukeTracker   = new Map<string, { count: number; resetAt: number }>();
-const tempRoleTimers = new Map<string, NodeJS.Timeout>();
+const tempRoleTimers    = new Map<string, NodeJS.Timeout>();
+const webhookSpamTracker = new Map<string, number[]>();    // `${guildId}:${userId}` → timestamps
+const suspiciousTracker  = new Map<string, { actions: string[]; resetAt: number }>(); // same key
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function processTemplate(
   template: string,
-  opts: { guildName: string; mention: string; username: string; tag: string; memberCount: number },
+  opts: { guildName: string; mention: string; username: string; tag: string; memberCount: number; accountCreatedAt?: Date | null },
 ): string {
+  const now = new Date();
+  const accountAgeDays = opts.accountCreatedAt
+    ? Math.floor((Date.now() - opts.accountCreatedAt.getTime()) / 86_400_000)
+    : null;
   return template
     .replace(/\{user\}/gi, opts.mention)
     .replace(/\{username\}/gi, opts.username)
+    .replace(/\{usertag\}/gi, opts.tag)
     .replace(/\{tag\}/gi, opts.tag)
     .replace(/\{server\}/gi, opts.guildName)
     .replace(/\{membercount\}/gi, opts.memberCount.toString())
-    .replace(/\{date\}/gi, new Date().toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" }));
+    .replace(/\{date\}/gi, now.toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" }))
+    .replace(/\{time\}/gi, now.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }))
+    .replace(/\{accountage\}/gi, accountAgeDays !== null ? `${accountAgeDays}` : "Desconocido")
+    .replace(/\{ordinal\}/gi, `${opts.memberCount}º`);
 }
 
 function hexColor(hex?: string | null): number {
@@ -110,7 +121,26 @@ async function sendLog(channelId: string, embed: Record<string, unknown>, botTok
   try { await sendToChannel(channelId, { embeds: [embed] }, botToken); } catch {}
 }
 
-function getLogChannel(logCfg: any, category: "members" | "messages" | "roles" | "channels" | "moderation" | "security"): string | null {
+async function logToDb(guildId: string, entry: {
+  userId?: string | null;
+  username?: string | null;
+  action: string;
+  category: string;
+  details?: string | null;
+  targetId?: string | null;
+  targetName?: string | null;
+  channelId?: string | null;
+  channelName?: string | null;
+  reason?: string | null;
+  moderatorId?: string | null;
+  moderatorName?: string | null;
+}) {
+  try {
+    await db.insert(logEntriesTable).values({ guildId, ...entry });
+  } catch {}
+}
+
+function getLogChannel(logCfg: any, category: "members" | "messages" | "roles" | "channels" | "moderation" | "security" | "tickets" | "verification" | "giveaway"): string | null {
   if (!logCfg?.enabled) return null;
   const overrides: Record<string, string | null> = {
     members: logCfg.memberChannelId || null,
@@ -119,6 +149,9 @@ function getLogChannel(logCfg: any, category: "members" | "messages" | "roles" |
     channels: logCfg.channelLogsChannelId || null,
     moderation: logCfg.moderationChannelId || null,
     security: logCfg.securityChannelId || null,
+    tickets: logCfg.ticketChannelId || null,
+    verification: logCfg.verificationChannelId || null,
+    giveaway: logCfg.giveawayChannelId || null,
   };
   return overrides[category] || logCfg.channelId || null;
 }
@@ -309,6 +342,28 @@ export function startBot(): Client | undefined {
     logger.info({ tag: c.user.tag, guilds: c.guilds.cache.size }, "Bot de Discord listo");
     setTimeout(() => runBlacklistSweep(client, botToken), 5000);
     setInterval(() => runBlacklistSweep(client, botToken), 10 * 60_000);
+
+    // ── Auto-end expired giveaways every minute ────────────────────────────
+    setInterval(async () => {
+      try {
+        const now = new Date();
+        const expired = await db.select().from(giveawaysTable)
+          .where(and(eq(giveawaysTable.status, "active"), sql`ends_at <= ${now}`));
+        for (const giveaway of expired) {
+          const entrants = giveaway.entrants ?? [];
+          const wc = Math.min(giveaway.winnerCount, entrants.length);
+          const winners = [...entrants].sort(() => Math.random() - 0.5).slice(0, wc);
+          await db.update(giveawaysTable).set({ status: "ended", winners, updatedAt: new Date() }).where(eq(giveawaysTable.id, giveaway.id));
+          try {
+            const ch = await client.channels.fetch(giveaway.channelId);
+            if (ch && "send" in ch) {
+              const wm = winners.length > 0 ? winners.map((w) => `<@${w}>`).join(", ") : "Nadie participó";
+              await (ch as any).send({ embeds: [{ title: `SORTEO FINALIZADO — ${giveaway.prize}`, description: `**Ganador(es):** ${wm}\n**Premio:** ${giveaway.prize}\n**Participantes:** ${entrants.length}`, color: 0x57F287, footer: { text: `Organizado por ${giveaway.hostedByUsername}` } }] });
+            }
+          } catch {}
+        }
+      } catch {}
+    }, 60_000);
   });
 
   // ─── Member Join ──────────────────────────────────────────────────────────
@@ -499,6 +554,7 @@ export function startBot(): Client | undefined {
           description: `**Usuario:** \`${username}\` (<@${userId}>)\n**ID:** \`${userId}\`\n**Cuenta creada:** ${member.user?.createdAt?.toLocaleDateString("es-ES") ?? "Desconocido"}\n**Bot:** ${isBot ? "Si" : "No"}`,
           color: 0x57F287, timestamp: new Date().toISOString(), footer: { text: `Miembros: ${memberCount}` },
         }, botToken);
+        await logToDb(guildId, { userId, username, action: "member_join", category: "member", details: `Bot: ${isBot ? "Si" : "No"} | Cuenta: ${member.user?.createdAt?.toLocaleDateString("es-ES") ?? "Desconocido"}` });
       }
 
     } catch (err) {
@@ -535,6 +591,7 @@ export function startBot(): Client | undefined {
           description: `**Usuario:** \`${username}\` (<@${userId}>)\n**ID:** \`${userId}\``,
           color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: `Miembros: ${memberCount}` },
         }, botToken);
+        await logToDb(guildId, { userId, username, action: "member_leave", category: "member" });
       }
     } catch (err) {
       logger.error({ err, guildId, userId }, "Error en guildMemberRemove");
@@ -556,6 +613,7 @@ export function startBot(): Client | undefined {
           description: `**Usuario:** <@${newMember.id}> (\`${newMember.user.username}\`)\n**Antes:** ${oldMember.nickname || "*(sin apodo)*"}\n**Despues:** ${newMember.nickname || "*(sin apodo)*"}`,
           color: 0x5865F2, timestamp: new Date().toISOString(), footer: { text: "Neuralix Logs" },
         }, botToken);
+        await logToDb(guildId, { userId: newMember.id, username: newMember.user.username, action: "nickname_change", category: "member", details: `${oldMember.nickname || "(sin apodo)"} → ${newMember.nickname || "(sin apodo)"}` });
       }
 
       if (logCfg.logMembers) {
@@ -774,6 +832,12 @@ export function startBot(): Client | undefined {
         description: `**Usuario:** <@${newMsg.author?.id}> (\`${newMsg.author?.username}\`)\n**Canal:** <#${newMsg.channelId}>\n**Antes:** ${oldMsg.content?.substring(0, 300) ?? "Desconocido"}\n**Despues:** ${newMsg.content?.substring(0, 300)}\n[Ver mensaje](${newMsg.url})`,
         color: 0x5865F2, timestamp: new Date().toISOString(), footer: { text: "Neuralix Logs" },
       }, botToken);
+      await logToDb(guildId, {
+        userId: newMsg.author?.id, username: newMsg.author?.username,
+        action: "message_edit", category: "message",
+        channelId: newMsg.channelId, channelName: (newMsg.channel as any)?.name,
+        details: `Antes: ${oldMsg.content?.substring(0, 200)}\nDespues: ${newMsg.content?.substring(0, 200)}`,
+      });
     } catch {}
   });
 
@@ -794,6 +858,12 @@ export function startBot(): Client | undefined {
         description: desc.join("\n"),
         color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix Logs" },
       }, botToken);
+      await logToDb(guildId, {
+        userId: message.author?.id, username: message.author?.username,
+        action: "message_delete", category: "message",
+        channelId: message.channelId, channelName: (message.channel as any)?.name,
+        details: message.content?.substring(0, 300) ?? null,
+      });
     } catch {}
   });
 
@@ -809,10 +879,13 @@ export function startBot(): Client | undefined {
 
       if (!oldState.channelId && newState.channelId) {
         await sendLog(logChannel, { title: "Se unio a canal de voz", description: `**Usuario:** <@${userId}> (\`${username}\`)\n**Canal:** <#${newState.channelId}>`, color: 0x57F287, timestamp: new Date().toISOString(), footer: { text: "Neuralix Logs" } }, botToken);
+        await logToDb(guildId, { userId, username, action: "voice_join", category: "voice", channelId: newState.channelId });
       } else if (oldState.channelId && !newState.channelId) {
         await sendLog(logChannel, { title: "Salio del canal de voz", description: `**Usuario:** <@${userId}> (\`${username}\`)\n**Canal:** <#${oldState.channelId}>`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix Logs" } }, botToken);
+        await logToDb(guildId, { userId, username, action: "voice_leave", category: "voice", channelId: oldState.channelId });
       } else if (oldState.channelId && newState.channelId && oldState.channelId !== newState.channelId) {
         await sendLog(logChannel, { title: "Cambio de canal de voz", description: `**Usuario:** <@${userId}> (\`${username}\`)\n**Desde:** <#${oldState.channelId}>\n**Hacia:** <#${newState.channelId}>`, color: 0xFEE75C, timestamp: new Date().toISOString(), footer: { text: "Neuralix Logs" } }, botToken);
+        await logToDb(guildId, { userId, username, action: "voice_move", category: "voice", channelId: newState.channelId, details: `${oldState.channelId} → ${newState.channelId}` });
       }
     } catch {}
   });
@@ -829,89 +902,13 @@ export function startBot(): Client | undefined {
       const ts = new Date().toISOString();
 
       switch (entry.action) {
-        // Webhooks
-        case AuditLogEvent.WebhookCreate: {
-          const ch = getLogChannel(logCfg, "channels");
-          if (ch && logCfg.logChannels) {
-            const target = entry.target as any;
-            await sendLog(ch, { title: "Webhook Creado", description: `**Nombre:** ${target?.name || "Desconocido"}\n**Responsable:** ${executorStr}\n**Canal:** ${target?.channelId ? `<#${target.channelId}>` : "Desconocido"}`, color: 0x57F287, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
-          }
-          break;
-        }
-        case AuditLogEvent.WebhookDelete: {
-          const ch = getLogChannel(logCfg, "channels");
-          if (ch && logCfg.logChannels) {
-            const target = entry.target as any;
-            await sendLog(ch, { title: "Webhook Eliminado", description: `**Nombre:** ${target?.name || "Desconocido"}\n**Responsable:** ${executorStr}`, color: 0xED4245, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
-          }
-          break;
-        }
-        case AuditLogEvent.WebhookUpdate: {
-          const ch = getLogChannel(logCfg, "channels");
-          if (ch && logCfg.logChannels) {
-            await sendLog(ch, { title: "Webhook Modificado", description: `**Responsable:** ${executorStr}`, color: 0xFEE75C, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
-          }
-          break;
-        }
-
-        // Guild settings
-        case AuditLogEvent.GuildUpdate: {
-          const ch = getLogChannel(logCfg, "moderation");
-          if (ch && logCfg.logModeration) {
-            const changes = entry.changes?.map((c) => `**${c.key}:** \`${String(c.old ?? "—")}\` → \`${String(c.new ?? "—")}\``).join("\n") || "Sin detalles";
-            await sendLog(ch, { title: "Servidor Modificado", description: `**Responsable:** ${executorStr}\n${changes}`, color: 0x5865F2, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
-          }
-          break;
-        }
-
-        // Role updates
-        case AuditLogEvent.RoleUpdate: {
-          const ch = getLogChannel(logCfg, "roles");
-          if (ch && logCfg.logRoles) {
-            const target = entry.target as any;
-            const changes = entry.changes?.map((c) => `**${c.key}:** \`${String(c.old ?? "—")}\` → \`${String(c.new ?? "—")}\``).join("\n") || "Sin detalles";
-            await sendLog(ch, { title: "Rol Actualizado", description: `**Rol:** @${target?.name || "Desconocido"}\n**Responsable:** ${executorStr}\n${changes}`, color: 0xFEE75C, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
-          }
-          break;
-        }
-
-        // Invites
-        case AuditLogEvent.InviteCreate: {
-          const ch = getLogChannel(logCfg, "members");
-          if (ch && logCfg.logInvites) {
-            const target = entry.target as any;
-            await sendLog(ch, { title: "Invitacion Creada", description: `**Codigo:** ${target?.code || "Desconocido"}\n**Creador:** ${executorStr}\n**Usos max:** ${target?.maxUses || "Ilimitado"}\n**Expira:** ${target?.maxAge ? `${target.maxAge / 3600}h` : "Nunca"}`, color: 0x57F287, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
-          }
-          break;
-        }
-        case AuditLogEvent.InviteDelete: {
-          const ch = getLogChannel(logCfg, "members");
-          if (ch && logCfg.logInvites) {
-            const target = entry.target as any;
-            await sendLog(ch, { title: "Invitacion Eliminada", description: `**Codigo:** ${target?.code || "Desconocido"}\n**Responsable:** ${executorStr}`, color: 0xED4245, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
-          }
-          break;
-        }
-
-        // Channel permission overrides
-        case AuditLogEvent.ChannelOverwriteCreate:
-        case AuditLogEvent.ChannelOverwriteUpdate:
-        case AuditLogEvent.ChannelOverwriteDelete: {
-          const ch = getLogChannel(logCfg, "channels");
-          if (ch && logCfg.logChannels) {
-            const actionNames = { [AuditLogEvent.ChannelOverwriteCreate]: "Creado", [AuditLogEvent.ChannelOverwriteUpdate]: "Actualizado", [AuditLogEvent.ChannelOverwriteDelete]: "Eliminado" };
-            const target = entry.target as any;
-            await sendLog(ch, { title: `Permiso de Canal ${actionNames[entry.action]}`, description: `**Canal:** ${target?.id ? `<#${target.id}>` : "Desconocido"}\n**Responsable:** ${executorStr}`, color: 0xFEE75C, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
-          }
-          break;
-        }
-
         // Kicks
         case AuditLogEvent.MemberKick: {
           const ch = getLogChannel(logCfg, "moderation");
           if (ch && logCfg.logModeration) {
             const target = entry.target as any;
             await sendLog(ch, { title: "Miembro Expulsado", description: `**Usuario:** \`${target?.username || "Desconocido"}\` (\`${target?.id}\`)\n**Responsable:** ${executorStr}\n**Razon:** ${entry.reason || "Sin razon"}`, color: 0xFEE75C, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
+            await logToDb(guildId, { userId: target?.id, username: target?.username, action: "member_kick", category: "moderation", reason: entry.reason ?? null, moderatorId: executor?.id, moderatorName: executor?.username });
           }
           break;
         }
@@ -925,7 +922,197 @@ export function startBot(): Client | undefined {
               const target = entry.target as any;
               const action = timeoutChange.new ? "Silenciado" : "Silencio Levantado";
               await sendLog(ch, { title: `Miembro ${action}`, description: `**Usuario:** \`${target?.username || "Desconocido"}\` (\`${target?.id}\`)\n**Responsable:** ${executorStr}\n**Hasta:** ${timeoutChange.new ? new Date(timeoutChange.new as string).toLocaleString("es-ES") : "—"}`, color: timeoutChange.new ? 0xFEE75C : 0x57F287, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
+              await logToDb(guildId, { userId: target?.id, username: target?.username, action: timeoutChange.new ? "member_timeout" : "timeout_lifted", category: "moderation", moderatorId: executor?.id, moderatorName: executor?.username });
             }
+          }
+          break;
+        }
+
+        // Unban
+        case AuditLogEvent.MemberBanRemove: {
+          const ch = getLogChannel(logCfg, "moderation");
+          if (ch && logCfg.logModeration) {
+            const target = entry.target as any;
+            await sendLog(ch, { title: "Baneo Levantado", description: `**Usuario:** \`${target?.username || "Desconocido"}\` (\`${target?.id}\`)\n**Responsable:** ${executorStr}`, color: 0x57F287, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
+            await logToDb(guildId, { userId: target?.id, username: target?.username, action: "member_unban", category: "moderation", moderatorId: executor?.id, moderatorName: executor?.username });
+          }
+          break;
+        }
+
+        // Role create / delete (via audit — adds DB log)
+        case AuditLogEvent.RoleCreate: {
+          const ch = getLogChannel(logCfg, "roles");
+          if (ch && logCfg.logRoles) {
+            const target = entry.target as any;
+            await logToDb(guildId, { userId: executor?.id, username: executor?.username, action: "role_create", category: "role", targetId: target?.id, targetName: target?.name });
+          }
+          break;
+        }
+        case AuditLogEvent.RoleDelete: {
+          const ch = getLogChannel(logCfg, "roles");
+          if (ch && logCfg.logRoles) {
+            const target = entry.target as any;
+            await logToDb(guildId, { userId: executor?.id, username: executor?.username, action: "role_delete", category: "role", targetId: target?.id, targetName: target?.name });
+          }
+          break;
+        }
+
+        // Emoji create / delete
+        case AuditLogEvent.EmojiCreate: {
+          const ch = getLogChannel(logCfg, "channels");
+          if (ch && logCfg.logChannels) {
+            const target = entry.target as any;
+            await sendLog(ch, { title: "Emoji Creado", description: `**Nombre:** :${target?.name || "desconocido"}:\n**Responsable:** ${executorStr}`, color: 0x57F287, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
+            await logToDb(guildId, { userId: executor?.id, username: executor?.username, action: "emoji_create", category: "server", targetName: target?.name });
+          }
+          break;
+        }
+        case AuditLogEvent.EmojiDelete: {
+          const ch = getLogChannel(logCfg, "channels");
+          if (ch && logCfg.logChannels) {
+            const target = entry.target as any;
+            await sendLog(ch, { title: "Emoji Eliminado", description: `**Nombre:** :${target?.name || "desconocido"}:\n**Responsable:** ${executorStr}`, color: 0xED4245, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
+            await logToDb(guildId, { userId: executor?.id, username: executor?.username, action: "emoji_delete", category: "server", targetName: target?.name });
+          }
+          break;
+        }
+
+        // Channel updates
+        case AuditLogEvent.ChannelCreate: {
+          const ch = getLogChannel(logCfg, "channels");
+          if (ch && logCfg.logChannels) {
+            const target = entry.target as any;
+            await logToDb(guildId, { userId: executor?.id, username: executor?.username, action: "channel_create", category: "channel", targetId: target?.id, targetName: target?.name });
+          }
+          break;
+        }
+        case AuditLogEvent.ChannelDelete: {
+          const ch = getLogChannel(logCfg, "channels");
+          if (ch && logCfg.logChannels) {
+            const target = entry.target as any;
+            await logToDb(guildId, { userId: executor?.id, username: executor?.username, action: "channel_delete", category: "channel", targetName: target?.name });
+          }
+          break;
+        }
+        case AuditLogEvent.ChannelUpdate: {
+          const ch = getLogChannel(logCfg, "channels");
+          if (ch && logCfg.logChannels) {
+            const target = entry.target as any;
+            const changes = entry.changes?.map((c) => `**${c.key}:** \`${String(c.old ?? "—")}\` → \`${String(c.new ?? "—")}\``).join("\n") || "Sin detalles";
+            await sendLog(ch, { title: "Canal Actualizado", description: `**Canal:** ${target?.id ? `<#${target.id}>` : "Desconocido"}\n**Responsable:** ${executorStr}\n${changes}`, color: 0x5865F2, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
+            await logToDb(guildId, { userId: executor?.id, username: executor?.username, action: "channel_update", category: "channel", targetId: target?.id, targetName: target?.name, details: changes });
+          }
+          break;
+        }
+
+        // Webhook spam detection
+        case AuditLogEvent.WebhookCreate: {
+          const ch = getLogChannel(logCfg, "channels");
+          if (ch && logCfg.logChannels) {
+            const target = entry.target as any;
+            await sendLog(ch, { title: "Webhook Creado", description: `**Nombre:** ${target?.name || "Desconocido"}\n**Responsable:** ${executorStr}\n**Canal:** ${target?.channelId ? `<#${target.channelId}>` : "Desconocido"}`, color: 0x57F287, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
+            await logToDb(guildId, { userId: executor?.id, username: executor?.username, action: "webhook_create", category: "channel", targetName: target?.name });
+          }
+          // Webhook spam detection
+          if (executor?.id) {
+            const [raidCfg] = await db.select().from(antiraidConfigsTable).where(eq(antiraidConfigsTable.guildId, guildId));
+            if (raidCfg?.enabled && raidCfg.antiWebhook) {
+              const key = `${guildId}:${executor.id}`;
+              const now = Date.now();
+              const windowMs = ((raidCfg as any).webhookSpamInterval ?? 60) * 1000;
+              const threshold = (raidCfg as any).webhookSpamThreshold ?? 3;
+              const timestamps = (webhookSpamTracker.get(key) ?? []).filter((t) => now - t < windowMs);
+              timestamps.push(now);
+              webhookSpamTracker.set(key, timestamps);
+              if (timestamps.length >= threshold) {
+                webhookSpamTracker.set(key, []);
+                const secCh = getLogChannel(raidCfg as any, "security");
+                const whitelisted = await isWhitelisted(guildId, executor.id);
+                if (!whitelisted) {
+                  try {
+                    const member = guild.members.cache.get(executor.id) || await guild.members.fetch(executor.id).catch(() => null);
+                    if (member) {
+                      if (raidCfg.nukeAction === "ban") await member.ban({ reason: "AntiRaid: Webhook spam" }).catch(() => {});
+                      else if (raidCfg.nukeAction === "kick") await member.kick("AntiRaid: Webhook spam").catch(() => {});
+                      else await member.roles.set([], "AntiRaid: Webhook spam").catch(() => {});
+                    }
+                    if (secCh) await sendLog(secCh, { title: "AntiWebhook — Webhook Spam", description: `**Responsable:** ${executorStr}\n**Webhooks:** ${timestamps.length} en ${raidCfg.webhookSpamInterval}s\n**Accion:** ${raidCfg.nukeAction}`, color: 0xED4245, timestamp: ts, footer: { text: "Neuralix AntiRaid" } }, botToken);
+                  } catch {}
+                }
+              }
+            }
+          }
+          break;
+        }
+        case AuditLogEvent.WebhookDelete: {
+          const ch = getLogChannel(logCfg, "channels");
+          if (ch && logCfg.logChannels) {
+            const target = entry.target as any;
+            await sendLog(ch, { title: "Webhook Eliminado", description: `**Nombre:** ${target?.name || "Desconocido"}\n**Responsable:** ${executorStr}`, color: 0xED4245, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
+            await logToDb(guildId, { userId: executor?.id, username: executor?.username, action: "webhook_delete", category: "channel", targetName: target?.name });
+          }
+          break;
+        }
+        case AuditLogEvent.WebhookUpdate: {
+          const ch = getLogChannel(logCfg, "channels");
+          if (ch && logCfg.logChannels) {
+            await sendLog(ch, { title: "Webhook Modificado", description: `**Responsable:** ${executorStr}`, color: 0xFEE75C, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
+          }
+          break;
+        }
+
+        // Guild settings (logToDb)
+        case AuditLogEvent.GuildUpdate: {
+          const ch = getLogChannel(logCfg, "moderation");
+          if (ch && logCfg.logModeration) {
+            const changes = entry.changes?.map((c) => `**${c.key}:** \`${String(c.old ?? "—")}\` → \`${String(c.new ?? "—")}\``).join("\n") || "Sin detalles";
+            await sendLog(ch, { title: "Servidor Modificado", description: `**Responsable:** ${executorStr}\n${changes}`, color: 0x5865F2, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
+            await logToDb(guildId, { userId: executor?.id, username: executor?.username, action: "guild_update", category: "server", details: changes });
+          }
+          break;
+        }
+
+        // Role updates (logToDb)
+        case AuditLogEvent.RoleUpdate: {
+          const ch = getLogChannel(logCfg, "roles");
+          if (ch && logCfg.logRoles) {
+            const target = entry.target as any;
+            const changes = entry.changes?.map((c) => `**${c.key}:** \`${String(c.old ?? "—")}\` → \`${String(c.new ?? "—")}\``).join("\n") || "Sin detalles";
+            await sendLog(ch, { title: "Rol Actualizado", description: `**Rol:** @${target?.name || "Desconocido"}\n**Responsable:** ${executorStr}\n${changes}`, color: 0xFEE75C, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
+            await logToDb(guildId, { userId: executor?.id, username: executor?.username, action: "role_update", category: "role", targetId: target?.id, targetName: target?.name, details: changes });
+          }
+          break;
+        }
+
+        // Invites (logToDb)
+        case AuditLogEvent.InviteCreate: {
+          const ch = getLogChannel(logCfg, "members");
+          if (ch && logCfg.logInvites) {
+            const target = entry.target as any;
+            await sendLog(ch, { title: "Invitacion Creada", description: `**Codigo:** ${target?.code || "Desconocido"}\n**Creador:** ${executorStr}\n**Usos max:** ${target?.maxUses || "Ilimitado"}\n**Expira:** ${target?.maxAge ? `${target.maxAge / 3600}h` : "Nunca"}`, color: 0x57F287, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
+            await logToDb(guildId, { userId: executor?.id, username: executor?.username, action: "invite_create", category: "member", details: `discord.gg/${target?.code}` });
+          }
+          break;
+        }
+        case AuditLogEvent.InviteDelete: {
+          const ch = getLogChannel(logCfg, "members");
+          if (ch && logCfg.logInvites) {
+            const target = entry.target as any;
+            await sendLog(ch, { title: "Invitacion Eliminada", description: `**Codigo:** ${target?.code || "Desconocido"}\n**Responsable:** ${executorStr}`, color: 0xED4245, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
+            await logToDb(guildId, { userId: executor?.id, username: executor?.username, action: "invite_delete", category: "member", details: `discord.gg/${target?.code}` });
+          }
+          break;
+        }
+
+        // Channel permission overrides
+        case AuditLogEvent.ChannelOverwriteCreate:
+        case AuditLogEvent.ChannelOverwriteUpdate:
+        case AuditLogEvent.ChannelOverwriteDelete: {
+          const ch = getLogChannel(logCfg, "channels");
+          if (ch && logCfg.logChannels) {
+            const actionNames = { [AuditLogEvent.ChannelOverwriteCreate]: "Creado", [AuditLogEvent.ChannelOverwriteUpdate]: "Actualizado", [AuditLogEvent.ChannelOverwriteDelete]: "Eliminado" };
+            const target = entry.target as any;
+            await sendLog(ch, { title: `Permiso de Canal ${actionNames[entry.action]}`, description: `**Canal:** ${target?.id ? `<#${target.id}>` : "Desconocido"}\n**Responsable:** ${executorStr}`, color: 0xFEE75C, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
           }
           break;
         }
@@ -952,6 +1139,7 @@ export function startBot(): Client | undefined {
 
       if (logChannel && logCfg?.logChannels) {
         await sendLog(logChannel, { title: "Canal Creado", description: `**Canal:** <#${channel.id}> (#${(channel as any).name})\n**Tipo:** ${channel.type}\n**Responsable:** ${executorTag ? `\`${executorTag}\`` : "Desconocido"}`, color: 0x57F287, timestamp: new Date().toISOString(), footer: { text: "Neuralix Logs" } }, botToken);
+        await logToDb(guildId, { userId: executorId, username: executorTag, action: "channel_create", category: "channel", targetId: channel.id, targetName: (channel as any).name ?? null });
       }
 
       if (antiraid?.enabled && antiraid.antiChannelCreate && executorId) {
@@ -994,6 +1182,7 @@ export function startBot(): Client | undefined {
 
       if (logChannel && logCfg?.logChannels) {
         await sendLog(logChannel, { title: "Canal Eliminado", description: `**Canal:** #${(channel as any).name ?? "desconocido"}\n**Responsable:** ${executorTag ? `\`${executorTag}\`` : "Desconocido"}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix Logs" } }, botToken);
+        await logToDb(guildId, { userId: executorId, username: executorTag, action: "channel_delete", category: "channel", targetName: (channel as any).name ?? null });
       }
 
       if (antiraid?.enabled && executorId && (antiraid.antiNuke || antiraid.antiChannelDelete)) {
@@ -1036,6 +1225,7 @@ export function startBot(): Client | undefined {
 
       if (logChannel && logCfg?.logRoles) {
         await sendLog(logChannel, { title: "Rol Creado", description: `**Rol:** @${role.name}\n**ID:** \`${role.id}\`\n**Responsable:** ${executorTag ? `\`${executorTag}\`` : "Desconocido"}`, color: 0x57F287, timestamp: new Date().toISOString(), footer: { text: "Neuralix Logs" } }, botToken);
+        await logToDb(guildId, { userId: executorId, username: executorTag, action: "role_create", category: "role", targetId: role.id, targetName: role.name });
       }
 
       if (antiraid?.enabled && antiraid.antiRoleCreate && executorId) {
@@ -1075,6 +1265,7 @@ export function startBot(): Client | undefined {
 
       if (logChannel && logCfg?.logRoles) {
         await sendLog(logChannel, { title: "Rol Eliminado", description: `**Rol:** @${role.name}\n**Responsable:** ${executorTag ? `\`${executorTag}\`` : "Desconocido"}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix Logs" } }, botToken);
+        await logToDb(guildId, { userId: executorId, username: executorTag, action: "role_delete", category: "role", targetId: role.id, targetName: role.name });
       }
 
       if (antiraid?.enabled && executorId && (antiraid.antiNuke || antiraid.antiRoleDelete)) {
@@ -1114,6 +1305,7 @@ export function startBot(): Client | undefined {
 
       if (logChannel && logCfg?.logModeration) {
         await sendLog(logChannel, { title: "Miembro Baneado", description: `**Usuario:** \`${ban.user.username}\` (\`${ban.user.id}\`)\n**Razon:** ${ban.reason ?? "Sin razon"}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix Logs" } }, botToken);
+        await logToDb(guildId, { userId: ban.user.id, username: ban.user.username, action: "member_ban", category: "moderation", reason: ban.reason ?? null, moderatorId: executorId });
       }
 
       if (antiraid?.enabled && executorId && (antiraid.antiNuke || antiraid.antiBanMass)) {
@@ -1131,6 +1323,21 @@ export function startBot(): Client | undefined {
           }
         }
       }
+    } catch {}
+  });
+
+  // ─── Giveaway reaction remove handler ─────────────────────────────────────
+  client.on(Events.MessageReactionRemove, async (reaction, user) => {
+    if ((user as any).bot) return;
+    if (reaction.emoji.name !== "🎉") return;
+    try {
+      const messageId = reaction.message.id;
+      const [giveaway] = await db.select().from(giveawaysTable).where(
+        and(eq(giveawaysTable.messageId, messageId), eq(giveawaysTable.status, "active")),
+      );
+      if (!giveaway) return;
+      const entrants = (giveaway.entrants ?? []).filter((id) => id !== (user as any).id);
+      await db.update(giveawaysTable).set({ entrants, updatedAt: new Date() }).where(eq(giveawaysTable.messageId, messageId));
     } catch {}
   });
 

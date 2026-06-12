@@ -55,6 +55,15 @@ export const antiraidConfigsTable = pgTable("antiraid_configs", {
   floodInterval: integer("flood_interval").notNull().default(3),
   floodAction: text("flood_action").notNull().default("mute"),
   deleteOnTrigger: boolean("delete_on_trigger").notNull().default(true),
+  // AntiWebhookSpam: detects rapid webhook creation
+  webhookSpamThreshold: integer("webhook_spam_threshold").notNull().default(3),
+  webhookSpamInterval: integer("webhook_spam_interval").notNull().default(60),
+  // AntiSuspiciousActivity: broad multi-action detection
+  antiSuspiciousActivity: boolean("anti_suspicious_activity").notNull().default(false),
+  suspiciousThreshold: integer("suspicious_threshold").notNull().default(5),
+  // Lockdown: emergency server lock
+  lockdownEnabled: boolean("lockdown_enabled").notNull().default(false),
+  lockdownRoleId: text("lockdown_role_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

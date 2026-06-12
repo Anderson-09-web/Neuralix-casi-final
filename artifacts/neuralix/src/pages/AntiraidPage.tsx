@@ -264,21 +264,48 @@ export default function AntiraidPage() {
             )}
             <div className="grid grid-cols-2 gap-x-6 gap-y-3 pt-1">
               {([
-                ["antiChannelCreate", "Crear canales"],
-                ["antiChannelDelete", "Eliminar canales"],
-                ["antiRoleCreate", "Crear roles"],
-                ["antiRoleDelete", "Eliminar roles"],
-                ["antiBanMass", "Baneos masivos"],
-                ["antiKickMass", "Kicks masivos"],
-                ["antiWebhook", "Webhooks no autorizados"],
-                ["antiEmojiDelete", "Eliminar emojis"],
-              ] as const).map(([key, label]) => (
-                <div key={key} className="flex items-center justify-between">
-                  <Label className="text-sm">{label}</Label>
+                ["antiChannelCreate", "Crear canales", "Detecta creacion masiva de canales"],
+                ["antiChannelDelete", "Eliminar canales", "Detecta borrado masivo de canales"],
+                ["antiRoleCreate", "Crear roles", "Detecta creacion masiva de roles"],
+                ["antiRoleDelete", "Eliminar roles", "Detecta borrado masivo de roles"],
+                ["antiBanMass", "Baneos masivos", "Detecta baneos en cadena rapidos"],
+                ["antiKickMass", "Kicks masivos", "Detecta kicks en cadena rapidos"],
+                ["antiEmojiDelete", "Eliminar emojis", "Detecta borrado masivo de emojis"],
+              ] as const).map(([key, label, desc]) => (
+                <div key={key} className="flex items-center justify-between py-0.5">
+                  <div>
+                    <Label className="text-sm">{label}</Label>
+                    <p className="text-xs text-muted-foreground">{desc}</p>
+                  </div>
                   <Switch checked={cfg[key] || false} onCheckedChange={set(key)} />
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* AntiWebhook Spam */}
+          <div className="bg-card border border-card-border rounded-xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="font-semibold text-sm">AntiWebhook Spam</Label>
+                <p className="text-xs text-muted-foreground">Detecta y actua contra la creacion masiva de webhooks</p>
+              </div>
+              <Switch checked={cfg.antiWebhook || false} onCheckedChange={set("antiWebhook")} />
+            </div>
+            {cfg.antiWebhook && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-xs mb-1.5 block">Webhooks maximos</Label>
+                  <Input type="number" min={1} value={cfg.webhookSpamThreshold ?? 3} onChange={setN("webhookSpamThreshold")} />
+                  <p className="text-xs text-muted-foreground mt-1">Cuantos webhooks en la ventana de tiempo activa la accion</p>
+                </div>
+                <div>
+                  <Label className="text-xs mb-1.5 block">Ventana (segundos)</Label>
+                  <Input type="number" min={1} value={cfg.webhookSpamInterval ?? 60} onChange={setN("webhookSpamInterval")} />
+                  <p className="text-xs text-muted-foreground mt-1">Ventana de tiempo en segundos para contar webhooks</p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* AntiFlood */}

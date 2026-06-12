@@ -24,6 +24,7 @@ import AuthCallback from "@/pages/AuthCallback";
 import DocsPage from "@/pages/DocsPage";
 import AutoRolesPage from "@/pages/AutoRolesPage";
 import WebhooksPage from "@/pages/WebhooksPage";
+import GiveawaysPage from "@/pages/GiveawaysPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -47,6 +48,7 @@ function Router() {
       <Route path="/servers/:guildId/backups" component={BackupsPage} />
       <Route path="/servers/:guildId/auto-roles" component={AutoRolesPage} />
       <Route path="/servers/:guildId/webhooks" component={WebhooksPage} />
+      <Route path="/servers/:guildId/giveaways" component={GiveawaysPage} />
       <Route path="/verify" component={VerifyPortal} />
       <Route path="/support" component={SupportPage} />
       <Route path="/admin" component={AdminPage} />

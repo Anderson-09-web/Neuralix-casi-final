@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, usersTable, guildConfigsTable, ticketsTable, licensesTable, blacklistTable, backupsTable, supportTicketsTable, secondaryAdminsTable, adminActivityLogsTable, logsConfigsTable } from "@workspace/db";
+import { db, usersTable, guildConfigsTable, ticketsTable, licensesTable, blacklistTable, backupsTable, supportTicketsTable, secondaryAdminsTable, adminActivityLogsTable, logsConfigsTable, giveawaysTable, logEntriesTable, announcementsTable } from "@workspace/db";
 import { eq, and, count, desc, sql } from "drizzle-orm";
 import { requireOwner, requireAdminAccess } from "../lib/auth";
 import type { AdminPermission } from "@workspace/db";
@@ -20,34 +20,55 @@ async function log(actor: any, action: string, target?: string, details?: Record
 
 // ─── Stats ─────────────────────────────────────────────────────────────────
 router.get("/admin/stats", requireAdminAccess("view_stats"), async (_req, res) => {
-  const [guilds] = await db.select({ count: count() }).from(guildConfigsTable);
-  const [users] = await db.select({ count: count() }).from(usersTable);
-  const [tickets] = await db.select({ count: count() }).from(ticketsTable);
-  const [premiumGuilds] = await db.select({ count: count() }).from(guildConfigsTable).where(eq(guildConfigsTable.premiumActive, true));
-  const [blacklistCount] = await db.select({ count: count() }).from(blacklistTable);
-  const [backupsCount] = await db.select({ count: count() }).from(backupsTable);
-  const [adminsCount] = await db.select({ count: count() }).from(secondaryAdminsTable).where(eq(secondaryAdminsTable.active, true));
-  const [openSupport] = await db.select({ count: count() }).from(supportTicketsTable).where(eq(supportTicketsTable.status, "open"));
-  const [totalLogs] = await db.select({ count: count() }).from(adminActivityLogsTable);
-
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const [monthlyActions] = await db
-    .select({ count: count() })
-    .from(adminActivityLogsTable)
-    .where(sql`${adminActivityLogsTable.createdAt} >= ${monthStart}`);
+  const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  const [
+    [guilds], [users], [tickets], [premiumGuilds], [blacklistCount], [backupsCount],
+    [adminsCount], [openSupport], [totalLogs], [monthlyActions], [weeklyNewUsers],
+    [activeGiveaways], [totalGiveaways], [totalLogEntries], [totalAnnouncements], [activeBlacklistExpiring],
+  ] = await Promise.all([
+    db.select({ count: count() }).from(guildConfigsTable),
+    db.select({ count: count() }).from(usersTable),
+    db.select({ count: count() }).from(ticketsTable),
+    db.select({ count: count() }).from(guildConfigsTable).where(eq(guildConfigsTable.premiumActive, true)),
+    db.select({ count: count() }).from(blacklistTable),
+    db.select({ count: count() }).from(backupsTable),
+    db.select({ count: count() }).from(secondaryAdminsTable).where(eq(secondaryAdminsTable.active, true)),
+    db.select({ count: count() }).from(supportTicketsTable).where(eq(supportTicketsTable.status, "open")),
+    db.select({ count: count() }).from(adminActivityLogsTable),
+    db.select({ count: count() }).from(adminActivityLogsTable).where(sql`${adminActivityLogsTable.createdAt} >= ${monthStart}`),
+    db.select({ count: count() }).from(usersTable).where(sql`${usersTable.createdAt} >= ${weekStart}`),
+    db.select({ count: count() }).from(giveawaysTable).where(eq(giveawaysTable.status, "active")),
+    db.select({ count: count() }).from(giveawaysTable),
+    db.select({ count: count() }).from(logEntriesTable),
+    db.select({ count: count() }).from(announcementsTable).where(eq(announcementsTable.published, true)),
+    db.select({ count: count() }).from(blacklistTable).where(sql`${blacklistTable.expiresAt} IS NOT NULL AND ${blacklistTable.expiresAt} > NOW()`),
+  ]);
+
+  const totalGuildsNum = guilds?.count || 0;
+  const premiumGuildsNum = premiumGuilds?.count || 0;
+  const premiumPct = totalGuildsNum > 0 ? Math.round((premiumGuildsNum / totalGuildsNum) * 100) : 0;
 
   res.json({
-    totalGuilds: guilds?.count || 0,
+    totalGuilds: totalGuildsNum,
     totalUsers: users?.count || 0,
     totalTickets: tickets?.count || 0,
-    premiumGuilds: premiumGuilds?.count || 0,
+    premiumGuilds: premiumGuildsNum,
+    premiumPct,
     activeBlacklist: blacklistCount?.count || 0,
+    activeBlacklistExpiring: activeBlacklistExpiring?.count || 0,
     totalBackups: backupsCount?.count || 0,
     totalAdmins: adminsCount?.count || 0,
     openSupport: openSupport?.count || 0,
     totalActivityLogs: totalLogs?.count || 0,
     monthlyActions: monthlyActions?.count || 0,
+    weeklyNewUsers: weeklyNewUsers?.count || 0,
+    activeGiveaways: activeGiveaways?.count || 0,
+    totalGiveaways: totalGiveaways?.count || 0,
+    totalLogEntries: totalLogEntries?.count || 0,
+    totalAnnouncements: totalAnnouncements?.count || 0,
   });
 });
 

@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { db, antiraidConfigsTable, verificationConfigsTable, ticketConfigsTable, logsConfigsTable, guildConfigsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, antiraidConfigsTable, verificationConfigsTable, ticketConfigsTable, logsConfigsTable, guildConfigsTable, giveawaysTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 
 const router = Router();
@@ -20,27 +20,28 @@ const RESPONSES: Record<string, Record<string, string>> = {
 2. Activa el interruptor principal "AntiRaid Global"
 3. Activa los modulos: AntiJoin, AntiAlt, AntiBot, AntiSpam
 4. Configura los umbrales en cada modulo
-5. Haz clic en "Guardar todo"`,
+5. Haz clic en "Guardar"`,
     verification: `Para configurar Verificacion:
 1. Ve a "Verificacion" en el menu lateral
 2. Activa "Verificacion activa"
 3. Ingresa el ID del rol que se asignara al verificarse
 4. Activa AntiVPN y AntiAlt si quieres filtros adicionales
-5. Copia el enlace del "Portal de Verificacion" y compartelo con tus miembros
+5. Copia el enlace del "Portal de Verificacion" y compartelo
 6. Haz clic en "Guardar"`,
     tickets: `Para configurar Tickets:
 1. Ve a "Tickets" en el menu lateral
 2. Activa el sistema de tickets
 3. Configura el ID de la categoria donde se crearan los tickets
 4. Ingresa el ID del rol de soporte
-5. En la tab "Panel": personaliza el embed del canal
-6. Haz clic en "Guardar"`,
+5. En la tab "Paneles": crea un panel y personalizalo
+6. Haz clic en "Enviar" para publicar el panel en Discord`,
     logs: `Para configurar Logs:
 1. Ve a "Logs" en el menu lateral
 2. Activa "Logs activos"
 3. Ingresa el ID del canal de Discord para los logs
-4. Selecciona los eventos a registrar
-5. Haz clic en "Guardar"`,
+4. Selecciona los eventos a registrar (miembros, mensajes, roles, etc.)
+5. Opcionalmente configura canales distintos por categoria
+6. Haz clic en "Guardar"`,
     backups: `Para crear un Backup:
 1. Ve a "Backups" en el menu lateral
 2. Haz clic en "Crear backup"
@@ -50,16 +51,32 @@ Plan Free: 1 backup maximo.`,
 1. Ve a "Bienvenidas" en el menu lateral
 2. Activa "Sistema de bienvenidas"
 3. Ingresa el ID del canal de bienvenidas
-4. Personaliza el mensaje con variables: {user}, {server}, {membercount}
-5. Haz clic en "Guardar"`,
+4. Personaliza el mensaje con variables: {user}, {username}, {server}, {membercount}, {ordinal}, {date}, {time}, {accountage}
+5. Activa el embed para un mensaje mas visual
+6. Haz clic en "Guardar"`,
     goodbye: `Para configurar Despedidas:
 1. Ve a "Despedidas" en el menu lateral
 2. Activa "Sistema de despedidas"
 3. Ingresa el ID del canal
-4. Personaliza el mensaje
+4. Personaliza el mensaje con variables: {user}, {server}, {membercount}, {date}
 5. Haz clic en "Guardar"`,
-    default: `Soy el asistente de Neuralix. Puedo ayudarte a configurar: AntiRaid, Verificacion, Tickets, Logs, Backups, Bienvenidas.
-Si necesitas ayuda mas avanzada o algo que no pueda resolver, un administrador puede asistirte en ${DISCORD_SUPPORT}`,
+    giveaway: `Para crear un Sorteo:
+1. Ve a "Sorteos" en el menu lateral
+2. Haz clic en "Nuevo Sorteo"
+3. Ingresa el premio, numero de ganadores y duracion
+4. Selecciona el canal donde se publicara
+5. El bot publicara el sorteo automaticamente con el emoji 🎉
+6. Los miembros reaccionan para participar
+7. Al finalizar, el bot anunciara los ganadores automaticamente`,
+    automod: `Para configurar AutoMod:
+1. Ve a "AntiRaid" en el menu lateral
+2. Activa "AntiSpam" para limitar mensajes repetidos
+3. Activa "AntiLinks" para bloquear enlaces no autorizados
+4. Activa "AntiMassMention" para limitar menciones masivas
+5. Activa "AntiFlood" para mensajes demasiado rapidos
+6. Haz clic en "Guardar"`,
+    default: `Soy el asistente de Neuralix. Puedo ayudarte a configurar: AntiRaid, Verificacion, Tickets, Logs, Backups, Bienvenidas, Sorteos, Automod.
+Si necesitas ayuda mas avanzada, un administrador puede asistirte en ${DISCORD_SUPPORT}`,
     restrict: `Esta funcion requiere plan Plus o superior. Puedo explicarte como configurarlo manualmente — pregunta "como configuro [modulo]".
 Si necesitas asistencia adicional, un administrador puede ayudarte en ${DISCORD_SUPPORT}`,
     admin: ADMIN_FALLBACK,
@@ -91,15 +108,16 @@ Si necesitas asistencia adicional, un administrador puede ayudarte en ${DISCORD_
 1. Ve al panel "Tickets"
 2. Activa el sistema
 3. Configura la categoria de Discord y el rol de soporte
-4. Configura el canal de transcripciones (opcional)
-5. En la tab "Panel": personaliza el embed y el boton
-6. Guarda los cambios`,
+4. Crea paneles en la tab "Paneles" con diferentes canales y embeds
+5. Activa "Usar modulos" para tickets categoricos
+6. Haz clic en "Enviar" para publicar el panel en Discord`,
     logs: `Para activar Logs:
 1. Ve al panel "Logs"
 2. Activa el interruptor
-3. Ingresa el ID del canal de Discord
-4. Selecciona los eventos a registrar
-5. Guarda los cambios`,
+3. Ingresa el ID del canal principal de Discord
+4. Selecciona las categorias: Miembros, Mensajes, Roles, Canales, Moderacion, Seguridad, Tickets, Sorteos, Voz, Invitaciones
+5. Configura canales distintos para cada categoria si lo prefieres
+6. Guarda los cambios`,
     backups: `Para gestionar Backups (Plus):
 1. Ve a "Backups" tab "Mis Backups"
 2. Haz clic en "Crear backup ahora"
@@ -107,17 +125,33 @@ Si necesitas asistencia adicional, un administrador puede ayudarte en ${DISCORD_
 4. Para exportar JSON: boton de exportar`,
     welcome: `Para configurar Bienvenidas (Plus):
 1. Activa el sistema y configura el canal
-2. Usa variables: {user}, {server}, {membercount}
-3. Activa el embed con color y footer personalizados
+2. Usa variables: {user}, {server}, {membercount}, {ordinal}, {date}, {time}, {accountage}
+3. Activa el embed con color, footer, imagen y autor personalizados
 4. Activa DM para enviar mensaje privado al nuevo miembro
-5. Guarda los cambios`,
+5. Activa la Tarjeta de Bienvenida con fondo personalizado
+6. Guarda los cambios`,
     goodbye: `Para configurar Despedidas:
 1. Activa el sistema y configura el canal
-2. Personaliza con variables: {user}, {server}, {membercount}
+2. Personaliza con variables: {user}, {server}, {membercount}, {date}
 3. Configura el embed con color e imagen (opcional)
 4. Guarda los cambios`,
+    giveaway: `Para gestionar Sorteos (Plus):
+1. Ve al panel "Sorteos" en el menu lateral
+2. Crea sorteos con premio, ganadores y duracion personalizada
+3. Los sorteos se publican en el canal de Discord elegido
+4. Los miembros reaccionan con 🎉 para participar
+5. Para finalizar antes: boton "Finalizar" en el dashboard
+6. Para reseleccionar ganadores: boton "Reseleccionar"
+7. El bot finaliza automaticamente los sorteos expirados`,
+    automod: `Para AutoMod completo (Plus):
+1. AntiSpam: define cuantos mensajes/segundos activa la sancion
+2. AntiLinks: permite dominios especificos, bloquea el resto
+3. AntiMassMention: limita menciones por mensaje (recomendado: 5)
+4. AntiFlood: mensajes demasiado rapidos en un canal
+5. AntiWebhook Spam: detecta creacion masiva de webhooks
+6. Todas las acciones pueden ser: Advertencia, Timeout, Kick o Ban`,
     premium: "Tienes plan Plus activo. Incluye: IA avanzada, hasta 5 backups, exportar JSON, soporte prioritario.",
-    default: `Soy Neuralix AI (plan Plus). Pregunta sobre: AntiRaid, Verificacion, Tickets, Logs, Backups, Bienvenidas.
+    default: `Soy Neuralix AI (plan Plus). Pregunta sobre: AntiRaid, Verificacion, Tickets, Logs, Backups, Bienvenidas, Sorteos, AutoMod.
 Si hay algo que no puedo resolver, un administrador puede ayudarte en ${DISCORD_SUPPORT}`,
     admin: ADMIN_FALLBACK,
   },
@@ -129,7 +163,8 @@ Si hay algo que no puedo resolver, un administrador puede ayudarte en ${DISCORD_
 4. Configura umbral de nuke: 10 acciones destructivas
 5. Activa AntiJoin con 5 usuarios/10s
 6. Activa AntiAlt con 14 dias de minimo
-7. Guarda los cambios`,
+7. Activa AntiWebhook Spam para detectar webhooks masivos
+8. Guarda los cambios`,
     verification: `Con plan Pro tienes verificacion avanzada:
 1. Ve al panel "Verificacion"
 2. Activa el sistema y configura el rol
@@ -141,6 +176,11 @@ Si hay algo que no puedo resolver, un administrador puede ayudarte en ${DISCORD_
 1. Ve a "Backups" tab "Mis Backups"
 2. Crea backups manuales o automaticos semanales
 3. Configura backup automatico en tab "Programados"`,
+    giveaway: `Con plan Pro tienes sorteos avanzados:
+1. Sorteos sin limite de duracion
+2. Multiples ganadores
+3. Auto-finalizacion garantizada
+4. Ve al panel "Sorteos" para gestionar todos los sorteos activos y pasados`,
     default: "Soy Neuralix AI Pro. Tengo acceso a todas las funciones avanzadas. Pregunta lo que necesites.",
     admin: ADMIN_FALLBACK,
   },
@@ -152,19 +192,22 @@ Si hay algo que no puedo resolver, un administrador puede ayudarte en ${DISCORD_
 
 function detectIntent(msg: string): string {
   const lower = msg.toLowerCase();
-  if (lower.includes("antiraid") || lower.includes("raid") || lower.includes("ataque") || lower.includes("anti raid")) return "antiraid";
+  // Order matters — most specific first
   if (lower.includes("antijoin") || lower.includes("anti join") || lower.includes("uniones masivas")) return "antijoin";
-  if (lower.includes("verif") || lower.includes("vpn") || lower.includes("alt") || lower.includes("anti alt") || lower.includes("captcha")) return "verification";
-  if (lower.includes("ticket") && !lower.includes("soport")) return "tickets";
-  if (lower.includes("log") || lower.includes("auditoria") || lower.includes("registro")) return "logs";
-  if (lower.includes("backup") || lower.includes("copia") || lower.includes("respaldo")) return "backups";
-  if (lower.includes("bienvenid") || lower.includes("welcome")) return "welcome";
-  if (lower.includes("despedid") || lower.includes("goodbye")) return "goodbye";
-  if (lower.includes("premium") || lower.includes("plan") || lower.includes("licencia")) return "premium";
-  if (lower.includes("soport") || lower.includes("ayuda") || lower.includes("problema")) return "soporte";
-  if (lower.includes("ticket") && lower.includes("soport")) return "ticket";
-  if (lower.includes("dashboard") || lower.includes("panel")) return "dashboard";
-  if (lower.includes("admin") || lower.includes("ayuda") || lower.includes("no puedo") || lower.includes("no funciona") || lower.includes("error")) return "admin";
+  if (lower.includes("antiraid") || lower.includes("anti raid") || lower.includes("raid") || lower.includes("ataque") || lower.includes("nuke") || lower.includes("antinuke")) return "antiraid";
+  if (lower.includes("antiwebhook") || lower.includes("anti webhook") || lower.includes("webhook spam")) return "antiraid";
+  if (lower.includes("verif") || lower.includes("vpn") || lower.includes("anti alt") || lower.includes("antialt") || lower.includes("captcha") || lower.includes("portal")) return "verification";
+  if (lower.includes("sorteo") || lower.includes("giveaway") || lower.includes("rifar") || lower.includes("ganador") || lower.includes("premio") || lower.includes("reseleccionar")) return "giveaway";
+  if (lower.includes("automod") || lower.includes("auto mod") || lower.includes("antispam") || lower.includes("antilinks") || lower.includes("flood") || lower.includes("filtro")) return "automod";
+  if ((lower.includes("ticket") && !lower.includes("soport")) || lower.includes("panel de soporte") || lower.includes("sistema de tickets")) return "tickets";
+  if (lower.includes("log") || lower.includes("auditoria") || lower.includes("registro") || lower.includes("historial")) return "logs";
+  if (lower.includes("backup") || lower.includes("copia") || lower.includes("respaldo") || lower.includes("restaurar")) return "backups";
+  if (lower.includes("bienvenid") || lower.includes("welcome") || lower.includes("nuevo miembro")) return "welcome";
+  if (lower.includes("despedid") || lower.includes("goodbye") || lower.includes("adios") || lower.includes("miembro abandon")) return "goodbye";
+  if (lower.includes("premium") || lower.includes("plan") || lower.includes("licencia") || lower.includes("upgrade")) return "premium";
+  if (lower.includes("soport") || lower.includes("ticket de soporte") || lower.includes("contactar")) return "ticket";
+  if (lower.includes("dashboard") || lower.includes("panel") || lower.includes("como entrar")) return "dashboard";
+  if (lower.includes("no puedo") || lower.includes("no funciona") || lower.includes("error") || lower.includes("problema") || lower.includes("falla") || lower.includes("roto")) return "admin";
   return "default";
 }
 
@@ -174,6 +217,7 @@ function isOutOfScope(msg: string): boolean {
     "politica", "gobierno", "guerra", "sexo", "drogas",
     "hack", "estafar", "phishing", "contraseña de otro",
     "programar un bot diferente", "codigo python",
+    "ensenha a hackear", "como atacar",
   ];
   return outOfScopePatterns.some((p) => lower.includes(p));
 }
@@ -189,10 +233,10 @@ async function upsertEnabled(table: any, guildId: string, extraFields: Record<st
 
 async function applyConfig(guildId: string, intent: string): Promise<{ action: string; steps: string } | null> {
   if (intent === "antiraid") {
-    await upsertEnabled(antiraidConfigsTable, guildId, { antiJoin: true, antiBot: true, antiAlt: true, antiSpam: true });
+    await upsertEnabled(antiraidConfigsTable, guildId, { antiJoin: true, antiBot: true, antiAlt: true, antiSpam: true, antiWebhook: true });
     return {
       action: "AntiRaid activado",
-      steps: `AntiRaid activado con AntiJoin, AntiBot, AntiAlt y AntiSpam.\n\nPasos siguientes:\n1. Ve al panel "AntiRaid" para ajustar los umbrales\n2. Recomendado: AntiJoin en 5 usuarios/10s, AntiAlt con 7 dias minimo\n3. Haz clic en "Guardar" para confirmar`,
+      steps: `AntiRaid activado con AntiJoin, AntiBot, AntiAlt, AntiSpam y AntiWebhook.\n\nPasos siguientes:\n1. Ve al panel "AntiRaid" para ajustar los umbrales\n2. Recomendado: AntiJoin en 5 usuarios/10s, AntiAlt con 7 dias minimo\n3. Haz clic en "Guardar" para confirmar`,
     };
   }
   if (intent === "verification") {
@@ -203,17 +247,17 @@ async function applyConfig(guildId: string, intent: string): Promise<{ action: s
     };
   }
   if (intent === "logs") {
-    await upsertEnabled(logsConfigsTable, guildId);
+    await upsertEnabled(logsConfigsTable, guildId, { logMembers: true, logMessages: true, logModeration: true, logSecurity: true });
     return {
       action: "Logs activados",
-      steps: `Logs activados.\n\nPasos siguientes:\n1. Ve al panel "Logs"\n2. Ingresa el ID del canal de Discord\n3. Selecciona los eventos a registrar\n4. Haz clic en "Guardar"`,
+      steps: `Logs activados con Miembros, Mensajes, Moderacion y Seguridad.\n\nPasos siguientes:\n1. Ve al panel "Logs"\n2. Ingresa el ID del canal de Discord\n3. Activa categorias adicionales si lo deseas\n4. Haz clic en "Guardar"`,
     };
   }
   if (intent === "tickets") {
     await upsertEnabled(ticketConfigsTable, guildId);
     return {
       action: "Sistema de tickets activado",
-      steps: `Tickets activados.\n\nPasos siguientes:\n1. Ve al panel "Tickets"\n2. Ingresa el ID de la categoria y el rol de soporte\n3. Personaliza el panel en la tab "Panel"\n4. Haz clic en "Guardar"`,
+      steps: `Tickets activados.\n\nPasos siguientes:\n1. Ve al panel "Tickets"\n2. Ingresa el ID de la categoria y el rol de soporte\n3. En "Paneles": crea un panel y personaliza el embed\n4. Haz clic en "Enviar" para publicar en Discord`,
     };
   }
   return null;
@@ -223,16 +267,18 @@ async function applyConfig(guildId: string, intent: string): Promise<{ action: s
 router.post("/guilds/:guildId/ai/analyze", requireAuth, async (req, res) => {
   const guildId = req.params.guildId as string;
   try {
-    const [[antiraid], [verification], [tickets], [logs]] = await Promise.all([
+    const [[antiraid], [verification], [tickets], [logs], activeGiveaways] = await Promise.all([
       db.select().from(antiraidConfigsTable).where(eq(antiraidConfigsTable.guildId, guildId)),
       db.select().from(verificationConfigsTable).where(eq(verificationConfigsTable.guildId, guildId)),
       db.select().from(ticketConfigsTable).where(eq(ticketConfigsTable.guildId, guildId)),
       db.select().from(logsConfigsTable).where(eq(logsConfigsTable.guildId, guildId)),
+      db.select().from(giveawaysTable).where(and(eq(giveawaysTable.guildId, guildId), eq(giveawaysTable.status, "active"))),
     ]);
 
     const recommendations: { category: string; severity: string; title: string; description: string }[] = [];
     let score = 100;
 
+    // AntiRaid analysis
     if (!antiraid?.enabled) {
       recommendations.push({ category: "AntiRaid", severity: "high", title: "AntiRaid desactivado", description: "Activa AntiRaid para proteger tu servidor de ataques masivos." });
       score -= 25;
@@ -240,37 +286,51 @@ router.post("/guilds/:guildId/ai/analyze", requireAuth, async (req, res) => {
       if (!antiraid.antiJoin) { recommendations.push({ category: "AntiRaid", severity: "medium", title: "AntiJoin desactivado", description: "Activa AntiJoin para bloquear raids de union masiva." }); score -= 5; }
       if (!antiraid.antiAlt) { recommendations.push({ category: "AntiRaid", severity: "medium", title: "AntiAlt desactivado", description: "Activa AntiAlt para bloquear cuentas nuevas en raids." }); score -= 5; }
       if (!antiraid.antiSpam) { recommendations.push({ category: "AntiRaid", severity: "low", title: "AntiSpam desactivado", description: "Activa AntiSpam para limitar mensajes masivos." }); score -= 3; }
+      if (!antiraid.antiWebhook) { recommendations.push({ category: "AntiRaid", severity: "low", title: "AntiWebhook desactivado", description: "Activa AntiWebhook para detectar creacion masiva de webhooks." }); score -= 3; }
     }
     if (!antiraid?.antiNuke) {
       recommendations.push({ category: "AntiRaid", severity: "medium", title: "AntiNuke no configurado", description: "AntiNuke evita danos catastroficos. Requiere plan Pro." });
       score -= 10;
     }
+
+    // Verification analysis
     if (!verification?.enabled) {
       recommendations.push({ category: "Verificacion", severity: "medium", title: "Verificacion desactivada", description: "Activa la verificacion para filtrar bots y alts." });
       score -= 10;
+    } else {
+      if (!verification.antiVpn) { recommendations.push({ category: "Seguridad", severity: "low", title: "AntiVPN desactivado", description: "Activa AntiVPN en el panel Verificacion." }); score -= 5; }
+      if (!verification.antiAlt) { recommendations.push({ category: "Seguridad", severity: "low", title: "AntiAlt en verificacion desactivado", description: "Activa AntiAlt en verificacion para mayor seguridad." }); score -= 3; }
     }
-    if (!verification?.antiVpn) {
-      recommendations.push({ category: "Seguridad", severity: "low", title: "AntiVPN desactivado", description: "Activa AntiVPN en el panel Verificacion." });
-      score -= 5;
-    }
+
+    // Tickets analysis
     if (!tickets?.enabled) {
-      recommendations.push({ category: "Soporte", severity: "low", title: "Tickets desactivados", description: "Configura tickets para gestionar solicitudes." });
+      recommendations.push({ category: "Soporte", severity: "low", title: "Tickets desactivados", description: "Configura tickets para gestionar solicitudes de soporte." });
       score -= 5;
     }
+
+    // Logs analysis
     if (!logs?.enabled) {
       recommendations.push({ category: "Logs", severity: "medium", title: "Logs desactivados", description: "Activa logs para registrar la actividad del servidor." });
       score -= 10;
+    } else {
+      if (!logs.logModeration) { recommendations.push({ category: "Logs", severity: "low", title: "Logs de moderacion desactivados", description: "Activa logs de moderacion para registrar baneos y kicks." }); score -= 2; }
+      if (!logs.logSecurity) { recommendations.push({ category: "Logs", severity: "low", title: "Logs de seguridad desactivados", description: "Activa logs de seguridad para monitorear el AntiRaid." }); score -= 2; }
     }
 
-    if (recommendations.length === 0) {
-      recommendations.push({ category: "General", severity: "info", title: "Servidor bien configurado", description: "La configuracion de seguridad se ve excelente." });
+    // Giveaway info
+    if (activeGiveaways.length > 0) {
+      recommendations.push({ category: "Sorteos", severity: "info", title: `${activeGiveaways.length} sorteo(s) activo(s)`, description: `Hay ${activeGiveaways.length} sorteo(s) en curso. El bot los finalizara automaticamente.` });
+    }
+
+    if (recommendations.filter((r) => r.severity !== "info").length === 0) {
+      recommendations.push({ category: "General", severity: "info", title: "Servidor bien configurado", description: "La configuracion de seguridad se ve excelente. Sigue asi." });
     }
 
     res.json({
       guildId,
       score: Math.max(0, score),
       recommendations,
-      summary: `Puntuacion: ${Math.max(0, score)}/100. Se encontraron ${recommendations.length} recomendacion(es).`,
+      summary: `Puntuacion de seguridad: ${Math.max(0, score)}/100. Se encontraron ${recommendations.filter((r) => r.severity !== "info").length} recomendacion(es).`,
       analyzedAt: new Date().toISOString(),
     });
   } catch (err: any) {
@@ -330,7 +390,7 @@ router.post("/guilds/:guildId/ai/chat", requireAuth, async (req, res) => {
       } else if (intent === "admin") {
         response = ADMIN_FALLBACK;
       } else if (intent !== "default") {
-        response = proResponses[intent] || plusResponses[intent] || planResponses.default;
+        response = proResponses[intent] || plusResponses[intent] || planResponses[intent] || planResponses.default;
       } else {
         response = planResponses.default;
       }
@@ -338,7 +398,7 @@ router.post("/guilds/:guildId/ai/chat", requireAuth, async (req, res) => {
       if (intent === "admin") {
         response = ADMIN_FALLBACK;
       } else {
-        response = planResponses[intent] || plusResponses[intent] || planResponses.default || ADMIN_FALLBACK;
+        response = planResponses[intent] || plusResponses[intent] || RESPONSES.free[intent] || planResponses.default || ADMIN_FALLBACK;
       }
     }
 

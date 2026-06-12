@@ -670,23 +670,127 @@ export default function AdminPage() {
 
       {/* ── Stats ── */}
       {tab === "stats" && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {[
-            ["Servidores", stats?.totalGuilds ?? 0, "text-primary"],
-            ["Usuarios", stats?.totalUsers ?? 0, "text-accent"],
-            ["Tickets soporte", (stats as any)?.openSupport ?? 0, "text-green-400"],
-            ["Blacklist", stats?.activeBlacklist ?? 0, "text-red-400"],
-            ["Premium activo", stats?.premiumGuilds ?? 0, "text-yellow-400"],
-            ["Backups totales", stats?.totalBackups ?? 0, "text-blue-400"],
-            ["Admins activos", (stats as any)?.totalAdmins ?? 0, "text-purple-400"],
-            ["Tickets Discord", (stats as any)?.totalTickets ?? 0, "text-orange-400"],
-            ["Acciones este mes", (stats as any)?.monthlyActions ?? 0, "text-teal-400"],
-          ].map(([label, val, cls]) => (
-            <div key={label as string} className="bg-card border border-card-border rounded-xl p-4">
-              <p className="text-xs text-muted-foreground">{label}</p>
-              <p className={cn("text-2xl font-black mt-1", cls as string)}>{val}</p>
+        <div className="space-y-6">
+          {/* Main metrics row */}
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-3">Plataforma</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {/* Servidores */}
+              <div className="bg-card border border-card-border rounded-xl p-4 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">Servidores</p>
+                  <Globe className="w-4 h-4 text-primary/60" />
+                </div>
+                <p className="text-3xl font-black text-primary">{(stats as any)?.totalGuilds ?? 0}</p>
+                <p className="text-xs text-muted-foreground">{(stats as any)?.premiumPct ?? 0}% con Premium</p>
+              </div>
+              {/* Usuarios */}
+              <div className="bg-card border border-card-border rounded-xl p-4 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">Usuarios registrados</p>
+                  <Users className="w-4 h-4 text-accent/60" />
+                </div>
+                <p className="text-3xl font-black text-accent">{(stats as any)?.totalUsers ?? 0}</p>
+                <p className="text-xs text-muted-foreground">+{(stats as any)?.weeklyNewUsers ?? 0} esta semana</p>
+              </div>
+              {/* Premium */}
+              <div className="bg-card border border-card-border rounded-xl p-4 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">Servidores Premium</p>
+                  <Star className="w-4 h-4 text-yellow-400/60" />
+                </div>
+                <p className="text-3xl font-black text-yellow-400">{(stats as any)?.premiumGuilds ?? 0}</p>
+                <p className="text-xs text-muted-foreground">{(stats as any)?.premiumPct ?? 0}% del total</p>
+              </div>
+              {/* Admins */}
+              <div className="bg-card border border-card-border rounded-xl p-4 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">Admins activos</p>
+                  <Shield className="w-4 h-4 text-purple-400/60" />
+                </div>
+                <p className="text-3xl font-black text-purple-400">{(stats as any)?.totalAdmins ?? 0}</p>
+                <p className="text-xs text-muted-foreground">Administradores del panel</p>
+              </div>
             </div>
-          ))}
+          </div>
+
+          {/* Security + Support */}
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-3">Seguridad y Soporte</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-card border border-card-border rounded-xl p-4 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">Blacklist global</p>
+                  <Ban className="w-4 h-4 text-red-400/60" />
+                </div>
+                <p className="text-3xl font-black text-red-400">{(stats as any)?.activeBlacklist ?? 0}</p>
+                <p className="text-xs text-muted-foreground">{(stats as any)?.activeBlacklistExpiring ?? 0} con expiracion</p>
+              </div>
+              <div className="bg-card border border-card-border rounded-xl p-4 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">Tickets soporte</p>
+                  <MessageSquare className="w-4 h-4 text-green-400/60" />
+                </div>
+                <p className="text-3xl font-black text-green-400">{(stats as any)?.openSupport ?? 0}</p>
+                <p className="text-xs text-muted-foreground">Abiertos en este momento</p>
+              </div>
+              <div className="bg-card border border-card-border rounded-xl p-4 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">Tickets Discord</p>
+                  <FileText className="w-4 h-4 text-orange-400/60" />
+                </div>
+                <p className="text-3xl font-black text-orange-400">{(stats as any)?.totalTickets ?? 0}</p>
+                <p className="text-xs text-muted-foreground">En todos los servidores</p>
+              </div>
+              <div className="bg-card border border-card-border rounded-xl p-4 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">Anuncios publicados</p>
+                  <Bell className="w-4 h-4 text-blue-400/60" />
+                </div>
+                <p className="text-3xl font-black text-blue-400">{(stats as any)?.totalAnnouncements ?? 0}</p>
+                <p className="text-xs text-muted-foreground">Visibles en el dashboard</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Activity + Data */}
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-3">Actividad y Datos</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-card border border-card-border rounded-xl p-4 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">Acciones este mes</p>
+                  <Activity className="w-4 h-4 text-teal-400/60" />
+                </div>
+                <p className="text-3xl font-black text-teal-400">{(stats as any)?.monthlyActions ?? 0}</p>
+                <p className="text-xs text-muted-foreground">{(stats as any)?.totalActivityLogs ?? 0} en total</p>
+              </div>
+              <div className="bg-card border border-card-border rounded-xl p-4 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">Backups guardados</p>
+                  <Settings className="w-4 h-4 text-blue-400/60" />
+                </div>
+                <p className="text-3xl font-black text-blue-400">{(stats as any)?.totalBackups ?? 0}</p>
+                <p className="text-xs text-muted-foreground">En todos los servidores</p>
+              </div>
+              <div className="bg-card border border-card-border rounded-xl p-4 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">Sorteos activos</p>
+                  <Zap className="w-4 h-4 text-pink-400/60" />
+                </div>
+                <p className="text-3xl font-black text-pink-400">{(stats as any)?.activeGiveaways ?? 0}</p>
+                <p className="text-xs text-muted-foreground">{(stats as any)?.totalGiveaways ?? 0} creados en total</p>
+              </div>
+              <div className="bg-card border border-card-border rounded-xl p-4 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">Entradas en logs</p>
+                  <BarChart3 className="w-4 h-4 text-violet-400/60" />
+                </div>
+                <p className="text-3xl font-black text-violet-400">{(stats as any)?.totalLogEntries ?? 0}</p>
+                <p className="text-xs text-muted-foreground">Eventos registrados en DB</p>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

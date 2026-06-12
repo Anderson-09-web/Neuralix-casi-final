@@ -27,6 +27,10 @@ export const logsConfigsTable = pgTable("logs_configs", {
   channelLogsChannelId: text("channel_logs_channel_id"),
   moderationChannelId: text("moderation_channel_id"),
   securityChannelId: text("security_channel_id"),
+  ticketChannelId: text("ticket_channel_id"),
+  verificationChannelId: text("verification_channel_id"),
+  giveawayChannelId: text("giveaway_channel_id"),
+  logBackups: boolean("log_backups").notNull().default(false),
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

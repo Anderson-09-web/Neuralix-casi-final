@@ -14,13 +14,18 @@ import { Eye, RefreshCw } from "lucide-react";
 
 /** Replace template variables with example values for live preview */
 function renderPreview(template: string, guildName = "Mi Servidor", memberCount = 100): string {
+  const now = new Date();
   return template
     .replace(/\{user\}/gi, "@UsuarioPrueba")
     .replace(/\{username\}/gi, "UsuarioPrueba")
+    .replace(/\{usertag\}/gi, "UsuarioPrueba#0000")
     .replace(/\{tag\}/gi, "UsuarioPrueba#0000")
     .replace(/\{server\}/gi, guildName)
     .replace(/\{membercount\}/gi, String(memberCount))
-    .replace(/\{date\}/gi, new Date().toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" }));
+    .replace(/\{date\}/gi, now.toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" }))
+    .replace(/\{time\}/gi, now.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }))
+    .replace(/\{accountage\}/gi, "42")
+    .replace(/\{ordinal\}/gi, `${memberCount}º`);
 }
 
 export default function WelcomePage() {
@@ -174,7 +179,7 @@ export default function WelcomePage() {
               data-testid="textarea-welcome-message"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Variables: {"{user}"} {"{username}"} {"{server}"} {"{membercount}"} {"{date}"}
+              Variables disponibles: <code className="text-primary/80">{"{user}"}</code> <code className="text-primary/80">{"{username}"}</code> <code className="text-primary/80">{"{server}"}</code> <code className="text-primary/80">{"{membercount}"}</code> <code className="text-primary/80">{"{ordinal}"}</code> <code className="text-primary/80">{"{date}"}</code> <code className="text-primary/80">{"{time}"}</code> <code className="text-primary/80">{"{accountage}"}</code>
             </p>
           </div>
         </div>
@@ -215,8 +220,25 @@ export default function WelcomePage() {
                 </div>
               </div>
               <div>
-                <Label className="text-sm mb-1.5 block">Imagen (URL)</Label>
-                <Input placeholder="https://..." value={cfg.embedImage || ""} onChange={(e) => set("embedImage")(e.target.value)} />
+                <Label className="text-sm mb-1.5 block">Imagen adjunta (URL)</Label>
+                <Input placeholder="https://cdn.discordapp.com/..." value={cfg.embedImage || ""} onChange={(e) => set("embedImage")(e.target.value)} />
+                <p className="text-xs text-muted-foreground mt-1">Imagen grande bajo el embed.</p>
+              </div>
+              <div>
+                <Label className="text-sm mb-1.5 block">Thumbnail (URL)</Label>
+                <Input placeholder="https://..." value={cfg.embedThumbnail || ""} onChange={(e) => set("embedThumbnail")(e.target.value)} />
+                <p className="text-xs text-muted-foreground mt-1">Imagen pequena en la esquina superior derecha del embed.</p>
+              </div>
+              <div>
+                <Label className="text-sm mb-1.5 block">Autor del embed</Label>
+                <Input placeholder="Nombre del autor" value={cfg.embedAuthor || ""} onChange={(e) => set("embedAuthor")(e.target.value)} />
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="text-sm">Incluir timestamp</Label>
+                  <p className="text-xs text-muted-foreground">Muestra la fecha y hora en el embed</p>
+                </div>
+                <Switch checked={cfg.embedTimestamp ?? false} onCheckedChange={set("embedTimestamp")} />
               </div>
             </>
           )}
@@ -263,6 +285,15 @@ export default function WelcomePage() {
 
           {cfg.cardEnabled && (
             <>
+              <div>
+                <Label className="text-sm mb-1.5 block">Imagen de fondo (URL)</Label>
+                <Input
+                  placeholder="https://cdn.discordapp.com/attachments/... (opcional)"
+                  value={cfg.cardBackgroundUrl || ""}
+                  onChange={(e) => set("cardBackgroundUrl")(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground mt-1">Si se provee una URL, se usara como fondo en lugar del color solido.</p>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm mb-1.5 block">Color de fondo (hex)</Label>
@@ -273,7 +304,7 @@ export default function WelcomePage() {
                       onChange={(e) => set("cardBackground")(e.target.value)}
                     />
                     <div
-                      className="w-10 h-10 rounded-lg border border-border flex-shrink-0 cursor-pointer"
+                      className="w-10 h-10 rounded-lg border border-border flex-shrink-0"
                       style={{ backgroundColor: cfg.cardBackground || "#1e1b4b" }}
                     />
                   </div>
@@ -287,10 +318,33 @@ export default function WelcomePage() {
                       onChange={(e) => set("cardTextColor")(e.target.value)}
                     />
                     <div
-                      className="w-10 h-10 rounded-lg border border-border flex-shrink-0 cursor-pointer"
+                      className="w-10 h-10 rounded-lg border border-border flex-shrink-0"
                       style={{ backgroundColor: cfg.cardTextColor || "#ffffff" }}
                     />
                   </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm mb-1.5 block">Color del borde del avatar (hex)</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="#6366f1"
+                      value={cfg.cardAvatarBorderColor || ""}
+                      onChange={(e) => set("cardAvatarBorderColor")(e.target.value)}
+                    />
+                    <div className="w-10 h-10 rounded-full border-2 border-border flex-shrink-0"
+                      style={{ borderColor: cfg.cardAvatarBorderColor || "#6366f1" }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-sm mb-1.5 block">Texto de bienvenida personalizado</Label>
+                  <Input
+                    placeholder="Bienvenido al servidor"
+                    value={cfg.cardWelcomeText || ""}
+                    onChange={(e) => set("cardWelcomeText")(e.target.value)}
+                  />
                 </div>
               </div>
 
@@ -298,20 +352,28 @@ export default function WelcomePage() {
               <div>
                 <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Vista previa de la tarjeta</p>
                 <div
-                  className="rounded-xl overflow-hidden border border-border"
-                  style={{ background: cfg.cardBackground || "#1e1b4b", minHeight: 120 }}
+                  className="rounded-xl overflow-hidden border border-border relative"
+                  style={{
+                    background: cfg.cardBackgroundUrl ? `url(${cfg.cardBackgroundUrl}) center/cover` : (cfg.cardBackground || "#1e1b4b"),
+                    minHeight: 130,
+                  }}
                 >
-                  <div className="flex items-center gap-5 px-8 py-6">
-                    <div className="w-16 h-16 rounded-full bg-white/10 border-2 border-white/30 flex items-center justify-center flex-shrink-0 text-2xl font-black" style={{ color: cfg.cardTextColor || "#ffffff" }}>
+                  {cfg.cardBackgroundUrl && <div className="absolute inset-0 bg-black/40 rounded-xl" />}
+                  <div className="relative flex items-center gap-5 px-8 py-7">
+                    <div className="w-16 h-16 rounded-full bg-white/20 border-4 flex items-center justify-center flex-shrink-0 text-2xl font-black"
+                      style={{ color: cfg.cardTextColor || "#ffffff", borderColor: cfg.cardAvatarBorderColor || "#6366f1" }}>
                       U
                     </div>
                     <div>
-                      <p className="text-lg font-black leading-tight" style={{ color: cfg.cardTextColor || "#ffffff" }}>Bienvenido, UsuarioPrueba</p>
-                      <p className="text-sm opacity-70 mt-0.5" style={{ color: cfg.cardTextColor || "#ffffff" }}>Eres el miembro #100 de Mi Servidor</p>
+                      <p className="text-xs uppercase tracking-widest opacity-70" style={{ color: cfg.cardTextColor || "#ffffff" }}>
+                        {cfg.cardWelcomeText || "Bienvenido al servidor"}
+                      </p>
+                      <p className="text-xl font-black leading-tight" style={{ color: cfg.cardTextColor || "#ffffff" }}>UsuarioPrueba</p>
+                      <p className="text-sm opacity-60 mt-0.5" style={{ color: cfg.cardTextColor || "#ffffff" }}>Miembro #100 de Mi Servidor</p>
                     </div>
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground/50 mt-1.5">La tarjeta real se genera como imagen PNG con el avatar del usuario.</p>
+                <p className="text-xs text-muted-foreground/50 mt-1.5">La tarjeta real se genera como imagen PNG con el avatar real del usuario.</p>
               </div>
             </>
           )}
