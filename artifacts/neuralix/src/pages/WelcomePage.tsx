@@ -250,6 +250,72 @@ export default function WelcomePage() {
             data-testid="input-autoroles"
           />
         </div>
+
+        {/* Welcome Card */}
+        <div className="bg-card border border-card-border rounded-xl p-6 space-y-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold text-sm">Tarjeta de Bienvenida</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">Genera una imagen PNG personalizada al entrar un nuevo miembro</p>
+            </div>
+            <Switch checked={cfg.cardEnabled ?? false} onCheckedChange={set("cardEnabled")} data-testid="toggle-card" />
+          </div>
+
+          {cfg.cardEnabled && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm mb-1.5 block">Color de fondo (hex)</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="#1e1b4b"
+                      value={cfg.cardBackground || ""}
+                      onChange={(e) => set("cardBackground")(e.target.value)}
+                    />
+                    <div
+                      className="w-10 h-10 rounded-lg border border-border flex-shrink-0 cursor-pointer"
+                      style={{ backgroundColor: cfg.cardBackground || "#1e1b4b" }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-sm mb-1.5 block">Color del texto (hex)</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="#ffffff"
+                      value={cfg.cardTextColor || ""}
+                      onChange={(e) => set("cardTextColor")(e.target.value)}
+                    />
+                    <div
+                      className="w-10 h-10 rounded-lg border border-border flex-shrink-0 cursor-pointer"
+                      style={{ backgroundColor: cfg.cardTextColor || "#ffffff" }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Live card preview */}
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Vista previa de la tarjeta</p>
+                <div
+                  className="rounded-xl overflow-hidden border border-border"
+                  style={{ background: cfg.cardBackground || "#1e1b4b", minHeight: 120 }}
+                >
+                  <div className="flex items-center gap-5 px-8 py-6">
+                    <div className="w-16 h-16 rounded-full bg-white/10 border-2 border-white/30 flex items-center justify-center flex-shrink-0 text-2xl font-black" style={{ color: cfg.cardTextColor || "#ffffff" }}>
+                      U
+                    </div>
+                    <div>
+                      <p className="text-lg font-black leading-tight" style={{ color: cfg.cardTextColor || "#ffffff" }}>Bienvenido, UsuarioPrueba</p>
+                      <p className="text-sm opacity-70 mt-0.5" style={{ color: cfg.cardTextColor || "#ffffff" }}>Eres el miembro #100 de Mi Servidor</p>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground/50 mt-1.5">La tarjeta real se genera como imagen PNG con el avatar del usuario.</p>
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </Layout>
   );

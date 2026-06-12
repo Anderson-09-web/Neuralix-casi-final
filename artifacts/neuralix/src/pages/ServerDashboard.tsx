@@ -1,5 +1,5 @@
 import { useParams, useLocation } from "wouter";
-import { Users, Ticket, Shield, ShieldAlert, Database, FileText, ExternalLink, AlertTriangle, Bell, CheckCircle, RefreshCw, Cpu, Wifi, WifiOff, Gift, MessageSquareWarning, Zap } from "lucide-react";
+import { Users, Ticket, Shield, ShieldAlert, Database, FileText, ExternalLink, AlertTriangle, Bell, CheckCircle, RefreshCw, Cpu, Wifi, WifiOff, Gift, MessageSquareWarning, Zap, Ban, Lock } from "lucide-react";
 import { useGetGuild, useGetGuildStats, useGetGuildBotStatus, useGetAnnouncements, getGetGuildQueryKey, getGetGuildStatsQueryKey, getGetGuildBotStatusQueryKey, getGetAnnouncementsQueryKey } from "@workspace/api-client-react";
 import Layout from "@/components/Layout";
 import StatCard from "@/components/StatCard";
@@ -49,6 +49,78 @@ function StatusDot({ ok }: { ok: boolean }) {
       <span className={cn("animate-ping absolute inline-flex h-full w-full rounded-full opacity-75", ok ? "bg-green-400" : "bg-red-400")} />
       <span className={cn("relative inline-flex rounded-full h-2 w-2", ok ? "bg-green-500" : "bg-red-500")} />
     </span>
+  );
+}
+
+function SecurityGlobalCard({ guildId }: { guildId: string }) {
+  const [config, setConfig] = useState<any>(null);
+  const [saving, setSaving] = useState(false);
+  const [localAction, setLocalAction] = useState("ban");
+
+  useEffect(() => {
+    fetch(`/api/guilds/${guildId}/blacklist-config`, { credentials: "include" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d) { setConfig(d); setLocalAction(d.blacklistAction || "ban"); } })
+      .catch(() => {});
+  }, [guildId]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await fetch(`/api/guilds/${guildId}/blacklist-config`, {
+        method: "PUT", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ blacklistAction: localAction }),
+      });
+      setConfig((c: any) => ({ ...c, blacklistAction: localAction }));
+    } catch {}
+    setSaving(false);
+  };
+
+  const actionLabels: Record<string, { label: string; color: string }> = {
+    ban: { label: "Ban permanente", color: "text-red-400" },
+    kick: { label: "Kick del servidor", color: "text-orange-400" },
+    timeout: { label: "Timeout (1h)", color: "text-yellow-400" },
+    none: { label: "Solo registrar", color: "text-muted-foreground" },
+  };
+  const current = actionLabels[localAction] || actionLabels.ban;
+
+  return (
+    <div className="mb-6 rounded-xl border border-red-500/20 bg-red-500/5 p-4">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-red-500/20 flex items-center justify-center flex-shrink-0">
+            <Ban className="w-4 h-4 text-red-400" />
+          </div>
+          <div>
+            <p className="font-semibold text-sm flex items-center gap-2">
+              Seguridad Global — Blacklist
+              <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium bg-secondary", current.color)}>{current.label}</span>
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Accion al detectar un usuario en la blacklist global de Neuralix
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <select
+            value={localAction}
+            onChange={(e) => setLocalAction(e.target.value)}
+            className="h-8 rounded-md border border-input bg-background px-2 py-1 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-ring appearance-none pr-6 cursor-pointer"
+            style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" }}
+          >
+            <option value="ban">Ban permanente</option>
+            <option value="kick">Kick</option>
+            <option value="timeout">Timeout 1h</option>
+            <option value="none">Solo registrar</option>
+          </select>
+          <Button size="sm" className="h-8 text-xs gap-1.5" onClick={save} disabled={saving || localAction === config?.blacklistAction}>
+            {saving ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Lock className="w-3 h-3" />}
+            <span>Guardar</span>
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -208,6 +280,9 @@ export default function ServerDashboard() {
         <StatCard label="Detecciones AntiRaid" value={stats?.antiraidDetections ?? "—"} icon={<ShieldAlert className="w-5 h-5" />} color="red" trend="Total detectado" />
         <StatCard label="Backups" value={stats?.backupsCount ?? "—"} icon={<Database className="w-5 h-5" />} color="green" trend="Copias disponibles" />
       </div>
+
+      {/* Seguridad Global */}
+      <SecurityGlobalCard guildId={guildId} />
 
       {/* Quick access */}
       <h2 className="text-lg font-bold mb-4">Acceso rapido</h2>

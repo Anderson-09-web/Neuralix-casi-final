@@ -280,6 +280,47 @@ export default function AntiraidPage() {
               ))}
             </div>
           </div>
+
+          {/* AntiFlood */}
+          <div className="bg-card border border-card-border rounded-xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="font-semibold text-sm">AntiFlood</Label>
+                <p className="text-xs text-muted-foreground">Sanciona a usuarios que envian demasiados mensajes en poco tiempo</p>
+              </div>
+              <Switch checked={cfg.antiFlood ?? false} onCheckedChange={set("antiFlood")} data-testid="toggle-antiflood" />
+            </div>
+            {cfg.antiFlood && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <Label className="text-xs mb-1.5 block">Limite de mensajes</Label>
+                    <Input type="number" min={2} max={50} value={cfg.floodLimit ?? 5} onChange={setN("floodLimit")} />
+                  </div>
+                  <div>
+                    <Label className="text-xs mb-1.5 block">Intervalo (segundos)</Label>
+                    <Input type="number" min={1} max={60} value={cfg.floodInterval ?? 5} onChange={setN("floodInterval")} />
+                  </div>
+                  <div>
+                    <Label className="text-xs mb-1.5 block">Accion</Label>
+                    <NativeSelect value={cfg.floodAction || "mute"} onChange={set("floodAction")}>
+                      <option value="warn">Advertencia</option>
+                      <option value="mute">Timeout</option>
+                      <option value="kick">Kick</option>
+                      <option value="ban">Ban</option>
+                    </NativeSelect>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="text-sm">Eliminar mensajes al detectar flood</Label>
+                    <p className="text-xs text-muted-foreground">Borra automaticamente los mensajes del usuario sancionado</p>
+                  </div>
+                  <Switch checked={cfg.deleteOnTrigger ?? false} onCheckedChange={set("deleteOnTrigger")} />
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

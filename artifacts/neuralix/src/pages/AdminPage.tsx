@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Settings, Users, FileText, Shield, BarChart3, Plus, Trash2, CheckCircle, UserCheck, UserX, Edit2, X, MessageSquare, Send, ChevronRight, Clock, CheckCheck, RefreshCw, Crown, Key, Copy, Check, Activity, Ban, ShieldOff, ShieldCheck, KeyRound, KeySquare, UserMinus, UserPlus, Bell, BellOff } from "lucide-react";
+import { Settings, Users, FileText, Shield, BarChart3, Plus, Trash2, CheckCircle, UserCheck, UserX, Edit2, X, MessageSquare, Send, ChevronRight, Clock, CheckCheck, RefreshCw, Crown, Key, Copy, Check, Activity, Ban, ShieldOff, ShieldCheck, KeyRound, KeySquare, UserMinus, UserPlus, Bell, BellOff, Globe, Zap, Star } from "lucide-react";
 import {
   useGetAdminStats, useGetLicenses, useCreateLicense, useRevokeLicense,
   useGetBlacklist, useAddToBlacklist, useRemoveFromBlacklist,
@@ -19,7 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
-const ALL_TABS = ["stats", "licenses", "blacklist", "announcements", "admins", "soporte", "actividad", "links", "bot"] as const;
+const ALL_TABS = ["stats", "licenses", "blacklist", "announcements", "admins", "soporte", "actividad", "servidores", "masivas", "links", "bot"] as const;
 type Tab = typeof ALL_TABS[number];
 
 const TAB_LABELS: Record<Tab, string> = {
@@ -30,6 +30,8 @@ const TAB_LABELS: Record<Tab, string> = {
   admins: "Administradores",
   soporte: "Soporte",
   actividad: "Actividad",
+  servidores: "Servidores",
+  masivas: "Acciones Masivas",
   links: "Links",
   bot: "Credenciales Bot",
 };
@@ -313,6 +315,16 @@ export default function AdminPage() {
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityLoaded, setActivityLoaded] = useState(false);
 
+  /* Servidores */
+  const [guildsList, setGuildsList] = useState<any[]>([]);
+  const [guildsLoading, setGuildsLoading] = useState(false);
+  const [guildsLoaded, setGuildsLoaded] = useState(false);
+
+  /* Acciones Masivas */
+  const [broadcastMsg, setBroadcastMsg] = useState("");
+  const [broadcasting, setBroadcasting] = useState(false);
+  const [broadcastResult, setBroadcastResult] = useState<any>(null);
+
   const fetchActivityLogs = useCallback(async () => {
     setActivityLoading(true);
     try {
@@ -321,8 +333,42 @@ export default function AdminPage() {
     } catch {} finally { setActivityLoading(false); }
   }, []);
 
+  const fetchGuilds = useCallback(async () => {
+    setGuildsLoading(true);
+    try {
+      const res = await fetch("/api/admin/guilds", { credentials: "include" });
+      if (res.ok) { setGuildsList(await res.json()); setGuildsLoaded(true); }
+    } catch {} finally { setGuildsLoading(false); }
+  }, []);
+
+  const handleBroadcast = async () => {
+    if (!broadcastMsg.trim()) return;
+    setBroadcasting(true);
+    setBroadcastResult(null);
+    try {
+      const res = await fetch("/api/admin/broadcast", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: broadcastMsg }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setBroadcastResult(data);
+        toast({ title: `Mensaje enviado a ${data.sent} servidores` });
+        setBroadcastMsg("");
+      } else {
+        toast({ title: data.error || "Error al enviar broadcast", variant: "destructive" });
+      }
+    } catch { toast({ title: "Error de red", variant: "destructive" }); }
+    setBroadcasting(false);
+  };
+
   useEffect(() => {
     if (tab === "actividad" && isOwner && !activityLoaded) fetchActivityLogs();
+  }, [tab, isOwner]);
+
+  useEffect(() => {
+    if (tab === "servidores" && isOwner && !guildsLoaded) fetchGuilds();
   }, [tab, isOwner]);
 
   /* Bot Settings */
@@ -1045,6 +1091,119 @@ export default function AdminPage() {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Servidores ── */}
+      {tab === "servidores" && isOwner && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">{guildsLoaded ? `${guildsList.length} servidores registrados en la base de datos` : "Cargando lista de servidores..."}</p>
+            <button onClick={() => { setGuildsLoaded(false); fetchGuilds(); }} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors">
+              <RefreshCw className="w-3 h-3" /><span>Actualizar</span>
+            </button>
+          </div>
+
+          {guildsLoading ? (
+            <div className="flex justify-center py-12"><div className="w-7 h-7 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
+          ) : guildsList.length === 0 ? (
+            <div className="text-center py-16 bg-card border border-card-border rounded-xl">
+              <Globe className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-40" />
+              <p className="font-semibold">Sin servidores</p>
+              <p className="text-sm text-muted-foreground mt-1">Ninguna guild ha configurado el bot aun</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {guildsList.map((g: any) => (
+                <div key={g.guildId} className="flex items-center justify-between bg-card border border-card-border rounded-xl px-4 py-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                      <Globe className="w-4 h-4 text-primary" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-mono text-sm font-medium">{g.guildId}</p>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        <span className="text-xs text-muted-foreground">{g.tickets ?? 0} tickets</span>
+                        {g.premiumActive && (
+                          <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-yellow-500/15 text-yellow-400 flex items-center gap-1">
+                            <Star className="w-2.5 h-2.5" />{g.premiumPlan || "Premium"}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {g.premiumActive ? (
+                      <span className="text-xs px-2 py-1 rounded-full bg-yellow-500/15 text-yellow-400 font-medium">Premium</span>
+                    ) : (
+                      <span className="text-xs px-2 py-1 rounded-full bg-secondary text-muted-foreground">Gratis</span>
+                    )}
+                    {g.premiumExpiresAt && (
+                      <span className="text-xs text-muted-foreground">Expira: {new Date(g.premiumExpiresAt).toLocaleDateString("es")}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Acciones Masivas ── */}
+      {tab === "masivas" && isOwner && (
+        <div className="max-w-2xl space-y-6">
+          {/* Broadcast */}
+          <div className="bg-card border border-card-border rounded-xl p-5 space-y-4">
+            <div>
+              <h3 className="font-semibold text-sm flex items-center gap-2">
+                <Zap className="w-4 h-4 text-yellow-400" /> Broadcast global
+              </h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Envia un mensaje al canal del sistema (o el primer canal disponible) de todos los servidores donde el bot esta activo.
+              </p>
+            </div>
+            <div>
+              <Label className="text-xs mb-1.5 block">Mensaje a enviar</Label>
+              <Textarea
+                placeholder="Escribe el mensaje de broadcast aqui..."
+                value={broadcastMsg}
+                onChange={(e) => setBroadcastMsg(e.target.value)}
+                rows={4}
+              />
+            </div>
+            {broadcastResult && (
+              <div className="rounded-lg border border-border bg-secondary/30 px-4 py-3">
+                <p className="text-sm font-medium">Resultado del ultimo broadcast</p>
+                <div className="flex gap-4 mt-2">
+                  <span className="text-sm text-green-400">Enviado: <strong>{broadcastResult.sent}</strong></span>
+                  <span className="text-sm text-red-400">Fallido: <strong>{broadcastResult.failed}</strong></span>
+                  <span className="text-sm text-muted-foreground">Total: <strong>{broadcastResult.total}</strong></span>
+                </div>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button
+                onClick={handleBroadcast}
+                disabled={broadcasting || !broadcastMsg.trim()}
+                className="gap-2"
+              >
+                {broadcasting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {broadcasting ? "Enviando..." : "Enviar broadcast"}
+              </Button>
+              {broadcastMsg && (
+                <Button variant="ghost" onClick={() => { setBroadcastMsg(""); setBroadcastResult(null); }}>
+                  Limpiar
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4">
+            <p className="text-sm text-yellow-400 font-medium">Accion con impacto masivo</p>
+            <p className="text-xs text-yellow-400/70 mt-1">
+              El broadcast envia mensajes a todos los servidores activos. Usa esta herramienta con responsabilidad para anuncios importantes o mantenimiento.
+            </p>
+          </div>
         </div>
       )}
 

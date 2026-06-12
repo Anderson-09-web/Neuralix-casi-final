@@ -14,7 +14,8 @@ import { VariablesModal, TICKET_VARIABLES } from "@/components/VariablesModal";
 import { cn } from "@/lib/utils";
 
 const TABS = [
-  { id: "panel", label: "Panel", icon: PanelIcon },
+  { id: "paneles", label: "Paneles", icon: PanelIcon },
+  { id: "panel", label: "Panel Principal", icon: Settings },
   { id: "modules", label: "Modulos", icon: Layers },
   { id: "config", label: "Configuracion", icon: Settings },
   { id: "list", label: "Tickets", icon: List },
@@ -22,7 +23,8 @@ const TABS = [
 type Tab = typeof TABS[number]["id"];
 
 const BUTTON_COLORS = ["PRIMARY", "SECONDARY", "SUCCESS", "DANGER"] as const;
-const emptyModule = { name: "", description: "", emoji: "", welcomeMessage: "", supportRoleIds: "", categoryId: "", buttonLabel: "", buttonColor: "PRIMARY", sortOrder: "0" };
+const emptyModule = { name: "", description: "", emoji: "", welcomeMessage: "", welcomeEmbedTitle: "", welcomeEmbedDescription: "", welcomeEmbedColor: "", supportRoleIds: "", categoryId: "", buttonLabel: "", buttonColor: "PRIMARY", sortOrder: "0" };
+const emptyPanel = { name: "", description: "", channelId: "", buttonLabel: "Abrir Ticket", buttonColor: "PRIMARY", buttonEmoji: "", panelTitle: "", panelDescription: "", panelColor: "#5865F2", panelFooter: "", panelImage: "", sortOrder: "0" };
 
 function NativeSelect({ value, onChange, children }: { value: string; onChange: (v: string) => void; children: React.ReactNode }) {
   return (
@@ -57,9 +59,21 @@ export default function TicketsPage() {
   const [editingModuleId, setEditingModuleId] = useState<number | null>(null);
   const [showModuleForm, setShowModuleForm] = useState(false);
 
+  // Panels state
+  const [panels, setPanels] = useState<any[]>([]);
+  const [panelForm, setPanelForm] = useState({ ...emptyPanel });
+  const [editingPanelId, setEditingPanelId] = useState<number | null>(null);
+  const [showPanelForm, setShowPanelForm] = useState(false);
+  const [sendingPanelId, setSendingPanelId] = useState<number | null>(null);
+
   const fetchModules = async () => {
     const res = await fetch(`/api/guilds/${guildId}/tickets/modules`, { credentials: "include" });
     if (res.ok) setModules(await res.json());
+  };
+
+  const fetchPanels = async () => {
+    const res = await fetch(`/api/guilds/${guildId}/tickets/panels`, { credentials: "include" });
+    if (res.ok) setPanels(await res.json());
   };
 
   useEffect(() => {
@@ -73,8 +87,13 @@ export default function TicketsPage() {
     if (guildId && tab === "modules") fetchModules();
   }, [guildId, tab]);
 
+  useEffect(() => {
+    if (guildId && tab === "paneles") fetchPanels();
+  }, [guildId, tab]);
+
   const set = (key: string) => (val: any) => setCfg((c: any) => ({ ...c, [key]: val }));
   const setMF = (k: string) => (v: any) => setModuleForm((f) => ({ ...f, [k]: v }));
+  const setPF = (k: string) => (v: any) => setPanelForm((f) => ({ ...f, [k]: v }));
 
   const save = () => {
     update.mutate({ guildId, data: cfg }, {
@@ -108,12 +127,76 @@ export default function TicketsPage() {
     });
   };
 
+  const savePanel = async () => {
+    const body = {
+      name: panelForm.name,
+      description: panelForm.description,
+      channelId: panelForm.channelId,
+      buttonLabel: panelForm.buttonLabel,
+      buttonColor: panelForm.buttonColor,
+      buttonEmoji: panelForm.buttonEmoji,
+      panelTitle: panelForm.panelTitle,
+      panelDescription: panelForm.panelDescription,
+      panelColor: panelForm.panelColor,
+      panelFooter: panelForm.panelFooter,
+      panelImage: panelForm.panelImage,
+      sortOrder: Number(panelForm.sortOrder) || 0,
+    };
+    if (!body.name) { toast({ title: "Nombre del panel requerido", variant: "destructive" }); return; }
+    const url = editingPanelId ? `/api/guilds/${guildId}/tickets/panels/${editingPanelId}` : `/api/guilds/${guildId}/tickets/panels`;
+    const method = editingPanelId ? "PUT" : "POST";
+    const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      toast({ title: editingPanelId ? "Panel actualizado" : "Panel creado" });
+      setPanelForm({ ...emptyPanel });
+      setEditingPanelId(null);
+      setShowPanelForm(false);
+      fetchPanels();
+    } else {
+      toast({ title: data.error || "Error al guardar panel", variant: "destructive" });
+    }
+  };
+
+  const deletePanel = async (id: number) => {
+    const res = await fetch(`/api/guilds/${guildId}/tickets/panels/${id}`, { method: "DELETE", credentials: "include" });
+    if (res.ok) { toast({ title: "Panel eliminado" }); fetchPanels(); }
+    else toast({ title: "Error al eliminar panel", variant: "destructive" });
+  };
+
+  const sendPanel = async (id: number) => {
+    setSendingPanelId(id);
+    try {
+      const res = await fetch(`/api/guilds/${guildId}/tickets/panels/${id}/send`, { method: "POST", credentials: "include" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.ok !== false) toast({ title: "Panel enviado al canal correctamente" });
+      else toast({ title: data?.error || "Error al enviar panel", description: data?.hint, variant: "destructive" });
+    } catch { toast({ title: "Error de red", variant: "destructive" }); }
+    setSendingPanelId(null);
+  };
+
+  const startEditPanel = (p: any) => {
+    setPanelForm({
+      name: p.name || "", description: p.description || "",
+      channelId: p.channelId || "", buttonLabel: p.buttonLabel || "Abrir Ticket",
+      buttonColor: p.buttonColor || "PRIMARY", buttonEmoji: p.buttonEmoji || "",
+      panelTitle: p.panelTitle || "", panelDescription: p.panelDescription || "",
+      panelColor: p.panelColor || "#5865F2", panelFooter: p.panelFooter || "",
+      panelImage: p.panelImage || "", sortOrder: String(p.sortOrder || 0),
+    });
+    setEditingPanelId(p.id);
+    setShowPanelForm(true);
+  };
+
   const saveModule = async () => {
     const body = {
       name: moduleForm.name,
       description: moduleForm.description,
       emoji: moduleForm.emoji,
       welcomeMessage: moduleForm.welcomeMessage,
+      welcomeEmbedTitle: moduleForm.welcomeEmbedTitle,
+      welcomeEmbedDescription: moduleForm.welcomeEmbedDescription,
+      welcomeEmbedColor: moduleForm.welcomeEmbedColor,
       supportRoleIds: moduleForm.supportRoleIds.split(",").map((s) => s.trim()).filter(Boolean),
       categoryId: moduleForm.categoryId,
       buttonLabel: moduleForm.buttonLabel,
@@ -146,6 +229,9 @@ export default function TicketsPage() {
     setModuleForm({
       name: m.name, description: m.description || "", emoji: m.emoji || "",
       welcomeMessage: m.welcomeMessage || "",
+      welcomeEmbedTitle: (m as any).welcomeEmbedTitle || "",
+      welcomeEmbedDescription: (m as any).welcomeEmbedDescription || "",
+      welcomeEmbedColor: (m as any).welcomeEmbedColor || "",
       supportRoleIds: (m.supportRoleIds || []).join(", "),
       categoryId: m.categoryId || "", buttonLabel: m.buttonLabel || "",
       buttonColor: m.buttonColor || "PRIMARY", sortOrder: String(m.sortOrder || 0),
@@ -197,6 +283,131 @@ export default function TicketsPage() {
         </div>
       ) : (
         <>
+          {/* ── Paneles Tab ── */}
+          {tab === "paneles" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">Crea multiples paneles de tickets, cada uno con su propio canal y configuracion visual.</p>
+                <Button size="sm" onClick={() => { setPanelForm({ ...emptyPanel }); setEditingPanelId(null); setShowPanelForm(true); }}>
+                  <Plus className="w-4 h-4 mr-1" /> Nuevo Panel
+                </Button>
+              </div>
+
+              {showPanelForm && (
+                <div className="bg-card border border-card-border rounded-xl p-6 space-y-4">
+                  <h3 className="font-semibold text-sm">{editingPanelId ? "Editar Panel" : "Nuevo Panel"}</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-xs mb-1.5 block">Nombre del panel *</Label>
+                      <input className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.name} onChange={(e) => setPF("name")(e.target.value)} placeholder="Panel Principal" />
+                    </div>
+                    <div>
+                      <Label className="text-xs mb-1.5 block">Canal de Discord (ID)</Label>
+                      <input className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.channelId} onChange={(e) => setPF("channelId")(e.target.value)} placeholder="ID del canal" />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label className="text-xs mb-1.5 block">Descripcion</Label>
+                      <input className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.description} onChange={(e) => setPF("description")(e.target.value)} placeholder="Descripcion opcional del panel" />
+                    </div>
+                    <div>
+                      <Label className="text-xs mb-1.5 block">Titulo del embed</Label>
+                      <input className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.panelTitle} onChange={(e) => setPF("panelTitle")(e.target.value)} placeholder="Centro de Soporte" />
+                    </div>
+                    <div>
+                      <Label className="text-xs mb-1.5 block">Color del embed (hex)</Label>
+                      <div className="flex gap-2">
+                        <input className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.panelColor} onChange={(e) => setPF("panelColor")(e.target.value)} placeholder="#5865F2" />
+                        {panelForm.panelColor && <div className="w-10 h-10 rounded-lg border border-border flex-shrink-0" style={{ backgroundColor: panelForm.panelColor }} />}
+                      </div>
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label className="text-xs mb-1.5 block">Descripcion del embed</Label>
+                      <textarea className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none" value={panelForm.panelDescription} onChange={(e) => setPF("panelDescription")(e.target.value)} placeholder="Abre un ticket para recibir asistencia." rows={2} />
+                    </div>
+                    <div>
+                      <Label className="text-xs mb-1.5 block">Footer del embed</Label>
+                      <input className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.panelFooter} onChange={(e) => setPF("panelFooter")(e.target.value)} placeholder="Neuralix Support" />
+                    </div>
+                    <div>
+                      <Label className="text-xs mb-1.5 block">Imagen del panel (URL)</Label>
+                      <input className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.panelImage} onChange={(e) => setPF("panelImage")(e.target.value)} placeholder="https://..." />
+                    </div>
+                    <div>
+                      <Label className="text-xs mb-1.5 block">Etiqueta del boton</Label>
+                      <input className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.buttonLabel} onChange={(e) => setPF("buttonLabel")(e.target.value)} placeholder="Abrir Ticket" />
+                    </div>
+                    <div>
+                      <Label className="text-xs mb-1.5 block">Emoji del boton</Label>
+                      <input className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.buttonEmoji} onChange={(e) => setPF("buttonEmoji")(e.target.value)} placeholder="🎫" />
+                    </div>
+                    <div>
+                      <Label className="text-xs mb-1.5 block">Color del boton</Label>
+                      <NativeSelect value={panelForm.buttonColor} onChange={setPF("buttonColor")}>
+                        {BUTTON_COLORS.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </NativeSelect>
+                    </div>
+                    <div>
+                      <Label className="text-xs mb-1.5 block">Orden</Label>
+                      <input type="number" min="0" className="h-9 w-24 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.sortOrder} onChange={(e) => setPF("sortOrder")(e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <Button size="sm" onClick={savePanel}>Guardar</Button>
+                    <Button size="sm" variant="ghost" onClick={() => { setShowPanelForm(false); setEditingPanelId(null); setPanelForm({ ...emptyPanel }); }}>Cancelar</Button>
+                  </div>
+                </div>
+              )}
+
+              {panels.length === 0 && !showPanelForm ? (
+                <div className="text-center py-16 bg-card rounded-xl border border-card-border">
+                  <PanelIcon className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+                  <p className="font-semibold">Sin paneles configurados</p>
+                  <p className="text-sm text-muted-foreground mt-1">Crea paneles independientes para diferentes canales o categorias de soporte.</p>
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  {panels.map((p: any) => (
+                    <div key={p.id} className="bg-card border border-card-border rounded-xl p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3 min-w-0">
+                          <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: p.panelColor ? `${p.panelColor}22` : "#5865F222", borderLeft: `3px solid ${p.panelColor || "#5865F2"}` }}>
+                            <PanelIcon className="w-4 h-4" style={{ color: p.panelColor || "#5865F2" }} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-medium text-sm">{p.name}</p>
+                            {p.panelTitle && <p className="text-xs text-muted-foreground mt-0.5">{p.panelTitle}</p>}
+                            {p.description && <p className="text-xs text-muted-foreground/60 mt-0.5">{p.description}</p>}
+                            {p.channelId && (
+                              <div className="flex items-center gap-1 mt-1">
+                                <span className="text-xs bg-secondary font-mono px-1.5 py-0.5 rounded"># {p.channelId}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <Button
+                            variant="outline" size="sm" className="gap-1.5 h-7 text-xs"
+                            disabled={sendingPanelId === p.id}
+                            onClick={() => sendPanel(p.id)}
+                          >
+                            {sendingPanelId === p.id ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                            <span>Enviar</span>
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => startEditPanel(p)}>
+                            <Settings className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => deletePanel(p.id)}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ── Panel Tab ── */}
           {tab === "panel" && (
             <div className="max-w-2xl space-y-6">
@@ -317,6 +528,21 @@ export default function TicketsPage() {
                     <div className="md:col-span-2">
                       <Label className="text-xs mb-1.5 block">Mensaje de bienvenida del ticket</Label>
                       <Textarea value={moduleForm.welcomeMessage} onChange={(e) => setMF("welcomeMessage")(e.target.value)} placeholder="Hola {user}, un agente de soporte te atendra en breve." rows={2} />
+                    </div>
+                    <div>
+                      <Label className="text-xs mb-1.5 block">Titulo del embed de bienvenida</Label>
+                      <Input value={moduleForm.welcomeEmbedTitle} onChange={(e) => setMF("welcomeEmbedTitle")(e.target.value)} placeholder="Ticket abierto" />
+                    </div>
+                    <div>
+                      <Label className="text-xs mb-1.5 block">Color del embed (hex)</Label>
+                      <div className="flex gap-2">
+                        <Input value={moduleForm.welcomeEmbedColor} onChange={(e) => setMF("welcomeEmbedColor")(e.target.value)} placeholder="#5865F2" />
+                        {moduleForm.welcomeEmbedColor && <div className="w-9 h-9 rounded-lg border border-border flex-shrink-0" style={{ backgroundColor: moduleForm.welcomeEmbedColor }} />}
+                      </div>
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label className="text-xs mb-1.5 block">Descripcion del embed de bienvenida</Label>
+                      <Textarea value={moduleForm.welcomeEmbedDescription} onChange={(e) => setMF("welcomeEmbedDescription")(e.target.value)} placeholder="Un agente te atendra lo antes posible. Por favor describe tu problema." rows={2} />
                     </div>
                     <div>
                       <Label className="text-xs mb-1.5 block">Etiqueta del boton</Label>

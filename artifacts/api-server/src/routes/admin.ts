@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, usersTable, guildConfigsTable, ticketsTable, licensesTable, blacklistTable, backupsTable, supportTicketsTable, secondaryAdminsTable, adminActivityLogsTable } from "@workspace/db";
-import { eq, count, desc } from "drizzle-orm";
+import { eq, count, desc, sql } from "drizzle-orm";
 import { requireOwner, requireAdminAccess } from "../lib/auth";
 import type { AdminPermission } from "@workspace/db";
 
@@ -136,6 +136,56 @@ router.delete("/admin/admins/:id", requireOwner, async (req, res) => {
   await db.delete(secondaryAdminsTable).where(eq(secondaryAdminsTable.id, id));
   await log(actor, "delete_admin", target?.username, { discordId: target?.discordId });
   res.status(204).end();
+});
+
+// ─── Guilds list ────────────────────────────────────────────────────────────
+router.get("/admin/guilds", requireOwner, async (_req, res) => {
+  const guilds = await db
+    .select({
+      guildId: guildConfigsTable.guildId,
+      premiumActive: guildConfigsTable.premiumActive,
+      premiumPlan: guildConfigsTable.premiumPlan,
+      premiumExpiresAt: guildConfigsTable.premiumExpiresAt,
+      tickets: sql<number>`(SELECT COUNT(*) FROM ${ticketsTable} WHERE ${ticketsTable.guildId} = ${guildConfigsTable.guildId})`.mapWith(Number),
+      blacklisted: sql<number>`(SELECT COUNT(*) FROM ${blacklistTable})`.mapWith(Number),
+    })
+    .from(guildConfigsTable)
+    .orderBy(desc(guildConfigsTable.premiumActive));
+  res.json(guilds);
+});
+
+// ─── Mass actions ────────────────────────────────────────────────────────────
+router.post("/admin/broadcast", requireOwner, async (req, res) => {
+  const { message } = req.body as { message: string };
+  if (!message?.trim()) { res.status(400).json({ error: "message requerido" }); return; }
+  try {
+    const { getBotClient } = await import("../bot-state");
+    const client = getBotClient();
+    if (!client) { res.status(503).json({ error: "Bot no conectado" }); return; }
+
+    const guilds = await db.select({ guildId: guildConfigsTable.guildId }).from(guildConfigsTable);
+    let sent = 0;
+    let failed = 0;
+
+    await Promise.allSettled(
+      guilds.map(async ({ guildId }) => {
+        try {
+          const guild = client.guilds.cache.get(guildId);
+          if (!guild) { failed++; return; }
+          const sysChannel = guild.systemChannel || guild.channels.cache.find(
+            (c: any) => c.isTextBased() && c.permissionsFor(guild.members.me!)?.has("SendMessages")
+          );
+          if (!sysChannel || !("send" in sysChannel)) { failed++; return; }
+          await (sysChannel as any).send({ content: message });
+          sent++;
+        } catch { failed++; }
+      })
+    );
+
+    res.json({ ok: true, sent, failed, total: guilds.length });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "Error interno" });
+  }
 });
 
 export default router;
