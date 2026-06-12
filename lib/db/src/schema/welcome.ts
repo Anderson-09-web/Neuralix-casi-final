@@ -35,7 +35,11 @@ export const goodbyeConfigsTable = pgTable("goodbye_configs", {
   embedColor: text("embed_color"),
   embedTitle: text("embed_title"),
   embedDescription: text("embed_description"),
+  embedFooter: text("embed_footer"),
   imageEnabled: boolean("image_enabled").notNull().default(false),
+  cardEnabled: boolean("card_enabled").notNull().default(false),
+  cardBackground: text("card_background"),
+  cardTextColor: text("card_text_color"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

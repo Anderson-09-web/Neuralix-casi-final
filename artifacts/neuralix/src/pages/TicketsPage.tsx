@@ -15,7 +15,6 @@ import { cn } from "@/lib/utils";
 
 const TABS = [
   { id: "paneles", label: "Paneles", icon: PanelIcon },
-  { id: "panel", label: "Panel Principal", icon: Settings },
   { id: "modules", label: "Modulos", icon: Layers },
   { id: "config", label: "Configuracion", icon: Settings },
   { id: "list", label: "Tickets", icon: List },
@@ -42,7 +41,7 @@ export default function TicketsPage() {
   const { guildId } = useParams<{ guildId: string }>();
   const qc = useQueryClient();
   const { toast } = useToast();
-  const [tab, setTab] = useState<Tab>("panel");
+  const [tab, setTab] = useState<Tab>("paneles");
 
   const { data: config, isLoading, isError } = useGetTicketConfig(guildId, { query: { queryKey: getGetTicketConfigQueryKey(guildId), enabled: !!guildId, refetchInterval: 5000, refetchIntervalInBackground: false } });
   const { data: tickets } = useGetTickets(guildId, { query: { queryKey: getGetTicketsQueryKey(guildId), enabled: !!guildId && tab === "list", refetchInterval: 5000, refetchIntervalInBackground: false } });
@@ -50,7 +49,6 @@ export default function TicketsPage() {
   const closeTicket = useCloseTicket();
   const reopenTicket = useReopenTicket();
   const [cfg, setCfg] = useState<any>(null);
-  const [sendingPanel, setSendingPanel] = useState(false);
   const isMounted = useRef(false);
 
   // Modules state
@@ -100,17 +98,6 @@ export default function TicketsPage() {
       onSuccess: () => { toast({ title: "Tickets guardado" }); qc.invalidateQueries({ queryKey: getGetTicketConfigQueryKey(guildId) }); },
       onError: () => toast({ title: "Error al guardar", variant: "destructive" }),
     });
-  };
-
-  const handleSendPanel = async () => {
-    setSendingPanel(true);
-    try {
-      const res = await fetch(`/api/guilds/${guildId}/tickets/send-panel`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data?.ok !== false) toast({ title: "Panel enviado al canal correctamente" });
-      else toast({ title: data?.error || "Error al enviar panel", description: data?.hint, variant: "destructive" });
-    } catch { toast({ title: "Error de red", variant: "destructive" }); }
-    setSendingPanel(false);
   };
 
   const handleClose = (ticketId: number) => {
@@ -254,14 +241,7 @@ export default function TicketsPage() {
         </div>
         {tab !== "list" && cfg && (
           <div className="flex gap-2">
-            {tab === "panel" && (
-              <Button variant="outline" size="sm" onClick={handleSendPanel} disabled={sendingPanel} className="gap-1.5">
-                {sendingPanel && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
-                <Send className="w-3.5 h-3.5" />
-                <span>Enviar Panel</span>
-              </Button>
-            )}
-            {tab !== "modules" && <Button size="sm" onClick={save} disabled={update.isPending} data-testid="btn-save-tickets">Guardar</Button>}
+            {tab === "config" && <Button size="sm" onClick={save} disabled={update.isPending} data-testid="btn-save-tickets">Guardar</Button>}
           </div>
         )}
       </div>
@@ -417,89 +397,6 @@ export default function TicketsPage() {
                       </div>
                     </div>
                   ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── Panel Tab ── */}
-          {tab === "panel" && (
-            <div className="max-w-2xl space-y-6">
-              <div className="bg-card border border-card-border rounded-xl p-6 space-y-5">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-sm">Sistema de Tickets</h3>
-                  <Switch checked={cfg.enabled} onCheckedChange={set("enabled")} data-testid="toggle-tickets-enabled" />
-                </div>
-                <div>
-                  <Label className="text-sm mb-1.5 block">Canal del panel (ID)</Label>
-                  <Input placeholder="ID del canal donde aparecera el panel" value={cfg.panelChannelId || ""} onChange={(e) => set("panelChannelId")(e.target.value)} />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label className="text-sm font-medium">Usar Modulos</Label>
-                    <p className="text-xs text-muted-foreground">Muestra un menu de categorias en lugar de un solo boton</p>
-                  </div>
-                  <Switch checked={cfg.useModules || false} onCheckedChange={set("useModules")} />
-                </div>
-              </div>
-
-              <div className="bg-card border border-card-border rounded-xl p-6 space-y-5">
-                <h3 className="font-semibold text-sm">Embed del panel</h3>
-                <div>
-                  <Label className="text-sm mb-1.5 block">Titulo</Label>
-                  <Input placeholder="Centro de Soporte" value={cfg.panelTitle || ""} onChange={(e) => set("panelTitle")(e.target.value)} />
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <Label className="text-sm">Descripcion</Label>
-                    <VariablesModal variables={TICKET_VARIABLES} onInsert={(v) => setCfg((c: any) => ({ ...c, panelDescription: (c.panelDescription || "") + v }))} />
-                  </div>
-                  <Textarea placeholder="Abre un ticket para recibir asistencia del equipo de soporte." value={cfg.panelDescription || ""} onChange={(e) => set("panelDescription")(e.target.value)} rows={3} />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-sm mb-1.5 block">Color (hex)</Label>
-                    <div className="flex gap-2">
-                      <Input placeholder="#5865F2" value={cfg.panelColor || ""} onChange={(e) => set("panelColor")(e.target.value)} />
-                      {cfg.panelColor && <div className="w-10 h-10 rounded-lg border border-border flex-shrink-0" style={{ backgroundColor: cfg.panelColor }} />}
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-sm mb-1.5 block">Footer</Label>
-                    <Input placeholder="Neuralix Support" value={cfg.panelFooter || ""} onChange={(e) => set("panelFooter")(e.target.value)} />
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-sm mb-1.5 block">Imagen del panel (URL)</Label>
-                  <Input placeholder="https://..." value={cfg.panelImage || ""} onChange={(e) => set("panelImage")(e.target.value)} />
-                </div>
-              </div>
-
-              {!cfg.useModules && (
-                <div className="bg-card border border-card-border rounded-xl p-6 space-y-4">
-                  <h3 className="font-semibold text-sm">Boton de apertura</h3>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <Label className="text-sm mb-1.5 block">Texto del boton</Label>
-                      <Input placeholder="Abrir Ticket" value={cfg.buttonLabel || ""} onChange={(e) => set("buttonLabel")(e.target.value)} />
-                    </div>
-                    <div>
-                      <Label className="text-sm mb-1.5 block">Emoji</Label>
-                      <Input placeholder="🎫" value={cfg.buttonEmoji || ""} onChange={(e) => set("buttonEmoji")(e.target.value)} />
-                    </div>
-                    <div>
-                      <Label className="text-sm mb-1.5 block">Color del boton</Label>
-                      <NativeSelect value={cfg.buttonColor || "PRIMARY"} onChange={set("buttonColor")}>
-                        {BUTTON_COLORS.map((c) => <option key={c} value={c}>{c}</option>)}
-                      </NativeSelect>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {cfg.useModules && modules.length === 0 && (
-                <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 text-sm text-yellow-600 dark:text-yellow-400">
-                  El modo modulos esta activado pero no hay modulos configurados. Ve a la pestana <strong>Modulos</strong> para crear al menos uno.
                 </div>
               )}
             </div>

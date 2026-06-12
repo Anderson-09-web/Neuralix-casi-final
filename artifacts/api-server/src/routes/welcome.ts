@@ -16,7 +16,8 @@ const WELCOME_ALLOWED = new Set([
 
 const GOODBYE_ALLOWED = new Set([
   "enabled", "channelId", "message",
-  "embedEnabled", "embedColor", "embedTitle", "embedDescription", "embedImage", "imageEnabled",
+  "embedEnabled", "embedColor", "embedTitle", "embedDescription", "embedFooter", "embedImage", "imageEnabled",
+  "cardEnabled", "cardBackground", "cardTextColor",
 ]);
 
 function whitelistBody(body: Record<string, unknown>, allowed: Set<string>) {

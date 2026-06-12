@@ -346,7 +346,8 @@ export default function AdminPage() {
     try {
       const res = await fetch("/api/admin/activity-logs?limit=100", { credentials: "include" });
       if (res.ok) { setActivityLogs(await res.json()); setActivityLoaded(true); }
-    } catch {} finally { setActivityLoading(false); }
+      else { const d = await res.json().catch(() => ({})); toast({ title: d.error || "Error al cargar actividad", variant: "destructive" }); }
+    } catch { toast({ title: "Error de red al cargar actividad", variant: "destructive" }); } finally { setActivityLoading(false); }
   }, []);
 
   const fetchGuilds = useCallback(async () => {
@@ -354,7 +355,8 @@ export default function AdminPage() {
     try {
       const res = await fetch("/api/admin/guilds", { credentials: "include" });
       if (res.ok) { setGuildsList(await res.json()); setGuildsLoaded(true); }
-    } catch {} finally { setGuildsLoading(false); }
+      else { const d = await res.json().catch(() => ({})); toast({ title: d.error || "Error al cargar servidores", variant: "destructive" }); }
+    } catch { toast({ title: "Error de red al cargar servidores", variant: "destructive" }); } finally { setGuildsLoading(false); }
   }, []);
 
   const handleBroadcast = async () => {
