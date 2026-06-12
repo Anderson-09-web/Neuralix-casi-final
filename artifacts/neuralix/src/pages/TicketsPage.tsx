@@ -23,8 +23,8 @@ const TABS = [
 type Tab = typeof TABS[number]["id"];
 
 const BUTTON_COLORS = ["PRIMARY", "SECONDARY", "SUCCESS", "DANGER"] as const;
-const emptyModule = { name: "", description: "", emoji: "", welcomeMessage: "", welcomeEmbedTitle: "", welcomeEmbedDescription: "", welcomeEmbedColor: "", supportRoleIds: "", categoryId: "", buttonLabel: "", buttonColor: "PRIMARY", sortOrder: "0" };
-const emptyPanel = { name: "", description: "", channelId: "", buttonLabel: "Abrir Ticket", buttonColor: "PRIMARY", buttonEmoji: "", panelTitle: "", panelDescription: "", panelColor: "#5865F2", panelFooter: "", panelImage: "", sortOrder: "0" };
+const emptyModule = { name: "", description: "", emoji: "", welcomeMessage: "", welcomeEmbedEnabled: false, welcomeEmbedTitle: "", welcomeEmbedDescription: "", welcomeEmbedColor: "", supportRoleIds: "", categoryId: "", buttonLabel: "", buttonColor: "PRIMARY", sortOrder: "0" };
+const emptyPanel = { name: "", description: "", channelId: "", buttonLabel: "Abrir Ticket", buttonColor: "PRIMARY", buttonEmoji: "", embedTitle: "", embedDescription: "", embedColor: "#5865F2", embedFooter: "", embedImage: "", sortOrder: "0" };
 
 function NativeSelect({ value, onChange, children }: { value: string; onChange: (v: string) => void; children: React.ReactNode }) {
   return (
@@ -135,11 +135,11 @@ export default function TicketsPage() {
       buttonLabel: panelForm.buttonLabel,
       buttonColor: panelForm.buttonColor,
       buttonEmoji: panelForm.buttonEmoji,
-      panelTitle: panelForm.panelTitle,
-      panelDescription: panelForm.panelDescription,
-      panelColor: panelForm.panelColor,
-      panelFooter: panelForm.panelFooter,
-      panelImage: panelForm.panelImage,
+      embedTitle: panelForm.embedTitle,
+      embedDescription: panelForm.embedDescription,
+      embedColor: panelForm.embedColor,
+      embedFooter: panelForm.embedFooter,
+      embedImage: panelForm.embedImage,
       sortOrder: Number(panelForm.sortOrder) || 0,
     };
     if (!body.name) { toast({ title: "Nombre del panel requerido", variant: "destructive" }); return; }
@@ -180,9 +180,9 @@ export default function TicketsPage() {
       name: p.name || "", description: p.description || "",
       channelId: p.channelId || "", buttonLabel: p.buttonLabel || "Abrir Ticket",
       buttonColor: p.buttonColor || "PRIMARY", buttonEmoji: p.buttonEmoji || "",
-      panelTitle: p.panelTitle || "", panelDescription: p.panelDescription || "",
-      panelColor: p.panelColor || "#5865F2", panelFooter: p.panelFooter || "",
-      panelImage: p.panelImage || "", sortOrder: String(p.sortOrder || 0),
+      embedTitle: p.embedTitle || "", embedDescription: p.embedDescription || "",
+      embedColor: p.embedColor || "#5865F2", embedFooter: p.embedFooter || "",
+      embedImage: p.embedImage || "", sortOrder: String(p.sortOrder || 0),
     });
     setEditingPanelId(p.id);
     setShowPanelForm(true);
@@ -194,6 +194,7 @@ export default function TicketsPage() {
       description: moduleForm.description,
       emoji: moduleForm.emoji,
       welcomeMessage: moduleForm.welcomeMessage,
+      welcomeEmbedEnabled: moduleForm.welcomeEmbedEnabled,
       welcomeEmbedTitle: moduleForm.welcomeEmbedTitle,
       welcomeEmbedDescription: moduleForm.welcomeEmbedDescription,
       welcomeEmbedColor: moduleForm.welcomeEmbedColor,
@@ -229,6 +230,7 @@ export default function TicketsPage() {
     setModuleForm({
       name: m.name, description: m.description || "", emoji: m.emoji || "",
       welcomeMessage: m.welcomeMessage || "",
+      welcomeEmbedEnabled: !!(m as any).welcomeEmbedEnabled,
       welcomeEmbedTitle: (m as any).welcomeEmbedTitle || "",
       welcomeEmbedDescription: (m as any).welcomeEmbedDescription || "",
       welcomeEmbedColor: (m as any).welcomeEmbedColor || "",
@@ -311,26 +313,26 @@ export default function TicketsPage() {
                     </div>
                     <div>
                       <Label className="text-xs mb-1.5 block">Titulo del embed</Label>
-                      <input className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.panelTitle} onChange={(e) => setPF("panelTitle")(e.target.value)} placeholder="Centro de Soporte" />
+                      <input className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.embedTitle} onChange={(e) => setPF("embedTitle")(e.target.value)} placeholder="Centro de Soporte" />
                     </div>
                     <div>
                       <Label className="text-xs mb-1.5 block">Color del embed (hex)</Label>
                       <div className="flex gap-2">
-                        <input className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.panelColor} onChange={(e) => setPF("panelColor")(e.target.value)} placeholder="#5865F2" />
-                        {panelForm.panelColor && <div className="w-10 h-10 rounded-lg border border-border flex-shrink-0" style={{ backgroundColor: panelForm.panelColor }} />}
+                        <input className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.embedColor} onChange={(e) => setPF("embedColor")(e.target.value)} placeholder="#5865F2" />
+                        {panelForm.embedColor && <div className="w-10 h-10 rounded-lg border border-border flex-shrink-0" style={{ backgroundColor: panelForm.embedColor }} />}
                       </div>
                     </div>
                     <div className="md:col-span-2">
                       <Label className="text-xs mb-1.5 block">Descripcion del embed</Label>
-                      <textarea className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none" value={panelForm.panelDescription} onChange={(e) => setPF("panelDescription")(e.target.value)} placeholder="Abre un ticket para recibir asistencia." rows={2} />
+                      <textarea className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none" value={panelForm.embedDescription} onChange={(e) => setPF("embedDescription")(e.target.value)} placeholder="Abre un ticket para recibir asistencia." rows={2} />
                     </div>
                     <div>
                       <Label className="text-xs mb-1.5 block">Footer del embed</Label>
-                      <input className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.panelFooter} onChange={(e) => setPF("panelFooter")(e.target.value)} placeholder="Neuralix Support" />
+                      <input className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.embedFooter} onChange={(e) => setPF("embedFooter")(e.target.value)} placeholder="Neuralix Support" />
                     </div>
                     <div>
                       <Label className="text-xs mb-1.5 block">Imagen del panel (URL)</Label>
-                      <input className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.panelImage} onChange={(e) => setPF("panelImage")(e.target.value)} placeholder="https://..." />
+                      <input className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.embedImage} onChange={(e) => setPF("embedImage")(e.target.value)} placeholder="https://..." />
                     </div>
                     <div>
                       <Label className="text-xs mb-1.5 block">Etiqueta del boton</Label>
@@ -370,12 +372,12 @@ export default function TicketsPage() {
                     <div key={p.id} className="bg-card border border-card-border rounded-xl p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-start gap-3 min-w-0">
-                          <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: p.panelColor ? `${p.panelColor}22` : "#5865F222", borderLeft: `3px solid ${p.panelColor || "#5865F2"}` }}>
-                            <PanelIcon className="w-4 h-4" style={{ color: p.panelColor || "#5865F2" }} />
+                          <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: p.embedColor ? `${p.embedColor}22` : "#5865F222", borderLeft: `3px solid ${p.embedColor || "#5865F2"}` }}>
+                            <PanelIcon className="w-4 h-4" style={{ color: p.embedColor || "#5865F2" }} />
                           </div>
                           <div className="min-w-0">
                             <p className="font-medium text-sm">{p.name}</p>
-                            {p.panelTitle && <p className="text-xs text-muted-foreground mt-0.5">{p.panelTitle}</p>}
+                            {p.embedTitle && <p className="text-xs text-muted-foreground mt-0.5">{p.embedTitle}</p>}
                             {p.description && <p className="text-xs text-muted-foreground/60 mt-0.5">{p.description}</p>}
                             {p.channelId && (
                               <div className="flex items-center gap-1 mt-1">
@@ -529,9 +531,16 @@ export default function TicketsPage() {
                       <Label className="text-xs mb-1.5 block">Mensaje de bienvenida del ticket</Label>
                       <Textarea value={moduleForm.welcomeMessage} onChange={(e) => setMF("welcomeMessage")(e.target.value)} placeholder="Hola {user}, un agente de soporte te atendra en breve." rows={2} />
                     </div>
+                    <div className="md:col-span-2 flex items-center justify-between py-1">
+                      <div>
+                        <p className="text-sm font-medium">Embed de bienvenida</p>
+                        <p className="text-xs text-muted-foreground">Muestra un embed al abrir el ticket en este modulo</p>
+                      </div>
+                      <Switch checked={moduleForm.welcomeEmbedEnabled} onCheckedChange={(v) => setMF("welcomeEmbedEnabled")(v)} />
+                    </div>
                     <div>
                       <Label className="text-xs mb-1.5 block">Titulo del embed de bienvenida</Label>
-                      <Input value={moduleForm.welcomeEmbedTitle} onChange={(e) => setMF("welcomeEmbedTitle")(e.target.value)} placeholder="Ticket abierto" />
+                      <Input value={moduleForm.welcomeEmbedTitle} onChange={(e) => setMF("welcomeEmbedTitle")(e.target.value)} placeholder="Ticket abierto" disabled={!moduleForm.welcomeEmbedEnabled} />
                     </div>
                     <div>
                       <Label className="text-xs mb-1.5 block">Color del embed (hex)</Label>

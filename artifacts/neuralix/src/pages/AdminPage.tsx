@@ -320,10 +320,20 @@ export default function AdminPage() {
   const [guildsLoading, setGuildsLoading] = useState(false);
   const [guildsLoaded, setGuildsLoaded] = useState(false);
 
+  /* Blacklist sweep */
+  const [sweeping, setSweeping] = useState(false);
+  const [sweepResult, setSweepResult] = useState<any>(null);
+
   /* Acciones Masivas */
   const [broadcastMsg, setBroadcastMsg] = useState("");
   const [broadcasting, setBroadcasting] = useState(false);
   const [broadcastResult, setBroadcastResult] = useState<any>(null);
+  const [csvBlacklistText, setCsvBlacklistText] = useState("");
+  const [csvImporting, setCsvImporting] = useState(false);
+  const [csvImportResult, setCsvImportResult] = useState<any>(null);
+  const [bulkRevokePlan, setBulkRevokePlan] = useState("");
+  const [bulkRevoking, setBulkRevoking] = useState(false);
+  const [bulkRevokeResult, setBulkRevokeResult] = useState<number | null>(null);
 
   const fetchActivityLogs = useCallback(async () => {
     setActivityLoading(true);
@@ -366,6 +376,52 @@ export default function AdminPage() {
   useEffect(() => {
     if (tab === "actividad" && isOwner && !activityLoaded) fetchActivityLogs();
   }, [tab, isOwner]);
+
+  const handleCsvBlacklistImport = async () => {
+    const ids = csvBlacklistText.split(/[\n,]+/).map(s => s.trim()).filter(s => /^\d{17,20}$/.test(s));
+    if (ids.length === 0) { toast({ title: "No se detectaron IDs validos", variant: "destructive" }); return; }
+    setCsvImporting(true);
+    setCsvImportResult(null);
+    let added = 0; let skipped = 0; let errors = 0;
+    for (const discordId of ids) {
+      try {
+        const res = await fetch("/api/blacklist", {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: discordId, username: discordId, reason: "Importacion masiva CSV" }),
+        });
+        if (res.status === 409 || res.status === 400) skipped++;
+        else if (res.ok) added++;
+        else errors++;
+      } catch { errors++; }
+    }
+    setCsvImportResult({ added, skipped, errors });
+    toast({ title: `Blacklist importada: ${added} agregados, ${skipped} duplicados, ${errors} errores` });
+    setCsvBlacklistText("");
+    setCsvImporting(false);
+  };
+
+  const handleBulkRevoke = async () => {
+    if (!bulkRevokePlan) return;
+    setBulkRevoking(true);
+    setBulkRevokeResult(null);
+    try {
+      const res = await fetch("/api/admin/licenses/bulk-revoke", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan: bulkRevokePlan }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setBulkRevokeResult(data.revoked ?? 0);
+        toast({ title: `${data.revoked ?? 0} licencias ${bulkRevokePlan} revocadas` });
+        setBulkRevokePlan("");
+      } else {
+        toast({ title: data.error || "Error al revocar licencias", variant: "destructive" });
+      }
+    } catch { toast({ title: "Error de red", variant: "destructive" }); }
+    setBulkRevoking(false);
+  };
 
   useEffect(() => {
     if (tab === "servidores" && isOwner && !guildsLoaded) fetchGuilds();
@@ -743,6 +799,36 @@ export default function AdminPage() {
             </Button>
           </div>
 
+          {/* Global sweep */}
+          <div className="bg-card border border-card-border rounded-xl p-4 flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <p className="font-medium text-sm">Barrido Global</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Analiza todos los servidores y aplica acciones a miembros en la blacklist que aun esten activos.</p>
+              {sweepResult && (
+                <p className="text-xs mt-1.5 text-green-400">
+                  Barrido completado: <strong>{sweepResult.actioned}</strong> usuarios sancionados en <strong>{sweepResult.guilds}</strong> servidores.
+                </p>
+              )}
+            </div>
+            <Button
+              size="sm" variant="destructive" className="gap-2 flex-shrink-0"
+              disabled={sweeping}
+              onClick={async () => {
+                setSweeping(true); setSweepResult(null);
+                try {
+                  const r = await fetch("/api/admin/blacklist/sweep", { method: "POST", credentials: "include" });
+                  const d = await r.json().catch(() => ({}));
+                  if (r.ok) { setSweepResult(d); toast({ title: `Barrido completado: ${d.actioned} acciones` }); }
+                  else toast({ title: d.error || "Error en barrido", variant: "destructive" });
+                } catch { toast({ title: "Error de red", variant: "destructive" }); }
+                setSweeping(false);
+              }}
+            >
+              {sweeping ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
+              {sweeping ? "Barriendo..." : "Iniciar barrido"}
+            </Button>
+          </div>
+
           <div className="space-y-2">
             {!Array.isArray(blacklist) || blacklist.length === 0 ? (
               <p className="text-sm text-muted-foreground py-8 text-center">Blacklist vacia</p>
@@ -763,7 +849,11 @@ export default function AdminPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className="text-xs text-muted-foreground">{new Date(b.createdAt).toLocaleDateString("es")}</span>
+                    {b.expiresAt
+                      ? <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-yellow-500/15 text-yellow-400">{b.durationDays}d</span>
+                      : <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-red-500/15 text-red-400">Perm</span>
+                    }
+                    <span className="text-xs text-muted-foreground hidden sm:block">{new Date(b.createdAt).toLocaleDateString("es")}</span>
                     <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive hover:text-destructive"
                       onClick={(e) => { e.stopPropagation(); removeBlacklist.mutate({ userId: b.userId }, { onSuccess: () => { toast({ title: "Eliminado de blacklist" }); qc.invalidateQueries({ queryKey: getGetBlacklistQueryKey() }); }, onError: onErr("Error al eliminar") }); }}>
                       <X className="w-3.5 h-3.5" />
@@ -1098,7 +1188,9 @@ export default function AdminPage() {
       {tab === "servidores" && isOwner && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">{guildsLoaded ? `${guildsList.length} servidores registrados en la base de datos` : "Cargando lista de servidores..."}</p>
+            <p className="text-sm text-muted-foreground">
+              {guildsLoaded ? `${guildsList.length} servidor${guildsList.length !== 1 ? "es" : ""} registrado${guildsList.length !== 1 ? "s" : ""}` : "Cargando lista de servidores..."}
+            </p>
             <button onClick={() => { setGuildsLoaded(false); fetchGuilds(); }} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors">
               <RefreshCw className="w-3 h-3" /><span>Actualizar</span>
             </button>
@@ -1113,37 +1205,70 @@ export default function AdminPage() {
               <p className="text-sm text-muted-foreground mt-1">Ninguna guild ha configurado el bot aun</p>
             </div>
           ) : (
-            <div className="space-y-2">
-              {guildsList.map((g: any) => (
-                <div key={g.guildId} className="flex items-center justify-between bg-card border border-card-border rounded-xl px-4 py-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                      <Globe className="w-4 h-4 text-primary" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-mono text-sm font-medium">{g.guildId}</p>
-                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                        <span className="text-xs text-muted-foreground">{g.tickets ?? 0} tickets</span>
-                        {g.premiumActive && (
-                          <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-yellow-500/15 text-yellow-400 flex items-center gap-1">
-                            <Star className="w-2.5 h-2.5" />{g.premiumPlan || "Premium"}
-                          </span>
+            <div className="overflow-auto rounded-xl border border-card-border">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-secondary/30">
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Servidor</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground hidden sm:table-cell">ID</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground hidden md:table-cell">Miembros</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground hidden lg:table-cell">Bot unido</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground hidden md:table-cell">Accion BL</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Tickets</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Plan</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {guildsList.map((g: any) => (
+                    <tr key={g.guildId} className="border-b border-border last:border-0 hover:bg-secondary/20 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2.5">
+                          {g.iconURL ? (
+                            <img src={g.iconURL} alt="" className="w-8 h-8 rounded-full flex-shrink-0" />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                              <Globe className="w-3.5 h-3.5 text-primary" />
+                            </div>
+                          )}
+                          <span className="font-medium truncate max-w-[140px]">{g.name || g.guildId}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 hidden sm:table-cell">
+                        <span className="font-mono text-xs text-muted-foreground">{g.guildId}</span>
+                      </td>
+                      <td className="px-4 py-3 hidden md:table-cell text-muted-foreground">
+                        {g.memberCount != null ? g.memberCount.toLocaleString("es") : "—"}
+                      </td>
+                      <td className="px-4 py-3 hidden lg:table-cell text-muted-foreground text-xs">
+                        {g.botJoinedAt ? new Date(g.botJoinedAt).toLocaleDateString("es") : "—"}
+                      </td>
+                      <td className="px-4 py-3 hidden md:table-cell">
+                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                          g.blacklistAction === "ban" ? "bg-red-500/15 text-red-400" :
+                          g.blacklistAction === "kick" ? "bg-orange-500/15 text-orange-400" :
+                          g.blacklistAction === "timeout" ? "bg-yellow-500/15 text-yellow-400" :
+                          "bg-secondary text-muted-foreground"
+                        }`}>
+                          {g.blacklistAction || "ban"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">{g.tickets ?? 0}</td>
+                      <td className="px-4 py-3">
+                        {g.premiumActive ? (
+                          <div>
+                            <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-yellow-500/15 text-yellow-400 flex items-center gap-1 w-fit">
+                              <Star className="w-2.5 h-2.5" />{g.premiumPlan || "Premium"}
+                            </span>
+                            {g.premiumExpiresAt && <p className="text-xs text-muted-foreground mt-0.5">Exp: {new Date(g.premiumExpiresAt).toLocaleDateString("es")}</p>}
+                          </div>
+                        ) : (
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">Gratis</span>
                         )}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    {g.premiumActive ? (
-                      <span className="text-xs px-2 py-1 rounded-full bg-yellow-500/15 text-yellow-400 font-medium">Premium</span>
-                    ) : (
-                      <span className="text-xs px-2 py-1 rounded-full bg-secondary text-muted-foreground">Gratis</span>
-                    )}
-                    {g.premiumExpiresAt && (
-                      <span className="text-xs text-muted-foreground">Expira: {new Date(g.premiumExpiresAt).toLocaleDateString("es")}</span>
-                    )}
-                  </div>
-                </div>
-              ))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
@@ -1182,26 +1307,105 @@ export default function AdminPage() {
               </div>
             )}
             <div className="flex gap-2">
-              <Button
-                onClick={handleBroadcast}
-                disabled={broadcasting || !broadcastMsg.trim()}
-                className="gap-2"
-              >
+              <Button onClick={handleBroadcast} disabled={broadcasting || !broadcastMsg.trim()} className="gap-2">
                 {broadcasting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                 {broadcasting ? "Enviando..." : "Enviar broadcast"}
               </Button>
               {broadcastMsg && (
-                <Button variant="ghost" onClick={() => { setBroadcastMsg(""); setBroadcastResult(null); }}>
-                  Limpiar
-                </Button>
+                <Button variant="ghost" onClick={() => { setBroadcastMsg(""); setBroadcastResult(null); }}>Limpiar</Button>
               )}
             </div>
           </div>
 
+          {/* CSV Blacklist Import */}
+          <div className="bg-card border border-card-border rounded-xl p-5 space-y-4">
+            <div>
+              <h3 className="font-semibold text-sm flex items-center gap-2">
+                <Ban className="w-4 h-4 text-red-400" /> Importar blacklist masiva (CSV)
+              </h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Pega IDs de Discord separados por comas o saltos de linea para agregar multiples usuarios a la blacklist global de una vez.
+              </p>
+            </div>
+            <div>
+              <Label className="text-xs mb-1.5 block">IDs de Discord (uno por linea o separados por coma)</Label>
+              <Textarea
+                placeholder={"123456789012345678\n987654321098765432\n..."}
+                value={csvBlacklistText}
+                onChange={(e) => setCsvBlacklistText(e.target.value)}
+                rows={5}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                {csvBlacklistText.trim() ? `${csvBlacklistText.split(/[\n,]+/).map(s => s.trim()).filter(s => /^\d{17,20}$/.test(s)).length} IDs validos detectados` : "Sin IDs"}
+              </p>
+            </div>
+            {csvImportResult && (
+              <div className="rounded-lg border border-border bg-secondary/30 px-4 py-3">
+                <p className="text-sm font-medium">Resultado de la importacion</p>
+                <div className="flex gap-4 mt-2 flex-wrap">
+                  <span className="text-sm text-green-400">Importados: <strong>{csvImportResult.added}</strong></span>
+                  <span className="text-sm text-yellow-400">Ya en lista: <strong>{csvImportResult.skipped}</strong></span>
+                  <span className="text-sm text-red-400">Error: <strong>{csvImportResult.errors}</strong></span>
+                </div>
+              </div>
+            )}
+            <Button
+              onClick={handleCsvBlacklistImport}
+              disabled={csvImporting || !csvBlacklistText.trim()}
+              variant="destructive"
+              className="gap-2"
+            >
+              {csvImporting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}
+              {csvImporting ? "Importando..." : "Importar a blacklist"}
+            </Button>
+          </div>
+
+          {/* Bulk License Revoke */}
+          <div className="bg-card border border-card-border rounded-xl p-5 space-y-4">
+            <div>
+              <h3 className="font-semibold text-sm flex items-center gap-2">
+                <ShieldOff className="w-4 h-4 text-orange-400" /> Revocar licencias en masa
+              </h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Revoca todas las licencias activas de un plan especifico. Esta accion no se puede deshacer.
+              </p>
+            </div>
+            <div className="flex gap-3 items-end flex-wrap">
+              <div className="flex-1 min-w-32">
+                <Label className="text-xs mb-1.5 block">Plan a revocar</Label>
+                <select
+                  value={bulkRevokePlan}
+                  onChange={(e) => setBulkRevokePlan(e.target.value)}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring appearance-none pr-6 cursor-pointer"
+                  style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 8px center" }}
+                >
+                  <option value="">Seleccionar plan...</option>
+                  <option value="basic">Basic</option>
+                  <option value="pro">Pro</option>
+                  <option value="enterprise">Enterprise</option>
+                </select>
+              </div>
+              <Button
+                onClick={handleBulkRevoke}
+                disabled={bulkRevoking || !bulkRevokePlan}
+                variant="destructive"
+                className="gap-2 h-9"
+              >
+                {bulkRevoking ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ShieldOff className="w-4 h-4" />}
+                {bulkRevoking ? "Revocando..." : "Revocar plan"}
+              </Button>
+            </div>
+            {bulkRevokeResult != null && (
+              <div className="rounded-lg border border-border bg-secondary/30 px-4 py-3">
+                <span className="text-sm text-orange-400">Licencias revocadas: <strong>{bulkRevokeResult}</strong></span>
+              </div>
+            )}
+          </div>
+
           <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4">
-            <p className="text-sm text-yellow-400 font-medium">Accion con impacto masivo</p>
+            <p className="text-sm text-yellow-400 font-medium">Acciones con impacto masivo</p>
             <p className="text-xs text-yellow-400/70 mt-1">
-              El broadcast envia mensajes a todos los servidores activos. Usa esta herramienta con responsabilidad para anuncios importantes o mantenimiento.
+              Estas herramientas afectan a multiples servidores y usuarios a la vez. Usalas con responsabilidad.
             </p>
           </div>
         </div>

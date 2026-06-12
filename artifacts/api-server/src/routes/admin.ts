@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, usersTable, guildConfigsTable, ticketsTable, licensesTable, blacklistTable, backupsTable, supportTicketsTable, secondaryAdminsTable, adminActivityLogsTable } from "@workspace/db";
-import { eq, count, desc, sql } from "drizzle-orm";
+import { eq, and, count, desc, sql } from "drizzle-orm";
 import { requireOwner, requireAdminAccess } from "../lib/auth";
 import type { AdminPermission } from "@workspace/db";
 
@@ -140,17 +140,32 @@ router.delete("/admin/admins/:id", requireOwner, async (req, res) => {
 
 // ─── Guilds list ────────────────────────────────────────────────────────────
 router.get("/admin/guilds", requireOwner, async (_req, res) => {
-  const guilds = await db
+  const rows = await db
     .select({
       guildId: guildConfigsTable.guildId,
       premiumActive: guildConfigsTable.premiumActive,
       premiumPlan: guildConfigsTable.premiumPlan,
       premiumExpiresAt: guildConfigsTable.premiumExpiresAt,
+      blacklistAction: guildConfigsTable.blacklistAction,
       tickets: sql<number>`(SELECT COUNT(*) FROM ${ticketsTable} WHERE ${ticketsTable.guildId} = ${guildConfigsTable.guildId})`.mapWith(Number),
-      blacklisted: sql<number>`(SELECT COUNT(*) FROM ${blacklistTable})`.mapWith(Number),
     })
     .from(guildConfigsTable)
     .orderBy(desc(guildConfigsTable.premiumActive));
+
+  const { getBotClient } = await import("../bot-state");
+  const client = getBotClient();
+
+  const guilds = rows.map((r) => {
+    const discordGuild = client?.guilds.cache.get(r.guildId);
+    return {
+      ...r,
+      name: discordGuild?.name ?? null,
+      iconURL: discordGuild?.iconURL() ?? null,
+      memberCount: discordGuild?.memberCount ?? null,
+      botJoinedAt: discordGuild?.joinedAt?.toISOString() ?? null,
+    };
+  });
+
   res.json(guilds);
 });
 
@@ -183,6 +198,69 @@ router.post("/admin/broadcast", requireOwner, async (req, res) => {
     );
 
     res.json({ ok: true, sent, failed, total: guilds.length });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "Error interno" });
+  }
+});
+
+// ─── Global blacklist sweep ──────────────────────────────────────────────────
+router.post("/admin/blacklist/sweep", requireOwner, async (_req, res) => {
+  try {
+    const { getBotClient } = await import("../bot-state");
+    const client = getBotClient();
+    if (!client) { res.status(503).json({ error: "Bot no conectado" }); return; }
+
+    const blacklisted = await db.select().from(blacklistTable);
+    const blacklistMap = new Map(blacklisted.map((b) => [b.userId, b]));
+    const configs = await db.select({ guildId: guildConfigsTable.guildId, blacklistAction: guildConfigsTable.blacklistAction }).from(guildConfigsTable);
+
+    let actioned = 0;
+    const guildsProcessed = new Set<string>();
+
+    await Promise.allSettled(
+      configs.map(async ({ guildId, blacklistAction }) => {
+        const guild = client.guilds.cache.get(guildId);
+        if (!guild) return;
+        guildsProcessed.add(guildId);
+        const action = blacklistAction || "ban";
+        if (action === "none") return;
+
+        const members = await guild.members.fetch().catch(() => null);
+        if (!members) return;
+
+        for (const [memberId, member] of members) {
+          const entry = blacklistMap.get(memberId);
+          if (!entry) continue;
+          if (entry.expiresAt && new Date(entry.expiresAt) < new Date()) continue;
+          try {
+            if (action === "ban") await member.ban({ reason: `Blacklist Global Sweep: ${entry.reason}` });
+            else if (action === "kick") await member.kick(`Blacklist Global Sweep: ${entry.reason}`);
+            else if (action === "timeout") await member.timeout(3600000, `Blacklist Global Sweep: ${entry.reason}`);
+            actioned++;
+          } catch {}
+        }
+      })
+    );
+
+    res.json({ ok: true, actioned, guilds: guildsProcessed.size });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "Error interno" });
+  }
+});
+
+// ─── Bulk license revoke ────────────────────────────────────────────────────
+router.post("/admin/licenses/bulk-revoke", requireOwner, async (req, res) => {
+  const actor = req.user!;
+  const { plan } = req.body as { plan: string };
+  if (!plan?.trim()) { res.status(400).json({ error: "plan requerido" }); return; }
+  try {
+    const result = await db
+      .update(licensesTable)
+      .set({ active: false })
+      .where(and(eq(licensesTable.plan, plan), eq(licensesTable.active, true)));
+    const revoked = result.rowCount ?? 0;
+    await log(actor, "revoke_license", `bulk:${plan}`, { plan, revoked });
+    res.json({ ok: true, revoked });
   } catch (err: any) {
     res.status(500).json({ error: err?.message || "Error interno" });
   }

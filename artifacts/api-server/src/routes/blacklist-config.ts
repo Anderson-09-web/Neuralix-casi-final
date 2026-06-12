@@ -18,7 +18,8 @@ router.get("/guilds/:guildId/blacklist-config", requireAuth, async (req, res) =>
 router.put("/guilds/:guildId/blacklist-config", requireAuth, async (req, res) => {
   const guildId = req.params.guildId as string;
   try {
-    const action = req.body.blacklistAction === "kick" ? "kick" : "ban";
+    const validActions = ["ban", "kick", "timeout", "none"];
+    const action = validActions.includes(req.body.blacklistAction) ? req.body.blacklistAction : "ban";
     const [existing] = await db.select().from(guildConfigsTable).where(eq(guildConfigsTable.guildId, guildId));
     if (existing) {
       await db.update(guildConfigsTable).set({ blacklistAction: action }).where(eq(guildConfigsTable.guildId, guildId));
