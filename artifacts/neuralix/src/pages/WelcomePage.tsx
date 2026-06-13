@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { VariablesModal, WELCOME_VARIABLES } from "@/components/VariablesModal";
 import { Eye, RefreshCw } from "lucide-react";
+import GuildChannelSelect from "@/components/GuildChannelSelect";
 
 /** Replace template variables with example values for live preview */
 function renderPreview(template: string, guildName = "Mi Servidor", memberCount = 100): string {
@@ -155,16 +156,14 @@ export default function WelcomePage() {
             <Switch checked={cfg.enabled} onCheckedChange={set("enabled")} data-testid="toggle-welcome-enabled" />
           </div>
           <div>
-            <Label className="text-sm mb-1.5 block">Canal de bienvenida (ID)</Label>
-            <Input
-              placeholder="ID del canal de Discord (ej: 1234567890123456789)"
+            <Label className="text-sm mb-1.5 block">Canal de bienvenida</Label>
+            <GuildChannelSelect
+              guildId={guildId}
               value={cfg.channelId || ""}
-              onChange={(e) => set("channelId")(e.target.value)}
-              data-testid="input-welcome-channel"
+              onChange={set("channelId")}
+              placeholder="Seleccionar canal de bienvenida..."
+              types={[0, 5]}
             />
-            <p className="text-xs text-muted-foreground mt-1">
-              Click derecho en el canal en Discord → "Copiar ID". Activa modo desarrollador en Discord si no ves esta opcion.
-            </p>
           </div>
           <div>
             <div className="flex items-center justify-between mb-1.5">

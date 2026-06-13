@@ -34,6 +34,7 @@ import {
   logEntriesTable,
   aiChannelsTable,
   guildWebhooksTable,
+  verifiedUsersTable,
 } from "@workspace/db";
 import { eq, sql, and, count } from "drizzle-orm";
 import { logger } from "./lib/logger";
@@ -104,6 +105,32 @@ async function sendToChannel(channelId: string, payload: Record<string, unknown>
     headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" },
     validateStatus: () => true,
   });
+}
+
+async function sendToChannelCustomized(channelId: string, guildId: string, payload: Record<string, unknown>, botToken: string) {
+  try {
+    const [guildCfg] = await db.select().from(guildConfigsTable).where(eq(guildConfigsTable.guildId, guildId));
+    const isPremium = guildCfg?.premiumActive && (guildCfg.premiumPlan === "pro" || guildCfg.premiumPlan === "ultra");
+    if (isPremium && (guildCfg?.webhookBotName || guildCfg?.webhookBotAvatar)) {
+      const [webhookRow] = await db.select().from(guildWebhooksTable).where(
+        and(eq(guildWebhooksTable.guildId, guildId), eq(guildWebhooksTable.channelId, channelId)),
+      );
+      if (webhookRow?.webhookId && webhookRow?.webhookToken) {
+        const webhookPayload = {
+          ...payload,
+          username: guildCfg.webhookBotName || undefined,
+          avatar_url: guildCfg.webhookBotAvatar || undefined,
+        };
+        const webhookRes = await axios.post(
+          `${DISCORD_API}/webhooks/${webhookRow.webhookId}/${webhookRow.webhookToken}`,
+          webhookPayload,
+          { headers: { "Content-Type": "application/json" }, validateStatus: () => true },
+        );
+        if (webhookRes.status === 200 || webhookRes.status === 204) return;
+      }
+    }
+  } catch {}
+  await sendToChannel(channelId, payload, botToken);
 }
 
 async function sendToChannelWithFile(channelId: string, formData: FormData, botToken: string) {
@@ -615,6 +642,33 @@ export function startBot(): Client | undefined {
         }
       }
 
+      // ── Auto-verify returning verified members ────────────────────────────
+      if (!isBot) {
+        try {
+          const [verifCfg] = await db.select().from(verificationConfigsTable).where(eq(verificationConfigsTable.guildId, guildId));
+          if (verifCfg?.enabled && verifCfg.roleId) {
+            // Check if this user was ever verified (in any guild)
+            const [alreadyVerified] = await db.select().from(verifiedUsersTable).where(eq(verifiedUsersTable.discordId, userId));
+            if (alreadyVerified) {
+              await (member as GuildMember).roles.add(verifCfg.roleId).catch(() => {});
+              // Record for this guild if not yet recorded
+              const [existsHere] = await db.select().from(verifiedUsersTable)
+                .where(and(eq(verifiedUsersTable.guildId, guildId), eq(verifiedUsersTable.discordId, userId)));
+              if (!existsHere) {
+                await db.insert(verifiedUsersTable).values({ guildId, discordId: userId, username }).catch(() => {});
+              }
+              if (verifCfg.logChannelId) {
+                await sendLog(verifCfg.logChannelId, {
+                  title: "Verificacion Automatica",
+                  description: `**Usuario:** \`${username}\` (<@${userId}>)\n**ID:** \`${userId}\`\n**Estado:** Verificado automaticamente (verificacion previa encontrada)\n**Rol:** <@&${verifCfg.roleId}>`,
+                  color: 0x57F287, timestamp: new Date().toISOString(), footer: { text: "Neuralix Verificacion" },
+                }, botToken);
+              }
+            }
+          }
+        } catch {}
+      }
+
       if (logChannel && logCfg?.logMembers) {
         await sendLog(logChannel, {
           title: "Miembro Unido",
@@ -1064,18 +1118,81 @@ export function startBot(): Client | undefined {
   client.on(Events.MessageUpdate, async (oldMsg, newMsg) => {
     if (!newMsg.guild || newMsg.author?.bot) return;
     const guildId = newMsg.guild.id;
+    const userId = newMsg.author?.id ?? "";
+    const username = newMsg.author?.username ?? "Desconocido";
+    const newContent = newMsg.content ?? "";
+    const memberRoleIds = newMsg.member?.roles.cache.map((r) => r.id) ?? [];
+
     try {
-      const [logCfg] = await db.select().from(logsConfigsTable).where(eq(logsConfigsTable.guildId, guildId));
+      const [antiraid, logCfg] = await Promise.all([
+        db.select().from(antiraidConfigsTable).where(eq(antiraidConfigsTable.guildId, guildId)).then(([r]) => r),
+        db.select().from(logsConfigsTable).where(eq(logsConfigsTable.guildId, guildId)).then(([r]) => r),
+      ]);
+
+      // ── AntiLinks on edited messages ─────────────────────────────────────
+      if (newContent && antiraid?.enabled && antiraid.antiLinks) {
+        const whitelisted = await isWhitelisted(guildId, userId, memberRoleIds);
+        if (!whitelisted) {
+          const inviteRx = /discord(?:\.gg|\.com\/invite)\/[a-zA-Z0-9-]+/gi;
+          const urlRx = /https?:\/\/[^\s<>"]+|(?:^|\s)(?:www\.[a-z0-9-]+\.[a-z]{2,}(?:\/\S*)?)/gi;
+          const rawInvites = newContent.match(inviteRx) ?? [];
+          const rawUrls = newContent.match(urlRx) ?? [];
+          const allLinks = [...rawInvites.map((l) => `https://${l}`), ...rawUrls.map((l) => l.trim())];
+
+          if (allLinks.length > 0) {
+            const allowed: string[] = (antiraid as any).allowedDomains ?? [];
+            const blocked: string[] = (antiraid as any).blockedDomains ?? [];
+            const antiDiscordInvites = (antiraid as any).antiDiscordInvites !== false;
+            const nsfwPatterns = ["pornhub", "xvideos", "xhamster", "onlyfans", "redtube", "youporn"];
+            const maliciousPatterns = ["grabify", "iplogger", "ipgrabber", "discord.gift/", "steamcommunity.ru", "discordapp.net"];
+            let blockedReason = "";
+
+            const hasBlocked = allLinks.some((link) => {
+              try {
+                const normalizedLink = link.startsWith("http") ? link : `https://${link}`;
+                const url = new URL(normalizedLink);
+                const hn = url.hostname.toLowerCase();
+                if (allowed.some((d) => hn.includes(d))) return false;
+                if (antiDiscordInvites && rawInvites.length > 0 && /discord\.(gg|com)/.test(hn)) { blockedReason = "Invitacion de Discord"; return true; }
+                if (nsfwPatterns.some((p) => hn.includes(p))) { blockedReason = "Contenido NSFW"; return true; }
+                if (maliciousPatterns.some((p) => link.toLowerCase().includes(p))) { blockedReason = "Enlace malicioso"; return true; }
+                if (blocked.length > 0 && blocked.some((d) => hn.includes(d))) { blockedReason = "Dominio bloqueado"; return true; }
+                if (blocked.length === 0) { blockedReason = "Enlace no permitido"; return true; }
+                return false;
+              } catch { blockedReason = "Enlace invalido"; return true; }
+            });
+
+            if (hasBlocked) {
+              await newMsg.delete().catch(() => {});
+              const linksAction = (antiraid as any).antiLinksAction || "delete";
+              if (linksAction === "ban") await newMsg.member?.ban({ reason: `AntiRaid AntiLinks (edicion): ${blockedReason}` }).catch(() => {});
+              else if (linksAction === "kick") await newMsg.member?.kick(`AntiRaid AntiLinks (edicion): ${blockedReason}`).catch(() => {});
+              else if (linksAction === "timeout") await newMsg.member?.timeout(10 * 60_000, `AntiRaid AntiLinks (edicion): ${blockedReason}`).catch(() => {});
+              const logChannel = getLogChannel(logCfg, "messages");
+              if (logChannel) {
+                await sendLog(logChannel, {
+                  title: `AntiLinks (Edicion) — ${blockedReason}`,
+                  description: `**Usuario:** \`${username}\` (<@${userId}>)\n**Canal:** <#${newMsg.channelId}>\n**Accion:** ${linksAction === "delete" ? "Mensaje eliminado" : linksAction}\n**Contenido:** ${newContent.substring(0, 200)}`,
+                  color: 0xFEE75C, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid" },
+                }, botToken);
+              }
+              return;
+            }
+          }
+        }
+      }
+
+      // ── Log the edit ─────────────────────────────────────────────────────
       const logChannel = getLogChannel(logCfg, "messages");
       if (!logChannel || !logCfg?.logMessages) return;
       if (!oldMsg.content || !newMsg.content || oldMsg.content === newMsg.content) return;
       await sendLog(logChannel, {
         title: "Mensaje Editado",
-        description: `**Usuario:** <@${newMsg.author?.id}> (\`${newMsg.author?.username}\`)\n**Canal:** <#${newMsg.channelId}>\n**Antes:** ${oldMsg.content?.substring(0, 300) ?? "Desconocido"}\n**Despues:** ${newMsg.content?.substring(0, 300)}\n[Ver mensaje](${newMsg.url})`,
+        description: `**Usuario:** <@${userId}> (\`${username}\`)\n**Canal:** <#${newMsg.channelId}>\n**Antes:** ${oldMsg.content?.substring(0, 300) ?? "Desconocido"}\n**Despues:** ${newMsg.content?.substring(0, 300)}\n[Ver mensaje](${newMsg.url})`,
         color: 0x5865F2, timestamp: new Date().toISOString(), footer: { text: "Neuralix Logs" },
       }, botToken);
       await logToDb(guildId, {
-        userId: newMsg.author?.id, username: newMsg.author?.username,
+        userId, username,
         action: "message_edit", category: "message",
         channelId: newMsg.channelId, channelName: (newMsg.channel as any)?.name,
         details: `Antes: ${oldMsg.content?.substring(0, 200)}\nDespues: ${newMsg.content?.substring(0, 200)}`,
@@ -1612,8 +1729,17 @@ export function startBot(): Client | undefined {
   async function handleTicketOpen(interaction: any, guildId: string, userId: string, username: string, moduleId: number | null, panelId?: number | null) {
     await safeDefer(interaction);
     try {
-      const [cfg] = await db.select().from(ticketConfigsTable).where(eq(ticketConfigsTable.guildId, guildId));
-      if (!cfg?.enabled) { await interaction.editReply({ content: "El sistema de tickets no esta activo." }); return; }
+      let [cfg] = await db.select().from(ticketConfigsTable).where(eq(ticketConfigsTable.guildId, guildId));
+      if (!cfg) {
+        // Auto-create ticket config as enabled when a panel/module is actively used
+        const [created] = await db.insert(ticketConfigsTable).values({ guildId, enabled: true }).returning();
+        cfg = created;
+      } else if (!cfg.enabled) {
+        // If opened via a panel or module, the admin explicitly set it up — allow through
+        if (!panelId && !moduleId) {
+          await interaction.editReply({ content: "El sistema de tickets no esta activo. Activalo en el dashboard." }); return;
+        }
+      }
 
       const openTickets = await db.select().from(ticketsTable).where(
         and(eq(ticketsTable.guildId, guildId), eq(ticketsTable.userId, userId), eq(ticketsTable.status, "open")),

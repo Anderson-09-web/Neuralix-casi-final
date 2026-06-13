@@ -1,14 +1,20 @@
 import { Router } from "express";
-import { db, verificationConfigsTable, verifiedUsersTable } from "@workspace/db";
+import axios from "axios";
+import { db, verificationConfigsTable, verifiedUsersTable, guildConfigsTable, guildWebhooksTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 
 const router = Router();
 
+const DISCORD_API = "https://discord.com/api/v10";
+
 const ALLOWED_FIELDS = new Set([
   "enabled", "roleId", "logChannelId", "minAccountAge",
   "antiVpn", "antiAlt", "antiBot", "customVerifyUrl",
   "successMessage", "rejectMessage",
+  "panelTitle", "panelDescription", "panelColor", "panelButtonText",
+  "panelImageUrl", "panelThumbnailUrl", "panelChannelId", "panelMessageId",
+  "useCustomBotPersona",
 ]);
 
 function whitelistBody(body: Record<string, unknown>) {
@@ -17,6 +23,13 @@ function whitelistBody(body: Record<string, unknown>) {
     if (ALLOWED_FIELDS.has(k)) safe[k] = v;
   }
   return safe;
+}
+
+function getAppDomain(): string | null {
+  if (process.env.REPLIT_APP_URL) return process.env.REPLIT_APP_URL.replace(/\/$/, "");
+  const domains = process.env.REPLIT_DOMAINS?.split(",").map((d) => d.trim()).filter(Boolean);
+  if (domains?.length) return `https://${domains[0]}`;
+  return null;
 }
 
 // ─── Verification config ──────────────────────────────────────────────────────
@@ -59,9 +72,95 @@ router.put("/guilds/:guildId/verification", requireAuth, async (req, res) => {
   }
 });
 
+// ─── Send verification panel to a Discord channel ─────────────────────────────
+router.post("/guilds/:guildId/verification/send-panel", requireAuth, async (req, res) => {
+  const guildId = req.params.guildId as string;
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  if (!botToken) {
+    res.status(400).json({ ok: false, error: "DISCORD_BOT_TOKEN no configurado" });
+    return;
+  }
+  try {
+    const [cfg] = await db.select().from(verificationConfigsTable).where(eq(verificationConfigsTable.guildId, guildId));
+    if (!cfg) { res.status(404).json({ ok: false, error: "Configuracion de verificacion no encontrada" }); return; }
+
+    const channelId = req.body.channelId || cfg.panelChannelId;
+    if (!channelId) { res.status(400).json({ ok: false, error: "Selecciona un canal donde enviar el panel" }); return; }
+
+    const appDomain = getAppDomain() || "https://tu-dominio.com";
+    const verifyUrl = cfg.customVerifyUrl || `${appDomain}/verify?guild=${guildId}`;
+
+    const hexToInt = (hex: string) => parseInt((hex || "#5865F2").replace("#", ""), 16);
+
+    const embed: Record<string, unknown> = {
+      title: cfg.panelTitle || "Verificacion de Miembros",
+      description: cfg.panelDescription || "Para acceder al servidor, verifica tu identidad haciendo clic en el boton.",
+      color: hexToInt(cfg.panelColor || "#5865F2"),
+      footer: { text: "Neuralix Verificacion · Seguro y privado" },
+      timestamp: new Date().toISOString(),
+    };
+    if (cfg.panelImageUrl) embed.image = { url: cfg.panelImageUrl };
+    if (cfg.panelThumbnailUrl) embed.thumbnail = { url: cfg.panelThumbnailUrl };
+
+    const components = [{
+      type: 1,
+      components: [{
+        type: 2,
+        style: 5,
+        label: cfg.panelButtonText || "Verificarme",
+        url: verifyUrl,
+        emoji: { name: "✅" },
+      }],
+    }];
+
+    // Check for custom bot persona (webhook)
+    const [guildCfg] = await db.select().from(guildConfigsTable).where(eq(guildConfigsTable.guildId, guildId));
+    const isPremium = guildCfg?.premiumActive && (guildCfg.premiumPlan === "pro" || guildCfg.premiumPlan === "ultra");
+    const usePersona = cfg.useCustomBotPersona && isPremium && (guildCfg?.webhookBotName || guildCfg?.webhookBotAvatar);
+
+    let discordRes: any;
+    if (usePersona) {
+      const [webhookRow] = await db.select().from(guildWebhooksTable)
+        .where(and(eq(guildWebhooksTable.guildId, guildId), eq(guildWebhooksTable.channelId, channelId)));
+      if (webhookRow?.webhookId && webhookRow?.webhookToken) {
+        discordRes = await axios.post(
+          `${DISCORD_API}/webhooks/${webhookRow.webhookId}/${webhookRow.webhookToken}?wait=true`,
+          { embeds: [embed], components, username: guildCfg?.webhookBotName || undefined, avatar_url: guildCfg?.webhookBotAvatar || undefined },
+          { headers: { "Content-Type": "application/json" }, validateStatus: () => true },
+        );
+      }
+    }
+
+    if (!discordRes || (discordRes.status !== 200 && discordRes.status !== 201)) {
+      discordRes = await axios.post(
+        `${DISCORD_API}/channels/${channelId}/messages`,
+        { embeds: [embed], components },
+        { headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" }, validateStatus: () => true },
+      );
+    }
+
+    if (discordRes.status === 200 || discordRes.status === 201) {
+      const messageId = discordRes.data?.id;
+      await db.update(verificationConfigsTable)
+        .set({ panelChannelId: channelId, panelMessageId: messageId || null })
+        .where(eq(verificationConfigsTable.guildId, guildId));
+      res.json({ ok: true, message: "Panel de verificacion enviado correctamente", messageId });
+    } else {
+      res.status(400).json({
+        ok: false,
+        error: discordRes.data?.message || `Discord respondio con status ${discordRes.status}`,
+        hint: discordRes.status === 403 ? "El bot no tiene permisos para enviar mensajes en ese canal" : discordRes.status === 404 ? "Canal no encontrado" : undefined,
+      });
+    }
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err?.message });
+  }
+});
+
 // ─── Public verify endpoint (used by portal) ─────────────────────────────────
 router.post("/verify/:guildId", requireAuth, async (req, res) => {
   const guildId = req.params.guildId as string;
+  const botToken = process.env.DISCORD_BOT_TOKEN;
   try {
     const user = (req as any).user;
     const [cfg] = await db.select().from(verificationConfigsTable).where(eq(verificationConfigsTable.guildId, guildId));
@@ -78,17 +177,19 @@ router.post("/verify/:guildId", requireAuth, async (req, res) => {
       if (ageInDays < cfg.minAccountAge) {
         res.json({
           success: false,
-          message: `Tu cuenta debe tener al menos ${cfg.minAccountAge} dias de antiguedad para poder verificarse.`,
+          message: cfg.rejectMessage?.replace("{days}", String(cfg.minAccountAge)) ||
+            `Tu cuenta debe tener al menos ${cfg.minAccountAge} dias de antiguedad para verificarse.`,
           roleAssigned: false,
         });
         return;
       }
     }
 
-    const existing = await db.select().from(verifiedUsersTable)
+    // Check if already verified in this guild
+    const [existingInGuild] = await db.select().from(verifiedUsersTable)
       .where(and(eq(verifiedUsersTable.guildId, guildId), eq(verifiedUsersTable.discordId, user.discordId)));
 
-    if (existing.length === 0) {
+    if (!existingInGuild) {
       await db.insert(verifiedUsersTable).values({
         guildId,
         discordId: user.discordId,
@@ -96,13 +197,93 @@ router.post("/verify/:guildId", requireAuth, async (req, res) => {
       });
     }
 
+    // Assign role via bot token
+    let roleAssigned = false;
+    if (cfg.roleId && botToken) {
+      try {
+        const roleRes = await axios.put(
+          `${DISCORD_API}/guilds/${guildId}/members/${user.discordId}/roles/${cfg.roleId}`,
+          {},
+          { headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" }, validateStatus: () => true },
+        );
+        roleAssigned = roleRes.status === 204 || roleRes.status === 200;
+      } catch {}
+    }
+
+    // Log verification
+    if (cfg.logChannelId && botToken) {
+      try {
+        const accountAge = (() => {
+          try {
+            const discordEpoch = 1420070400000;
+            const created = new Date(Number((BigInt(user.discordId) >> 22n) + BigInt(discordEpoch)));
+            return Math.floor((Date.now() - created.getTime()) / 86_400_000);
+          } catch { return null; }
+        })();
+        await axios.post(`${DISCORD_API}/channels/${cfg.logChannelId}/messages`, {
+          embeds: [{
+            title: "Verificacion Completada",
+            description: `**Usuario:** \`${user.username}\` (<@${user.discordId}>)\n**ID:** \`${user.discordId}\`\n**Rol asignado:** ${roleAssigned ? `<@&${cfg.roleId}>` : "No (sin permisos)"}\n**Edad de cuenta:** ${accountAge !== null ? `${accountAge} dias` : "Desconocida"}`,
+            color: 0x57F287,
+            fields: [
+              { name: "Estado", value: roleAssigned ? "Rol asignado correctamente" : "Verificado (sin rol)", inline: true },
+              { name: "Metodo", value: cfg.antiVpn ? "Portal + AntiVPN" : "Portal Web", inline: true },
+            ],
+            footer: { text: "Neuralix Verificacion" },
+            timestamp: new Date().toISOString(),
+          }],
+        }, { headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" }, validateStatus: () => true });
+      } catch {}
+    }
+
     res.json({
       success: true,
-      message: cfg.successMessage || "¡Verificacion exitosa! Se te asignara el rol verificado en breve.",
-      roleAssigned: true,
+      message: cfg.successMessage || "Verificacion exitosa. Ya puedes acceder al servidor.",
+      roleAssigned,
     });
   } catch (err: any) {
     res.status(500).json({ error: err?.message || "Error en el proceso de verificacion" });
+  }
+});
+
+// ─── Public guild info for verify portal (no auth required) ───────────────────
+router.get("/verify-info/:guildId", async (req, res) => {
+  const guildId = req.params.guildId as string;
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  try {
+    const [cfg] = await db.select().from(verificationConfigsTable).where(eq(verificationConfigsTable.guildId, guildId));
+    if (!cfg || !cfg.enabled) {
+      res.status(404).json({ error: "Verificacion no habilitada en este servidor" }); return;
+    }
+
+    let guildName = "Servidor de Discord";
+    let guildIcon: string | null = null;
+    if (botToken) {
+      try {
+        const r = await axios.get(`${DISCORD_API}/guilds/${guildId}`, {
+          headers: { Authorization: `Bot ${botToken.trim()}` },
+          validateStatus: () => true,
+        });
+        if (r.status === 200) {
+          guildName = r.data.name;
+          guildIcon = r.data.icon ? `https://cdn.discordapp.com/icons/${guildId}/${r.data.icon}.png?size=128` : null;
+        }
+      } catch {}
+    }
+
+    res.json({
+      guildId,
+      guildName,
+      guildIcon,
+      minAccountAge: cfg.minAccountAge,
+      antiVpn: cfg.antiVpn,
+      antiAlt: cfg.antiAlt,
+      antiBot: cfg.antiBot,
+      panelTitle: cfg.panelTitle,
+      panelDescription: cfg.panelDescription,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message });
   }
 });
 
@@ -117,7 +298,7 @@ router.get("/guilds/:guildId/verification/verified-users", requireAuth, async (r
   }
 });
 
-// ─── Reset a user's verification (admin only) ─────────────────────────────────
+// ─── Reset a user's verification ─────────────────────────────────────────────
 router.delete("/guilds/:guildId/verification/verified-users/:discordId", requireAuth, async (req, res) => {
   const guildId = req.params.guildId as string;
   const discordId = req.params.discordId as string;
@@ -130,24 +311,20 @@ router.delete("/guilds/:guildId/verification/verified-users/:discordId", require
   }
 });
 
-/**
- * POST /api/guilds/:guildId/verification/test
- * Sends a test verification log message to the configured logChannelId.
- */
+// ─── Test verification log ────────────────────────────────────────────────────
 router.post("/guilds/:guildId/verification/test", requireAuth, async (req, res) => {
   const guildId = req.params.guildId as string;
   const botToken = process.env.DISCORD_BOT_TOKEN;
   if (!botToken) {
-    res.status(400).json({ ok: false, error: "DISCORD_BOT_TOKEN no esta configurado" });
+    res.status(400).json({ ok: false, error: "DISCORD_BOT_TOKEN no configurado" });
     return;
   }
   try {
     const [cfg] = await db.select().from(verificationConfigsTable).where(eq(verificationConfigsTable.guildId, guildId));
     if (!cfg?.logChannelId) {
-      res.status(400).json({ ok: false, error: "Canal de logs de verificacion no configurado. Escribe el ID del canal de logs y guarda primero." });
+      res.status(400).json({ ok: false, error: "Canal de logs no configurado. Configura un canal de logs y guarda primero." });
       return;
     }
-    const axios = (await import("axios")).default;
     const payload = {
       embeds: [{
         title: "Verificacion Completada (Prueba)",
@@ -155,7 +332,7 @@ router.post("/guilds/:guildId/verification/test", requireAuth, async (req, res) 
         color: 0x57F287,
         fields: [
           { name: "Usuario", value: "UsuarioDePrueba#0000 (`123456789012345678`)", inline: true },
-          { name: "Metodo", value: cfg.antiVpn ? "AntiVPN + Captcha" : "Captcha", inline: true },
+          { name: "Metodo", value: cfg.antiVpn ? "Portal + AntiVPN" : "Portal Web", inline: true },
           { name: "Rol asignado", value: cfg.roleId ? `<@&${cfg.roleId}>` : "Sin configurar", inline: true },
         ],
         footer: { text: "Neuralix Verificacion · Mensaje de prueba" },
@@ -163,7 +340,7 @@ router.post("/guilds/:guildId/verification/test", requireAuth, async (req, res) 
       }],
     };
     const discordRes = await axios.post(
-      `https://discord.com/api/v10/channels/${cfg.logChannelId}/messages`,
+      `${DISCORD_API}/channels/${cfg.logChannelId}/messages`,
       payload,
       { headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" }, validateStatus: () => true },
     );
@@ -173,7 +350,7 @@ router.post("/guilds/:guildId/verification/test", requireAuth, async (req, res) 
       res.status(400).json({
         ok: false,
         error: discordRes.data?.message || `Discord respondio con status ${discordRes.status}`,
-        hint: discordRes.status === 403 ? "El bot no tiene permisos en el canal de logs" : discordRes.status === 404 ? "Canal de logs no encontrado. Verifica el ID" : undefined,
+        hint: discordRes.status === 403 ? "El bot no tiene permisos en el canal de logs" : discordRes.status === 404 ? "Canal de logs no encontrado" : undefined,
       });
     }
   } catch (err: any) {

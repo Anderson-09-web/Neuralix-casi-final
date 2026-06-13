@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import GuildChannelSelect from "@/components/GuildChannelSelect";
 
 const ACTION_LABELS: Record<string, string> = {
   member_join: "Miembro unido",
@@ -288,8 +289,14 @@ export default function LogsPage() {
               <Switch checked={cfg.enabled} onCheckedChange={set("enabled")} data-testid="toggle-logs-enabled" />
             </div>
             <div>
-              <Label className="text-sm mb-1.5 block">Canal de logs principal (ID)</Label>
-              <Input placeholder="Canal para todos los logs (fallback)" value={cfg.channelId || ""} onChange={(e) => set("channelId")(e.target.value)} data-testid="input-logs-channel" />
+              <Label className="text-sm mb-1.5 block">Canal de logs principal</Label>
+              <GuildChannelSelect
+                guildId={guildId}
+                value={cfg.channelId || ""}
+                onChange={set("channelId")}
+                placeholder="Canal para todos los logs (fallback)..."
+                types={[0, 5]}
+              />
               <p className="text-xs text-muted-foreground mt-1">Este canal se usa cuando no hay un canal especifico para la categoria.</p>
             </div>
           </div>
@@ -324,13 +331,14 @@ export default function LogsPage() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {CHANNEL_OVERRIDES.map(({ key, label, category }) => (
-                <div key={key}>
+                <div key={key} className={!cfg[category] ? "opacity-50 pointer-events-none" : ""}>
                   <Label className="text-xs mb-1.5 block text-muted-foreground">{label}</Label>
-                  <Input
-                    placeholder={`ID del canal${!cfg[category] ? " (categoria desactivada)" : ""}`}
+                  <GuildChannelSelect
+                    guildId={guildId}
                     value={cfg[key] || ""}
-                    onChange={(e) => set(key)(e.target.value || null)}
-                    disabled={!cfg[category]}
+                    onChange={(v) => set(key)(v || null)}
+                    placeholder={!cfg[category] ? "Categoria desactivada" : "Seleccionar canal..."}
+                    types={[0, 5]}
                   />
                 </div>
               ))}

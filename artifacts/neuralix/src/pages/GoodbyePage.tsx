@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { VariablesModal, GOODBYE_VARIABLES } from "@/components/VariablesModal";
+import GuildChannelSelect from "@/components/GuildChannelSelect";
 
 export default function GoodbyePage() {
   const { guildId } = useParams<{ guildId: string }>();
@@ -80,8 +81,8 @@ export default function GoodbyePage() {
             <Switch checked={cfg.enabled} onCheckedChange={set("enabled")} data-testid="toggle-goodbye-enabled" />
           </div>
           <div>
-            <Label className="text-sm mb-1.5 block">Canal de despedidas (ID)</Label>
-            <Input placeholder="ID del canal" value={cfg.channelId || ""} onChange={(e) => set("channelId")(e.target.value)} data-testid="input-goodbye-channel" />
+            <Label className="text-sm mb-1.5 block">Canal de despedidas</Label>
+            <GuildChannelSelect guildId={guildId} value={cfg.channelId || ""} onChange={set("channelId")} placeholder="Seleccionar canal de despedidas..." types={[0, 5]} />
           </div>
           <div>
             <div className="flex items-center justify-between mb-1.5">

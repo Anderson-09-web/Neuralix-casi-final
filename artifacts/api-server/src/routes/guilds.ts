@@ -270,4 +270,49 @@ router.get("/guilds/:guildId/bot-status", requireAuth, async (req, res) => {
   res.json({ present, addBotUrl });
 });
 
+// ─── Guild channels (for smart selectors in dashboard) ────────────────────────
+router.get("/guilds/:guildId/channels", requireAuth, async (req, res) => {
+  const guildId = req.params.guildId as string;
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  if (!botToken) { res.json([]); return; }
+  try {
+    const r = await axios.get(`${DISCORD_API}/guilds/${guildId}/channels`, {
+      headers: { Authorization: `Bot ${botToken.trim()}` },
+      validateStatus: () => true,
+    });
+    if (r.status === 200 && Array.isArray(r.data)) {
+      res.json(
+        r.data
+          .map((c: any) => ({ id: c.id, name: c.name, type: c.type, parentId: c.parent_id ?? null, position: c.position ?? 0 }))
+          .sort((a: any, b: any) => a.position - b.position),
+      );
+    } else {
+      res.json([]);
+    }
+  } catch { res.json([]); }
+});
+
+// ─── Guild roles (for smart selectors in dashboard) ────────────────────────────
+router.get("/guilds/:guildId/roles", requireAuth, async (req, res) => {
+  const guildId = req.params.guildId as string;
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  if (!botToken) { res.json([]); return; }
+  try {
+    const r = await axios.get(`${DISCORD_API}/guilds/${guildId}/roles`, {
+      headers: { Authorization: `Bot ${botToken.trim()}` },
+      validateStatus: () => true,
+    });
+    if (r.status === 200 && Array.isArray(r.data)) {
+      res.json(
+        r.data
+          .filter((role: any) => role.name !== "@everyone")
+          .map((role: any) => ({ id: role.id, name: role.name, color: role.color, position: role.position }))
+          .sort((a: any, b: any) => b.position - a.position),
+      );
+    } else {
+      res.json([]);
+    }
+  } catch { res.json([]); }
+});
+
 export default router;
