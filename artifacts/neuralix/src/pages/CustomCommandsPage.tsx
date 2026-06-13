@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Trash2, Edit2, Terminal, AlertTriangle } from "lucide-react";
 import Layout from "@/components/Layout";
-import { GuildRoleSelect } from "@/components/GuildRoleSelect";
+import GuildRoleSelect from "@/components/GuildRoleSelect";
 
 type Cmd = {
   id: number; guildId: string; name: string; description: string; response: string;
