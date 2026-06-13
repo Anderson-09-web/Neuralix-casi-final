@@ -104,20 +104,45 @@ router.post("/guilds/:guildId/auto-roles/:id/send", requireAuth, async (req, res
       res.status(404).json({ ok: false, error: "Auto-role no encontrado" });
       return;
     }
+    if (role.type === "reaction") {
+      res.status(400).json({ ok: false, error: "Los roles de reaccion no requieren enviar panel. Configura el ID del mensaje y el emoji directamente." });
+      return;
+    }
     if (!role.channelId) {
       res.status(400).json({ ok: false, error: "Canal no configurado para este auto-role" });
       return;
     }
+
     const buttonColors: Record<string, number> = { PRIMARY: 1, SECONDARY: 2, SUCCESS: 3, DANGER: 4 };
-    const style = buttonColors[role.buttonColor || "PRIMARY"] ?? 1;
-    const payload: any = {
-      embeds: [{
-        title: role.name,
-        description: role.description || "Haz click en el boton para obtener el rol.",
-        color: 0x5865F2,
-        footer: { text: "Neuralix Auto-Roles" },
-      }],
-      components: [{
+    let components: any[];
+
+    if (role.type === "select") {
+      // Build select menu with ALL select-type auto-roles for this guild
+      const allSelectRoles = await db.select().from(autoRolesTable)
+        .where(and(eq(autoRolesTable.guildId, guildId), eq(autoRolesTable.type, "select"), eq(autoRolesTable.enabled, true)));
+      if (allSelectRoles.length === 0) {
+        res.status(400).json({ ok: false, error: "No hay auto-roles de tipo menu activos para construir el selector." });
+        return;
+      }
+      components = [{
+        type: 1,
+        components: [{
+          type: 3,
+          custom_id: "autorole_select",
+          placeholder: "Selecciona un rol...",
+          min_values: 0,
+          max_values: 1,
+          options: allSelectRoles.map((ar) => ({
+            label: ar.buttonLabel || ar.name,
+            value: String(ar.id),
+            description: ar.description || undefined,
+            emoji: ar.buttonEmoji ? { name: ar.buttonEmoji } : undefined,
+          })),
+        }],
+      }];
+    } else {
+      const style = buttonColors[role.buttonColor || "PRIMARY"] ?? 1;
+      components = [{
         type: 1,
         components: [{
           type: 2,
@@ -126,8 +151,19 @@ router.post("/guilds/:guildId/auto-roles/:id/send", requireAuth, async (req, res
           emoji: role.buttonEmoji ? { name: role.buttonEmoji } : undefined,
           custom_id: `autorole_${role.id}`,
         }],
+      }];
+    }
+
+    const payload: any = {
+      embeds: [{
+        title: role.name,
+        description: role.description || "Haz click para obtener o quitar un rol.",
+        color: 0x5865F2,
+        footer: { text: "Neuralix Auto-Roles" },
       }],
+      components,
     };
+
     const discordRes = await axios.post(
       `https://discord.com/api/v10/channels/${role.channelId}/messages`,
       payload,
@@ -138,7 +174,7 @@ router.post("/guilds/:guildId/auto-roles/:id/send", requireAuth, async (req, res
       if (messageId) {
         await db.update(autoRolesTable).set({ messageId }).where(eq(autoRolesTable.id, id));
       }
-      res.json({ ok: true, message: "Panel de auto-roles enviado al canal" });
+      res.json({ ok: true, message: role.type === "select" ? "Menu de auto-roles enviado al canal" : "Panel de auto-roles enviado al canal" });
     } else {
       res.status(400).json({
         ok: false,

@@ -26,6 +26,8 @@ import webhooksRouter from "./webhooks";
 import messagesRouter from "./messages";
 import ticketPanelsRouter from "./ticket-panels";
 import blacklistConfigRouter from "./blacklist-config";
+import aiChannelsRouter from "./ai-channels";
+import ticketModulesRouter from "./ticket-modules";
 
 const router: IRouter = Router();
 
@@ -56,5 +58,8 @@ router.use(webhooksRouter);
 router.use(messagesRouter);
 router.use(ticketPanelsRouter);
 router.use(blacklistConfigRouter);
+router.use(aiChannelsRouter);
+router.use(ticketModulesRouter);
+
 
 export default router;

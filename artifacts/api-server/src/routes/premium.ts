@@ -110,4 +110,33 @@ router.post("/guilds/:guildId/premium/activate", requireAuth, async (req, res) =
   });
 });
 
+router.get("/guilds/:guildId/premium/webhook-config", requireAuth, async (req, res) => {
+  const guildId = req.params.guildId as string;
+  const [cfg] = await db.select().from(guildConfigsTable).where(eq(guildConfigsTable.guildId, guildId));
+  res.json({
+    webhookBotName: cfg?.webhookBotName || null,
+    webhookBotAvatar: cfg?.webhookBotAvatar || null,
+  });
+});
+
+router.put("/guilds/:guildId/premium/webhook-config", requireAuth, async (req, res) => {
+  const guildId = req.params.guildId as string;
+  const { webhookBotName, webhookBotAvatar } = req.body as { webhookBotName?: string; webhookBotAvatar?: string };
+
+  const [cfg] = await db.select().from(guildConfigsTable).where(eq(guildConfigsTable.guildId, guildId));
+  if (cfg) {
+    await db.update(guildConfigsTable).set({
+      webhookBotName: webhookBotName?.trim() || null,
+      webhookBotAvatar: webhookBotAvatar?.trim() || null,
+    }).where(eq(guildConfigsTable.guildId, guildId));
+  } else {
+    await db.insert(guildConfigsTable).values({
+      guildId, guildName: guildId,
+      webhookBotName: webhookBotName?.trim() || null,
+      webhookBotAvatar: webhookBotAvatar?.trim() || null,
+    });
+  }
+  res.json({ ok: true });
+});
+
 export default router;

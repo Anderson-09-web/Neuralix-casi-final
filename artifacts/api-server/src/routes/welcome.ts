@@ -1,7 +1,7 @@
 import { Router } from "express";
 import axios from "axios";
-import { db, welcomeConfigsTable, goodbyeConfigsTable, guildConfigsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, welcomeConfigsTable, goodbyeConfigsTable, guildConfigsTable, guildWebhooksTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 
 const router = Router();
@@ -40,6 +40,37 @@ function processTemplate(
     .replace(/\{server\}/gi, opts.guildName)
     .replace(/\{membercount\}/gi, opts.memberCount.toString())
     .replace(/\{date\}/gi, new Date().toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" }));
+}
+
+/** Send a Discord message via webhook (custom name/avatar) or fall back to Bot token */
+async function sendDiscordMessage(
+  channelId: string,
+  guildId: string,
+  payload: Record<string, unknown>,
+  botToken: string,
+): Promise<void> {
+  const [guildCfg, webhookRow] = await Promise.all([
+    db.select().from(guildConfigsTable).where(eq(guildConfigsTable.guildId, guildId)).then(([r]) => r),
+    db.select().from(guildWebhooksTable).where(and(eq(guildWebhooksTable.guildId, guildId), eq(guildWebhooksTable.channelId, channelId))).then(([r]) => r),
+  ]);
+  const hasCustom = guildCfg?.webhookBotName || guildCfg?.webhookBotAvatar;
+  if (hasCustom && webhookRow?.webhookId && webhookRow?.webhookToken) {
+    const webhookPayload = {
+      ...payload,
+      username: guildCfg?.webhookBotName || undefined,
+      avatar_url: guildCfg?.webhookBotAvatar || undefined,
+    };
+    const res = await axios.post(
+      `${DISCORD_API}/webhooks/${webhookRow.webhookId}/${webhookRow.webhookToken}`,
+      webhookPayload,
+      { headers: { "Content-Type": "application/json" }, validateStatus: () => true },
+    );
+    if (res.status === 200 || res.status === 204 || res.status === 201) return;
+  }
+  await axios.post(`${DISCORD_API}/channels/${channelId}/messages`, payload, {
+    headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" },
+    validateStatus: () => true,
+  });
 }
 
 /** Convert hex color (#5865F2) to Discord int, default indigo */
@@ -167,32 +198,11 @@ router.post("/guilds/:guildId/welcome/test", requireAuth, async (req, res) => {
       (payload as any).content = `Bienvenido <@123456789012345678> a **${guildName}**! (mensaje de prueba)`;
     }
 
-    const discordRes = await axios.post(
-      `${DISCORD_API}/channels/${cfg.channelId}/messages`,
-      payload,
-      {
-        headers: {
-          Authorization: `Bot ${botToken.trim()}`,
-          "Content-Type": "application/json",
-        },
-        validateStatus: () => true,
-      },
-    );
-
-    if (discordRes.status === 200 || discordRes.status === 201) {
+    try {
+      await sendDiscordMessage(cfg.channelId, guildId, payload, botToken);
       res.json({ ok: true, message: "Mensaje de prueba enviado al canal correctamente" });
-    } else {
-      const errMsg = discordRes.data?.message || `Discord respondio con status ${discordRes.status}`;
-      res.status(400).json({
-        ok: false,
-        error: errMsg,
-        discordCode: discordRes.data?.code,
-        hint: discordRes.status === 403
-          ? "El bot no tiene permisos para enviar mensajes en ese canal"
-          : discordRes.status === 404
-            ? "Canal no encontrado. Verifica que el ID del canal sea correcto"
-            : undefined,
-      });
+    } catch (discordErr: any) {
+      res.status(400).json({ ok: false, error: discordErr?.message || "Error al enviar a Discord" });
     }
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err?.message || "Error interno al enviar mensaje de prueba" });

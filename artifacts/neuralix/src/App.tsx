@@ -25,6 +25,7 @@ import DocsPage from "@/pages/DocsPage";
 import AutoRolesPage from "@/pages/AutoRolesPage";
 import WebhooksPage from "@/pages/WebhooksPage";
 import GiveawaysPage from "@/pages/GiveawaysPage";
+import AiChannelsPage from "@/pages/AiChannelsPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -49,6 +50,7 @@ function Router() {
       <Route path="/servers/:guildId/auto-roles" component={AutoRolesPage} />
       <Route path="/servers/:guildId/webhooks" component={WebhooksPage} />
       <Route path="/servers/:guildId/giveaways" component={GiveawaysPage} />
+      <Route path="/servers/:guildId/ai-channels" component={AiChannelsPage} />
       <Route path="/verify" component={VerifyPortal} />
       <Route path="/support" component={SupportPage} />
       <Route path="/admin" component={AdminPage} />

@@ -6,6 +6,52 @@ import {
 } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
+import { getBotClient } from "../bot-state";
+
+async function snapshotDiscordStructure(guildId: string): Promise<Record<string, unknown> | null> {
+  try {
+    const client = getBotClient();
+    if (!client) return null;
+    const guild = client.guilds.cache.get(guildId) || await client.guilds.fetch(guildId).catch(() => null);
+    if (!guild) return null;
+
+    await guild.channels.fetch().catch(() => {});
+    await guild.roles.fetch().catch(() => {});
+
+    const categories = guild.channels.cache
+      .filter((c: any) => c.type === 4)
+      .map((c: any) => ({ id: c.id, name: c.name, position: c.position }));
+
+    const channels = guild.channels.cache
+      .filter((c: any) => c.type !== 4)
+      .map((c: any) => ({
+        id: c.id, name: c.name, type: c.type, position: c.position,
+        parentId: c.parentId || null,
+        topic: (c as any).topic || null,
+        nsfw: (c as any).nsfw || false,
+        bitrate: (c as any).bitrate || null,
+        userLimit: (c as any).userLimit || null,
+      }));
+
+    const roles = guild.roles.cache
+      .filter((r: any) => !r.managed && r.id !== guild.id)
+      .map((r: any) => ({
+        id: r.id, name: r.name, color: r.color,
+        hoist: r.hoist, mentionable: r.mentionable,
+        position: r.position, permissions: r.permissions.bitfield.toString(),
+      }));
+
+    return {
+      guildId, guildName: guild.name,
+      memberCount: guild.memberCount,
+      icon: guild.icon,
+      snapshotAt: new Date().toISOString(),
+      categories, channels, roles,
+      channelCount: channels.length,
+      roleCount: roles.length,
+    };
+  } catch { return null; }
+}
 
 const router = Router();
 
@@ -55,7 +101,8 @@ router.post("/guilds/:guildId/backups", requireAuth, async (req, res) => {
     const [logs] = await db.select().from(logsConfigsTable).where(eq(logsConfigsTable.guildId, guildId));
     const [guildCfg] = await db.select().from(guildConfigsTable).where(eq(guildConfigsTable.guildId, guildId));
 
-    const data = { welcome, goodbye, antiraid, tickets, verification, logs, guildConfig: guildCfg };
+    const discordSnapshot = await snapshotDiscordStructure(guildId);
+    const data = { welcome, goodbye, antiraid, tickets, verification, logs, guildConfig: guildCfg, discordSnapshot };
     const dataStr = JSON.stringify(data);
     const existingCount = (await db.select().from(backupsTable).where(eq(backupsTable.guildId, guildId))).length;
 

@@ -56,23 +56,28 @@ export async function generateWelcomeCard(opts: {
   memberCount: number;
   avatarUrl?: string | null;
   background?: string | null;
+  backgroundUrl?: string | null;
   textColor?: string | null;
+  avatarBorderColor?: string | null;
+  welcomeText?: string | null;
 }): Promise<Buffer | null> {
   try {
-    const { createCanvas, loadImage, GlobalFonts } = await import("@napi-rs/canvas");
+    const { createCanvas, loadImage } = await import("@napi-rs/canvas");
 
     const canvas = createCanvas(CARD_W, CARD_H);
     const ctx = canvas.getContext("2d");
 
-    const bg = opts.background || "#1e1f2e";
+    const bg = opts.backgroundUrl || opts.background || "#1e1f2e";
     const textClr = opts.textColor || "#ffffff";
+    const borderClr = opts.avatarBorderColor || "#5865F2";
+    const headerTxt = opts.welcomeText || "BIENVENIDO/A A";
 
     if (bg.startsWith("http")) {
       const imgBuf = await fetchImageBuffer(bg);
       if (imgBuf) {
         const img = await loadImage(imgBuf);
         ctx.drawImage(img, 0, 0, CARD_W, CARD_H);
-        ctx.fillStyle = "rgba(0,0,0,0.5)";
+        ctx.fillStyle = "rgba(0,0,0,0.45)";
         ctx.fillRect(0, 0, CARD_W, CARD_H);
       } else {
         ctx.fillStyle = "#1e1f2e";
@@ -89,13 +94,16 @@ export async function generateWelcomeCard(opts: {
     ctx.lineWidth = 2;
     ctx.strokeRect(1, 1, CARD_W - 2, CARD_H - 2);
 
-    ctx.save();
-    ctx.beginPath();
     const cx = AVATAR_X + AVATAR_SIZE / 2;
     const cy = AVATAR_Y + AVATAR_SIZE / 2;
-    ctx.arc(cx, cy, AVATAR_SIZE / 2 + 3, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(88,101,242,0.8)";
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, AVATAR_SIZE / 2 + 4, 0, Math.PI * 2);
+    ctx.fillStyle = borderClr.startsWith("#") ? borderClr : "#5865F2";
+    ctx.globalAlpha = 0.9;
     ctx.fill();
+    ctx.globalAlpha = 1;
     ctx.restore();
 
     if (opts.avatarUrl) {
@@ -127,30 +135,32 @@ export async function generateWelcomeCard(opts: {
     const midY = CARD_H / 2;
 
     ctx.fillStyle = "rgba(255,255,255,0.6)";
-    ctx.font = "22px sans-serif";
+    ctx.font = "20px sans-serif";
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
-    ctx.fillText("BIENVENIDO/A A", textX, midY - 52);
+    ctx.fillText(headerTxt.toUpperCase(), textX, midY - 52);
 
     ctx.fillStyle = textClr;
-    ctx.font = "bold 36px sans-serif";
-    const gn = opts.guildName.length > 22 ? opts.guildName.slice(0, 22) + "…" : opts.guildName;
+    ctx.font = "bold 34px sans-serif";
+    const gn = opts.guildName.length > 24 ? opts.guildName.slice(0, 24) + "…" : opts.guildName;
     ctx.fillText(gn, textX, midY - 14);
 
     ctx.fillStyle = textClr;
-    ctx.font = "bold 28px sans-serif";
-    const un = opts.username.length > 25 ? opts.username.slice(0, 25) + "…" : opts.username;
-    ctx.fillText(un, textX, midY + 28);
+    ctx.font = "bold 26px sans-serif";
+    const un = opts.username.length > 26 ? opts.username.slice(0, 26) + "…" : opts.username;
+    ctx.fillText(un, textX, midY + 26);
 
     ctx.fillStyle = "rgba(255,255,255,0.55)";
     ctx.font = "18px sans-serif";
-    ctx.fillText(`Miembro #${opts.memberCount}`, textX, midY + 62);
+    ctx.fillText(`Miembro #${opts.memberCount.toLocaleString("es-ES")}`, textX, midY + 60);
 
-    ctx.fillStyle = "rgba(88,101,242,0.6)";
-    ctx.fillRect(textX, midY + 78, 200, 2);
+    ctx.fillStyle = borderClr.startsWith("#") ? borderClr : "#5865F2";
+    ctx.globalAlpha = 0.7;
+    ctx.fillRect(textX, midY + 76, 220, 2);
+    ctx.globalAlpha = 1;
 
     return canvas.toBuffer("image/png");
-  } catch (err) {
+  } catch {
     return null;
   }
 }

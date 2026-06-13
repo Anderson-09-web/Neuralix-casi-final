@@ -47,12 +47,18 @@ router.get("/admin/stats", requireAdminAccess("view_stats"), async (_req, res) =
     db.select({ count: count() }).from(blacklistTable).where(sql`${blacklistTable.expiresAt} IS NOT NULL AND ${blacklistTable.expiresAt} > NOW()`),
   ]);
 
+  // Use bot cache for real-time guild count (includes ALL servers, not just DB entries)
+  const { getBotClient } = await import("../bot-state");
+  const botClient = getBotClient();
+  const botGuildCount = botClient?.guilds.cache.size ?? 0;
+
   const totalGuildsNum = guilds?.count || 0;
   const premiumGuildsNum = premiumGuilds?.count || 0;
-  const premiumPct = totalGuildsNum > 0 ? Math.round((premiumGuildsNum / totalGuildsNum) * 100) : 0;
+  const premiumPct = botGuildCount > 0 ? Math.round((premiumGuildsNum / botGuildCount) * 100) : 0;
 
   res.json({
-    totalGuilds: totalGuildsNum,
+    totalGuilds: botGuildCount,
+    totalGuildsDb: totalGuildsNum,
     totalUsers: users?.count || 0,
     totalTickets: tickets?.count || 0,
     premiumGuilds: premiumGuildsNum,

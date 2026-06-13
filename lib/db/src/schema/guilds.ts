@@ -12,6 +12,8 @@ export const guildConfigsTable = pgTable("guild_configs", {
   premiumPlan: text("premium_plan"),
   premiumExpiresAt: timestamp("premium_expires_at", { withTimezone: true }),
   blacklistAction: text("blacklist_action").notNull().default("ban"),
+  webhookBotName: text("webhook_bot_name"),
+  webhookBotAvatar: text("webhook_bot_avatar"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

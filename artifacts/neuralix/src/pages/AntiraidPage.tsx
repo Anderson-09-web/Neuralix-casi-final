@@ -214,23 +214,39 @@ export default function AntiraidPage() {
           {/* AntiLinks */}
           <div className="bg-card border border-card-border rounded-xl p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <div><Label className="font-semibold text-sm">AntiLinks</Label><p className="text-xs text-muted-foreground">Elimina mensajes con enlaces no autorizados</p></div>
+              <div><Label className="font-semibold text-sm">AntiLinks</Label><p className="text-xs text-muted-foreground">Bloquea enlaces, invitaciones Discord, contenido NSFW y dominios maliciosos</p></div>
               <Switch checked={cfg.antiLinks} onCheckedChange={set("antiLinks")} data-testid="toggle-antilinks" />
             </div>
             {cfg.antiLinks && (
               <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-xs mb-1.5 block">Accion al detectar enlace</Label>
+                    <NativeSelect value={(cfg as any).antiLinksAction || "delete"} onChange={set("antiLinksAction")}>
+                      <option value="delete">Solo eliminar mensaje</option>
+                      <option value="timeout">Eliminar + Silenciar (10min)</option>
+                      <option value="kick">Eliminar + Expulsar</option>
+                      <option value="ban">Eliminar + Banear</option>
+                    </NativeSelect>
+                  </div>
+                  <div className="flex items-center gap-3 pt-5">
+                    <Switch checked={(cfg as any).antiDiscordInvites !== false} onCheckedChange={set("antiDiscordInvites")} />
+                    <Label className="text-sm">Bloquear invitaciones Discord</Label>
+                  </div>
+                </div>
                 <div>
-                  <Label className="text-xs mb-1.5 block">Dominios permitidos</Label>
-                  <Input placeholder="youtube.com, twitch.tv"
+                  <Label className="text-xs mb-1.5 block">Dominios permitidos (whitelist)</Label>
+                  <Input placeholder="youtube.com, twitch.tv, github.com"
                     value={Array.isArray(cfg.allowedDomains) ? cfg.allowedDomains.join(", ") : ""}
                     onChange={(e) => set("allowedDomains")(e.target.value.split(",").map((s: string) => s.trim()).filter(Boolean))} />
                 </div>
                 <div>
-                  <Label className="text-xs mb-1.5 block">Dominios bloqueados (vacio = bloquear todo)</Label>
-                  <Input placeholder="discord.gg, bit.ly"
+                  <Label className="text-xs mb-1.5 block">Dominios bloqueados especificos (vacio = bloquear todos salvo whitelist)</Label>
+                  <Input placeholder="bit.ly, tinyurl.com"
                     value={Array.isArray(cfg.blockedDomains) ? cfg.blockedDomains.join(", ") : ""}
                     onChange={(e) => set("blockedDomains")(e.target.value.split(",").map((s: string) => s.trim()).filter(Boolean))} />
                 </div>
+                <p className="text-xs text-muted-foreground">NSFW (pornhub, onlyfans, etc.) y dominios maliciosos (grabify, iplogger) siempre bloqueados automaticamente.</p>
               </div>
             )}
           </div>

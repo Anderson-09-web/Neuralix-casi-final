@@ -1,10 +1,12 @@
 import { useParams } from "wouter";
-import { useState, useRef } from "react";
-import { Star, Check, Crown, Zap, Shield, Lock } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { Star, Check, Crown, Zap, Shield, Lock, Webhook } from "lucide-react";
 import { useGetGuildPremium, useGetPremiumPlans, getGetGuildPremiumQueryKey, getGetPremiumPlansQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { motion } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 
@@ -27,6 +29,29 @@ export default function PremiumPage() {
   const [licenseKey, setLicenseKey] = useState("");
   const [activating, setActivating] = useState(false);
   const licenseRef = useRef<HTMLInputElement>(null);
+
+  const [webhookName, setWebhookName] = useState("");
+  const [webhookAvatar, setWebhookAvatar] = useState("");
+  const [savingWebhook, setSavingWebhook] = useState(false);
+
+  useEffect(() => {
+    if (!guildId) return;
+    fetch(`/api/guilds/${guildId}/premium/webhook-config`, { credentials: "include" })
+      .then((r) => r.json()).then((d) => { setWebhookName(d.webhookBotName || ""); setWebhookAvatar(d.webhookBotAvatar || ""); }).catch(() => {});
+  }, [guildId]);
+
+  const saveWebhookConfig = async () => {
+    setSavingWebhook(true);
+    try {
+      const res = await fetch(`/api/guilds/${guildId}/premium/webhook-config`, {
+        method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ webhookBotName: webhookName, webhookBotAvatar: webhookAvatar }),
+      });
+      if (res.ok) toast({ title: "Configuracion de webhook guardada" });
+      else { const d = await res.json(); toast({ title: d.error || "Error al guardar", variant: "destructive" }); }
+    } catch { toast({ title: "Error de conexion", variant: "destructive" }); }
+    finally { setSavingWebhook(false); }
+  };
 
   const { data: premium, refetch: refetchPremium } = useGetGuildPremium(guildId, {
     query: { queryKey: getGetGuildPremiumQueryKey(guildId), enabled: !!guildId }
@@ -201,6 +226,57 @@ export default function PremiumPage() {
           Las claves son de un solo uso y se asignan a este servidor al activarse.
         </p>
       </section>
+
+      {/* Webhook customization — Ultra plan */}
+      {premium?.active && (premium.plan === "ultra" || premium.plan === "pro") && (
+        <motion.section
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-6 p-5 rounded-xl bg-card border border-yellow-500/20"
+          aria-label="Personalizacion del bot con webhook"
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-8 h-8 rounded-lg bg-yellow-500/10 flex items-center justify-center">
+              <Webhook className="w-4 h-4 text-yellow-400" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-sm">Personalizacion del bot</h3>
+              <p className="text-xs text-muted-foreground">El bot usara este nombre y avatar al enviar mensajes de bienvenida y notificaciones.</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <Label className="text-xs mb-1.5 block">Nombre del bot personalizado</Label>
+              <Input
+                value={webhookName}
+                onChange={(e) => setWebhookName(e.target.value)}
+                placeholder="Ej: Servidor Oficial"
+                maxLength={80}
+              />
+            </div>
+            <div>
+              <Label className="text-xs mb-1.5 block">URL del avatar personalizado</Label>
+              <Input
+                value={webhookAvatar}
+                onChange={(e) => setWebhookAvatar(e.target.value)}
+                placeholder="https://i.imgur.com/tu-avatar.png"
+              />
+            </div>
+          </div>
+          {webhookAvatar && (
+            <div className="flex items-center gap-3 mb-4 p-3 bg-secondary/30 rounded-lg">
+              <img src={webhookAvatar} alt="Preview avatar" className="w-10 h-10 rounded-full object-cover border border-border" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+              <div>
+                <p className="font-semibold text-sm">{webhookName || "Neuralix Bot"}</p>
+                <p className="text-xs text-muted-foreground">Vista previa del aspecto del bot</p>
+              </div>
+            </div>
+          )}
+          <Button size="sm" onClick={saveWebhookConfig} disabled={savingWebhook}>
+            {savingWebhook ? "Guardando..." : "Guardar configuracion"}
+          </Button>
+        </motion.section>
+      )}
 
       {/* Feature comparison table */}
       <section className="mt-8 p-4 md:p-5 rounded-xl bg-card border border-card-border" aria-label="Comparacion completa de planes">

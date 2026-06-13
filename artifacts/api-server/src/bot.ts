@@ -32,6 +32,8 @@ import {
   giveawaysTable,
   autoRolesTable,
   logEntriesTable,
+  aiChannelsTable,
+  guildWebhooksTable,
 } from "@workspace/db";
 import { eq, sql, and, count } from "drizzle-orm";
 import { logger } from "./lib/logger";
@@ -48,6 +50,7 @@ const nukeTracker   = new Map<string, { count: number; resetAt: number }>();
 const tempRoleTimers    = new Map<string, NodeJS.Timeout>();
 const webhookSpamTracker = new Map<string, number[]>();    // `${guildId}:${userId}` → timestamps
 const suspiciousTracker  = new Map<string, { actions: string[]; resetAt: number }>(); // same key
+const aiCooldowns        = new Map<string, number>();      // `ai:${guildId}:${channelId}:${userId}` → timestamp
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -505,6 +508,21 @@ export function startBot(): Client | undefined {
         const payload = buildWelcomePayload(welcomeCfg, opts);
         if (!payload.content && !payload.embeds) payload.content = `Bienvenido <@${userId}> a **${guildName}**!`;
 
+        // Premium webhook customization: override username/avatar if set
+        const [webhookRow] = await db.select().from(guildWebhooksTable)
+          .where(and(eq(guildWebhooksTable.guildId, guildId), eq(guildWebhooksTable.channelId, welcomeCfg.channelId)));
+        const hasCustom = guildCfg?.webhookBotName || guildCfg?.webhookBotAvatar;
+        const useWebhook = hasCustom && webhookRow?.webhookId && webhookRow?.webhookToken;
+
+        const sendPayload = async (p: Record<string, unknown>) => {
+          if (useWebhook) {
+            const wp = { ...p, username: guildCfg!.webhookBotName || undefined, avatar_url: guildCfg!.webhookBotAvatar || undefined };
+            const r = await axios.post(`${DISCORD_API}/webhooks/${webhookRow!.webhookId}/${webhookRow!.webhookToken}`, wp, { headers: { "Content-Type": "application/json" }, validateStatus: () => true });
+            if (r.status >= 200 && r.status < 300) return;
+          }
+          await sendToChannel(welcomeCfg.channelId!, p, botToken);
+        };
+
         if ((welcomeCfg as any).cardEnabled) {
           try {
             const avatarUrl = member.user?.avatar
@@ -514,25 +532,45 @@ export function startBot(): Client | undefined {
               username, tag: opts.tag, guildName, memberCount,
               avatarUrl,
               background: (welcomeCfg as any).cardBackground || null,
+              backgroundUrl: (welcomeCfg as any).cardBackgroundUrl || null,
               textColor: (welcomeCfg as any).cardTextColor || null,
+              avatarBorderColor: (welcomeCfg as any).cardAvatarBorderColor || null,
+              welcomeText: (welcomeCfg as any).cardWelcomeText || null,
             });
             if (cardBuf) {
-              const form = new FormData();
-              const payloadJson = JSON.stringify(payload);
-              form.append("payload_json", payloadJson);
-              form.append("files[0]", new Blob([cardBuf], { type: "image/png" }), "welcome-card.png");
-              await axios.post(`${DISCORD_API}/channels/${welcomeCfg.channelId}/messages`, form, {
-                headers: { Authorization: `Bot ${botToken.trim()}` },
-                validateStatus: () => true,
-              });
+              const hasEmbed = payload.embeds && Array.isArray(payload.embeds) && (payload.embeds as any[]).length > 0;
+              const webhookHdr = useWebhook
+                ? { "Content-Type": "multipart/form-data" }
+                : { Authorization: `Bot ${botToken.trim()}` };
+              const cardUrl = useWebhook
+                ? `${DISCORD_API}/webhooks/${webhookRow!.webhookId}/${webhookRow!.webhookToken}`
+                : `${DISCORD_API}/channels/${welcomeCfg.channelId}/messages`;
+              const extraFields = useWebhook
+                ? { username: guildCfg!.webhookBotName || undefined, avatar_url: guildCfg!.webhookBotAvatar || undefined }
+                : {};
+              if (hasEmbed) {
+                const embeds = (payload.embeds as any[]).map((e, i) =>
+                  i === 0 ? { ...e, image: { url: "attachment://welcome-card.png" } } : e
+                );
+                const form = new FormData();
+                form.append("payload_json", JSON.stringify({ ...payload, ...extraFields, embeds }));
+                form.append("files[0]", new Blob([cardBuf], { type: "image/png" }), "welcome-card.png");
+                await axios.post(cardUrl, form, { headers: webhookHdr, validateStatus: () => true });
+              } else {
+                const cardForm = new FormData();
+                cardForm.append("payload_json", JSON.stringify(extraFields));
+                cardForm.append("files[0]", new Blob([cardBuf], { type: "image/png" }), "welcome-card.png");
+                await axios.post(cardUrl, cardForm, { headers: webhookHdr, validateStatus: () => true });
+                if (payload.content) await sendPayload(payload);
+              }
             } else {
-              await sendToChannel(welcomeCfg.channelId, payload, botToken);
+              await sendPayload(payload);
             }
           } catch {
-            await sendToChannel(welcomeCfg.channelId, payload, botToken);
+            await sendPayload(payload);
           }
         } else {
-          await sendToChannel(welcomeCfg.channelId, payload, botToken);
+          await sendPayload(payload);
         }
 
         if (!isBot && welcomeCfg.autoRoleIds?.length) {
@@ -719,23 +757,43 @@ export function startBot(): Client | undefined {
 
       // ── AntiLinks ─────────────────────────────────────────────────────────
       if (!whitelisted && antiraid?.enabled && antiraid.antiLinks && content) {
-        const urlRx = /https?:\/\/[^\s]+|discord\.gg\/[^\s]+/gi;
-        const links = content.match(urlRx);
-        if (links) {
+        const inviteRx = /discord(?:\.gg|\.com\/invite)\/[a-zA-Z0-9-]+/gi;
+        const urlRx = /https?:\/\/[^\s<>"]+/gi;
+        const rawInvites = content.match(inviteRx) || [];
+        const rawUrls = content.match(urlRx) || [];
+        const allLinks = [...rawInvites.map((l) => `https://${l}`), ...rawUrls];
+
+        if (allLinks.length > 0) {
           const allowed  = antiraid.allowedDomains ?? [];
           const blocked  = antiraid.blockedDomains ?? [];
-          const hasBlocked = links.some((link) => {
+          const antiDiscordInvites = (antiraid as any).antiDiscordInvites !== false;
+          const nsfwPatterns = ["pornhub", "xvideos", "xhamster", "onlyfans", "redtube", "youporn"];
+          const maliciousPatterns = ["grabify", "iplogger", "ipgrabber", "discord.gift/", "steamcommunity.ru", "discordapp.net"];
+
+          let blockedReason = "";
+          const hasBlocked = allLinks.some((link) => {
             try {
-              const hn = new URL(link.startsWith("discord.gg") ? `https://${link}` : link).hostname;
-              if (allowed.some((d) => hn.includes(d))) return false;
-              if (blocked.length > 0 && !blocked.some((d) => hn.includes(d))) return false;
-              return true;
-            } catch { return true; }
+              const url = new URL(link);
+              const hn = url.hostname.toLowerCase();
+              if (allowed.some((d: string) => hn.includes(d))) return false;
+              if (antiDiscordInvites && rawInvites.length > 0 && /discord\.(gg|com)/.test(hn)) { blockedReason = "Invitacion de Discord"; return true; }
+              if (nsfwPatterns.some((p) => hn.includes(p))) { blockedReason = "Contenido NSFW"; return true; }
+              if (maliciousPatterns.some((p) => link.toLowerCase().includes(p))) { blockedReason = "Enlace malicioso"; return true; }
+              if (blocked.length > 0 && blocked.some((d: string) => hn.includes(d))) { blockedReason = "Dominio bloqueado"; return true; }
+              if (blocked.length === 0) { blockedReason = "Enlace no permitido"; return true; }
+              return false;
+            } catch { blockedReason = "Enlace invalido"; return true; }
           });
+
           if (hasBlocked) {
             await message.delete().catch(() => {});
+            const linksAction = (antiraid as any).antiLinksAction || "delete";
+            if (linksAction === "ban") await (message.member as GuildMember)?.ban({ reason: `AntiRaid AntiLinks: ${blockedReason}` }).catch(() => {});
+            else if (linksAction === "kick") await (message.member as GuildMember)?.kick(`AntiRaid AntiLinks: ${blockedReason}`).catch(() => {});
+            else if (linksAction === "timeout") await (message.member as GuildMember)?.timeout(10 * 60_000, `AntiRaid AntiLinks: ${blockedReason}`).catch(() => {});
             if (logChannel && logCfg?.logMessages) {
-              await sendLog(logChannel, { title: "AntiLinks — Enlace Bloqueado", description: `**Usuario:** \`${username}\` (<@${userId}>)\n**Canal:** <#${message.channelId}>\n**Mensaje:** ${content.substring(0, 100)}`, color: 0xFEE75C, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid" } }, botToken);
+              await sendLog(logChannel, { title: `AntiLinks — ${blockedReason}`, description: `**Usuario:** \`${username}\` (<@${userId}>)\n**Canal:** <#${message.channelId}>\n**Accion:** ${linksAction === "delete" ? "Mensaje eliminado" : linksAction}\n**Mensaje:** ${content.substring(0, 200)}`, color: 0xFEE75C, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid" } }, botToken);
+              await logToDb(guildId, { userId, username, action: "antilinks_block", category: "security", details: `${blockedReason}: ${content.substring(0, 100)}` });
             }
             return;
           }
@@ -810,6 +868,43 @@ export function startBot(): Client | undefined {
               await sendLog(automodLog, { title: "AutoMod — Texto Zalgo", description: `**Usuario:** \`${username}\` (<@${userId}>)`, color: 0xFEE75C, timestamp: new Date().toISOString(), footer: { text: "Neuralix AutoMod" } }, botToken);
             }
             return;
+          }
+        }
+      }
+
+      // ── AI Channels ────────────────────────────────────────────────────────
+      const aiGroqKey = process.env.GROQ_API_KEY;
+      if (aiGroqKey && content) {
+        const [aiChannel] = await db.select().from(aiChannelsTable)
+          .where(and(eq(aiChannelsTable.guildId, guildId), eq(aiChannelsTable.channelId, message.channelId), eq(aiChannelsTable.enabled, true)));
+        if (aiChannel) {
+          const botMentioned = message.mentions.users.has(client.user?.id ?? "");
+          if (!aiChannel.mentionOnly || botMentioned) {
+            const cooldownKey = `ai:${guildId}:${message.channelId}:${userId}`;
+            const lastUsed = aiCooldowns.get(cooldownKey) ?? 0;
+            const cooldownMs = (aiChannel.cooldownSeconds ?? 3) * 1000;
+            if (Date.now() - lastUsed >= cooldownMs) {
+              aiCooldowns.set(cooldownKey, Date.now());
+              try {
+                await message.channel.sendTyping().catch(() => {});
+                const systemPrompt = aiChannel.systemPrompt || "Eres un asistente util del servidor Discord. Responde de forma concisa y en el mismo idioma que el usuario.";
+                const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "Authorization": `Bearer ${aiGroqKey}` },
+                  body: JSON.stringify({
+                    model: aiChannel.model || "llama-3.1-8b-instant",
+                    messages: [{ role: "system", content: systemPrompt }, { role: "user", content: content.substring(0, 2000) }],
+                    max_tokens: aiChannel.maxTokens || 500,
+                    temperature: (aiChannel.temperature || 70) / 100,
+                  }),
+                });
+                if (resp.ok) {
+                  const data = await resp.json() as any;
+                  const reply = data?.choices?.[0]?.message?.content?.trim();
+                  if (reply) await message.reply({ content: reply.substring(0, 1990) }).catch(() => {});
+                }
+              } catch {}
+            }
           }
         }
       }
@@ -1622,6 +1717,36 @@ export function startBot(): Client | undefined {
       return;
     }
 
+    // ── Auto-role select menu ─────────────────────────────────────────────
+    if (interaction.isStringSelectMenu() && interaction.customId === "autorole_select") {
+      try {
+        await interaction.deferReply({ ephemeral: true });
+        const selectedId = Number(interaction.values[0]);
+        if (isNaN(selectedId)) { await interaction.editReply({ content: "Opcion invalida." }); return; }
+        const [ar] = await db.select().from(autoRolesTable).where(and(eq(autoRolesTable.id, selectedId), eq(autoRolesTable.guildId, guildId)));
+        if (!ar || !ar.enabled) { await interaction.editReply({ content: "Este auto-rol no esta disponible." }); return; }
+        const member = interaction.guild?.members.cache.get(userId) || await interaction.guild?.members.fetch(userId).catch(() => null);
+        if (!member) { await interaction.editReply({ content: "No se pudo obtener tu informacion de miembro." }); return; }
+        const addedRoles: string[] = []; const removedRoles: string[] = [];
+        for (const rid of (ar.roleIds ?? [])) {
+          if (member.roles.cache.has(rid)) { await member.roles.remove(rid).catch(() => {}); removedRoles.push(`<@&${rid}>`); }
+          else {
+            await member.roles.add(rid).catch(() => {}); addedRoles.push(`<@&${rid}>`);
+            if (ar.temporary && ar.durationMinutes > 0) {
+              const key = `${guildId}:${userId}:${rid}`;
+              const timer = setTimeout(async () => { try { await member.roles.remove(rid); } catch {} tempRoleTimers.delete(key); }, ar.durationMinutes * 60_000);
+              tempRoleTimers.set(key, timer);
+            }
+          }
+        }
+        const lines: string[] = [];
+        if (addedRoles.length) lines.push(`Roles asignados: ${addedRoles.join(", ")}`);
+        if (removedRoles.length) lines.push(`Roles removidos: ${removedRoles.join(", ")}`);
+        await interaction.editReply({ content: lines.join("\n") || "Sin cambios." });
+      } catch { await interaction.editReply({ content: "Error al gestionar el rol." }).catch(() => {}); }
+      return;
+    }
+
     // ── Ticket select menu ────────────────────────────────────────────────
     if (interaction.isStringSelectMenu() && interaction.customId === "ticket_select_module") {
       const moduleId = Number(interaction.values[0]);
@@ -1674,6 +1799,62 @@ export function startBot(): Client | undefined {
       if (!isNaN(ticketId)) await handleTicketReopen(interaction, guildId, ticketId, userId, username);
       return;
     }
+  });
+
+  // ─── Reaction Roles ────────────────────────────────────────────────────────
+  client.on(Events.MessageReactionAdd, async (reaction, user) => {
+    if (user.bot) return;
+    try {
+      if (reaction.partial) await reaction.fetch().catch(() => {});
+      if (!reaction.message.guild) return;
+      const guildId = reaction.message.guild.id;
+      const emoji = reaction.emoji.name ?? "";
+      const messageId = reaction.message.id;
+      const reactionRoles = await db.select().from(autoRolesTable).where(
+        and(eq(autoRolesTable.guildId, guildId), eq(autoRolesTable.type, "reaction"), eq(autoRolesTable.enabled, true))
+      );
+      const matching = reactionRoles.filter((r) => r.messageId === messageId && r.buttonEmoji === emoji);
+      if (!matching.length) return;
+      const guild = reaction.message.guild;
+      const member = guild.members.cache.get(user.id) || await guild.members.fetch(user.id).catch(() => null);
+      if (!member) return;
+      for (const ar of matching) {
+        for (const rid of (ar.roleIds ?? [])) {
+          await member.roles.add(rid).catch(() => {});
+          if (ar.temporary && ar.durationMinutes > 0) {
+            const key = `${guildId}:${user.id}:${rid}`;
+            const timer = setTimeout(async () => { try { await member.roles.remove(rid); } catch {} tempRoleTimers.delete(key); }, ar.durationMinutes * 60_000);
+            tempRoleTimers.set(key, timer);
+          }
+        }
+      }
+    } catch {}
+  });
+
+  client.on(Events.MessageReactionRemove, async (reaction, user) => {
+    if (user.bot) return;
+    try {
+      if (reaction.partial) await reaction.fetch().catch(() => {});
+      if (!reaction.message.guild) return;
+      const guildId = reaction.message.guild.id;
+      const emoji = reaction.emoji.name ?? "";
+      const messageId = reaction.message.id;
+      const reactionRoles = await db.select().from(autoRolesTable).where(
+        and(eq(autoRolesTable.guildId, guildId), eq(autoRolesTable.type, "reaction"), eq(autoRolesTable.enabled, true))
+      );
+      const matching = reactionRoles.filter((r) => r.messageId === messageId && r.buttonEmoji === emoji);
+      if (!matching.length) return;
+      const guild = reaction.message.guild;
+      const member = guild.members.cache.get(user.id) || await guild.members.fetch(user.id).catch(() => null);
+      if (!member) return;
+      for (const ar of matching) {
+        for (const rid of (ar.roleIds ?? [])) {
+          const timerKey = `${guildId}:${user.id}:${rid}`;
+          clearTimeout(tempRoleTimers.get(timerKey)); tempRoleTimers.delete(timerKey);
+          await member.roles.remove(rid).catch(() => {});
+        }
+      }
+    } catch {}
   });
 
   client.login(botToken).catch((err) => {

@@ -1,6 +1,6 @@
 import { useParams } from "wouter";
 import { useState, useEffect } from "react";
-import { Plus, Trash2, Send, Users, Settings, Tag, Zap } from "lucide-react";
+import { Plus, Trash2, Send, Users, Settings, Tag, Zap, Hash, ChevronDown, Smile } from "lucide-react";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,10 +23,36 @@ function NativeSelect({ value, onChange, children, className }: { value: string;
 const emptyForm = {
   name: "", type: "join", description: "",
   roleIds: "" as string, buttonLabel: "", buttonEmoji: "", buttonColor: "PRIMARY",
-  channelId: "", temporary: false, durationMinutes: "0",
+  channelId: "", messageId: "", temporary: false, durationMinutes: "0",
 };
 
-type AutoRole = { id: number; name: string; type: string; description?: string | null; roleIds: string[]; buttonLabel?: string | null; buttonEmoji?: string | null; buttonColor: string; channelId?: string | null; messageId?: string | null; temporary: boolean; durationMinutes: number; enabled: boolean };
+type AutoRole = {
+  id: number; name: string; type: string; description?: string | null;
+  roleIds: string[]; buttonLabel?: string | null; buttonEmoji?: string | null;
+  buttonColor: string; channelId?: string | null; messageId?: string | null;
+  temporary: boolean; durationMinutes: number; enabled: boolean;
+};
+
+const typeLabels: Record<string, string> = {
+  join: "Auto (al unirse)",
+  button: "Boton",
+  select: "Menu desplegable",
+  reaction: "Reaccion",
+};
+const colorLabels: Record<string, { label: string }> = {
+  PRIMARY: { label: "Azul" },
+  SECONDARY: { label: "Gris" },
+  SUCCESS: { label: "Verde" },
+  DANGER: { label: "Rojo" },
+};
+
+function TypeIcon({ type }: { type: string }) {
+  if (type === "join") return <Users className="w-4 h-4 text-primary" />;
+  if (type === "button") return <Zap className="w-4 h-4 text-yellow-500" />;
+  if (type === "select") return <ChevronDown className="w-4 h-4 text-blue-400" />;
+  if (type === "reaction") return <Smile className="w-4 h-4 text-pink-400" />;
+  return <Tag className="w-4 h-4 text-muted-foreground" />;
+}
 
 export default function AutoRolesPage() {
   const { guildId } = useParams<{ guildId: string }>();
@@ -59,7 +85,8 @@ export default function AutoRolesPage() {
       buttonLabel: form.buttonLabel,
       buttonEmoji: form.buttonEmoji,
       buttonColor: form.buttonColor,
-      channelId: form.channelId,
+      channelId: form.channelId || null,
+      messageId: form.messageId || null,
       temporary: form.temporary,
       durationMinutes: Number(form.durationMinutes) || 0,
     };
@@ -91,34 +118,29 @@ export default function AutoRolesPage() {
     setSending(id);
     const res = await fetch(API(`/guilds/${guildId}/auto-roles/${id}/send`), { method: "POST", credentials: "include" });
     const data = await res.json().catch(() => ({}));
-    if (res.ok) toast({ title: "Panel enviado al canal" });
+    if (res.ok) toast({ title: data.message || "Panel enviado al canal" });
     else toast({ title: data.error || "Error al enviar", variant: "destructive" });
     setSending(null);
   };
 
   const startEdit = (r: AutoRole) => {
     setForm({
-      name: r.name,
-      type: r.type,
-      description: r.description || "",
+      name: r.name, type: r.type, description: r.description || "",
       roleIds: (r.roleIds || []).join(", "),
-      buttonLabel: r.buttonLabel || "",
-      buttonEmoji: r.buttonEmoji || "",
-      buttonColor: r.buttonColor || "PRIMARY",
-      channelId: r.channelId || "",
-      temporary: r.temporary,
+      buttonLabel: r.buttonLabel || "", buttonEmoji: r.buttonEmoji || "",
+      buttonColor: r.buttonColor || "PRIMARY", channelId: r.channelId || "",
+      messageId: r.messageId || "", temporary: r.temporary,
       durationMinutes: String(r.durationMinutes || 0),
     });
     setEditingId(r.id);
     setShowForm(true);
   };
 
-  const typeLabels: Record<string, string> = { join: "Auto (al unirse)", button: "Boton", select: "Menu desplegable" };
-  const colorLabels: Record<string, { label: string; cls: string }> = {
-    PRIMARY: { label: "Azul", cls: "bg-indigo-600" },
-    SECONDARY: { label: "Gris", cls: "bg-gray-500" },
-    SUCCESS: { label: "Verde", cls: "bg-green-600" },
-    DANGER: { label: "Rojo", cls: "bg-red-600" },
+  const grouped = {
+    join: roles.filter((r) => r.type === "join"),
+    button: roles.filter((r) => r.type === "button"),
+    select: roles.filter((r) => r.type === "select"),
+    reaction: roles.filter((r) => r.type === "reaction"),
   };
 
   return (
@@ -126,11 +148,29 @@ export default function AutoRolesPage() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-black mb-1">Auto-Roles</h1>
-          <p className="text-muted-foreground text-sm">Asigna roles automaticamente al unirse o mediante botones/menus interactivos en Discord.</p>
+          <p className="text-muted-foreground text-sm">Asigna roles automaticamente al unirse o mediante botones, menus o reacciones en Discord.</p>
         </div>
         <Button size="sm" onClick={() => { setForm({ ...emptyForm }); setEditingId(null); setShowForm(true); }}>
           <Plus className="w-4 h-4 mr-1" /> Nuevo Auto-Rol
         </Button>
+      </div>
+
+      {/* Info banners por tipo */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        {[
+          { type: "join", color: "indigo", count: grouped.join.length, desc: "Al unirse" },
+          { type: "button", color: "yellow", count: grouped.button.length, desc: "Boton" },
+          { type: "select", color: "blue", count: grouped.select.length, desc: "Menu" },
+          { type: "reaction", color: "pink", count: grouped.reaction.length, desc: "Reaccion" },
+        ].map((g) => (
+          <div key={g.type} className="bg-card border border-card-border rounded-lg p-3 flex items-center gap-3">
+            <TypeIcon type={g.type} />
+            <div>
+              <p className="text-lg font-bold leading-none">{g.count}</p>
+              <p className="text-xs text-muted-foreground">{g.desc}</p>
+            </div>
+          </div>
+        ))}
       </div>
 
       {showForm && (
@@ -147,9 +187,11 @@ export default function AutoRolesPage() {
                 <option value="join">Auto (al unirse)</option>
                 <option value="button">Boton en canal</option>
                 <option value="select">Menu desplegable</option>
+                <option value="reaction">Rol por reaccion</option>
               </NativeSelect>
             </div>
           </div>
+
           <div>
             <Label className="text-xs mb-1.5 block">IDs de Roles (separados por comas)</Label>
             <Input value={form.roleIds} onChange={(e) => setF("roleIds")(e.target.value)} placeholder="123456789012345678, 987654321098765432" />
@@ -159,28 +201,55 @@ export default function AutoRolesPage() {
             <Input value={form.description} onChange={(e) => setF("description")(e.target.value)} placeholder="Descripcion del auto-rol" />
           </div>
 
-          {form.type !== "join" && (
+          {/* Boton / Select fields */}
+          {(form.type === "button" || form.type === "select") && (
             <>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <Label className="text-xs mb-1.5 block">Etiqueta del boton</Label>
+                  <Label className="text-xs mb-1.5 block">{form.type === "select" ? "Etiqueta de opcion" : "Etiqueta del boton"}</Label>
                   <Input value={form.buttonLabel} onChange={(e) => setF("buttonLabel")(e.target.value)} placeholder="Obtener Rol" />
                 </div>
                 <div>
-                  <Label className="text-xs mb-1.5 block">Emoji del boton</Label>
+                  <Label className="text-xs mb-1.5 block">Emoji</Label>
                   <Input value={form.buttonEmoji} onChange={(e) => setF("buttonEmoji")(e.target.value)} placeholder="✨" />
                 </div>
-                <div>
-                  <Label className="text-xs mb-1.5 block">Color del boton</Label>
-                  <NativeSelect value={form.buttonColor} onChange={setF("buttonColor")}>
-                    {Object.entries(colorLabels).map(([k, v]) => (<option key={k} value={k}>{v.label}</option>))}
-                  </NativeSelect>
-                </div>
+                {form.type === "button" && (
+                  <div>
+                    <Label className="text-xs mb-1.5 block">Color del boton</Label>
+                    <NativeSelect value={form.buttonColor} onChange={setF("buttonColor")}>
+                      {Object.entries(colorLabels).map(([k, v]) => (<option key={k} value={k}>{v.label}</option>))}
+                    </NativeSelect>
+                  </div>
+                )}
               </div>
               <div>
                 <Label className="text-xs mb-1.5 block">Canal donde enviar el panel (ID)</Label>
                 <Input value={form.channelId} onChange={(e) => setF("channelId")(e.target.value)} placeholder="ID del canal" />
               </div>
+              {form.type === "select" && (
+                <p className="text-xs text-muted-foreground bg-blue-500/5 border border-blue-500/20 rounded px-3 py-2">
+                  Al enviar, se construira un menu unico con todas las opciones de tipo "Menu desplegable" activas en este servidor.
+                </p>
+              )}
+            </>
+          )}
+
+          {/* Reaction role fields */}
+          {form.type === "reaction" && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-xs mb-1.5 block">ID del mensaje a vigilar</Label>
+                  <Input value={form.messageId} onChange={(e) => setF("messageId")(e.target.value)} placeholder="ID del mensaje" />
+                </div>
+                <div>
+                  <Label className="text-xs mb-1.5 block">Emoji de reaccion</Label>
+                  <Input value={form.buttonEmoji} onChange={(e) => setF("buttonEmoji")(e.target.value)} placeholder="⭐" />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground bg-pink-500/5 border border-pink-500/20 rounded px-3 py-2">
+                El bot vigilara las reacciones del mensaje especificado. Al reaccionar con el emoji configurado, el usuario recibe los roles asignados. Al quitar la reaccion, pierde los roles.
+              </p>
             </>
           )}
 
@@ -218,7 +287,7 @@ export default function AutoRolesPage() {
             <div key={r.id} className="bg-card border border-card-border rounded-xl p-5">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  {r.type === "join" ? <Users className="w-4 h-4 text-primary" /> : r.type === "button" ? <Zap className="w-4 h-4 text-yellow-500" /> : <Settings className="w-4 h-4 text-blue-400" />}
+                  <TypeIcon type={r.type} />
                   <div>
                     <p className="font-semibold text-sm">{r.name}</p>
                     <p className="text-xs text-muted-foreground">{typeLabels[r.type] || r.type}</p>
@@ -240,12 +309,17 @@ export default function AutoRolesPage() {
                 ))}
                 {(r.roleIds || []).length === 0 && <span className="text-xs text-muted-foreground">Sin roles configurados</span>}
               </div>
+              {r.type === "reaction" && r.messageId && (
+                <p className="text-xs text-muted-foreground mb-2 font-mono">Mensaje: {r.messageId} {r.buttonEmoji && `| Emoji: ${r.buttonEmoji}`}</p>
+              )}
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <div className="flex items-center gap-2 flex-wrap text-xs">
                   {r.temporary && <span className="bg-yellow-500/10 text-yellow-500 px-1.5 py-0.5 rounded">Temporal {r.durationMinutes}min</span>}
-                  {r.messageId && <span className="bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded">Panel activo</span>}
+                  {r.messageId && r.type !== "reaction" && <span className="bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded">Panel activo</span>}
+                  {r.type === "reaction" && r.messageId && <span className="bg-pink-500/10 text-pink-400 px-1.5 py-0.5 rounded">Vigilando reacciones</span>}
+                  {r.type === "reaction" && !r.messageId && <span className="bg-orange-500/10 text-orange-400 px-1.5 py-0.5 rounded">Sin mensaje configurado</span>}
                 </div>
-                {r.type !== "join" && r.channelId && (
+                {(r.type === "button" || r.type === "select") && r.channelId && (
                   <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => sendPanel(r.id)} disabled={sending === r.id}>
                     <Send className="w-3 h-3" />{sending === r.id ? "Enviando..." : "Enviar Panel"}
                   </Button>

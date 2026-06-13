@@ -24,6 +24,8 @@ export const antiraidConfigsTable = pgTable("antiraid_configs", {
   antiSpamAction: text("anti_spam_action").notNull().default("mute"),
   // AntiLinks
   antiLinks: boolean("anti_links").notNull().default(false),
+  antiLinksAction: text("anti_links_action").notNull().default("delete"),
+  antiDiscordInvites: boolean("anti_discord_invites").notNull().default(true),
   allowedDomains: text("allowed_domains").array().notNull().default([]),
   blockedDomains: text("blocked_domains").array().notNull().default([]),
   // AntiMassMention

@@ -110,11 +110,16 @@ router.post("/guilds/:guildId/tickets/panels/:panelId/send", requireAuth, async 
     let components: any[] = [];
 
     if (panel.useModules) {
+      const { isNull, or } = await import("drizzle-orm");
       const modules = await db.select().from(ticketModulesTable)
-        .where(and(eq(ticketModulesTable.guildId, guildId), eq(ticketModulesTable.enabled, true)))
+        .where(and(
+          eq(ticketModulesTable.guildId, guildId),
+          eq(ticketModulesTable.enabled, true),
+          or(eq(ticketModulesTable.panelId, panelId), isNull(ticketModulesTable.panelId))
+        ))
         .orderBy(ticketModulesTable.sortOrder);
       if (modules.length === 0) {
-        res.status(400).json({ ok: false, error: "No hay modulos activos para este panel." });
+        res.status(400).json({ ok: false, error: "No hay modulos activos para este panel. Crea modulos en la pestana 'Modulos' y asignalos a este panel." });
         return;
       }
       if (modules.length <= 5) {

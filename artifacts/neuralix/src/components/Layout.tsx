@@ -3,7 +3,7 @@ import { useState } from "react";
 import {
   Shield, LayoutDashboard, Users, Ticket, ShieldAlert, FileText,
   Star, Database, Settings, ChevronLeft, ChevronRight, Sun, Moon,
-  HeadphonesIcon, LogOut, Menu, X, Bot, Bell, ChevronDown, Tag, Webhook, Gift
+  HeadphonesIcon, LogOut, Menu, X, Bot, Bell, ChevronDown, Tag, Webhook, Gift, Sparkles
 } from "lucide-react";
 import { useGetMe, useLogout, useGetGuild, getGetMeQueryKey, getGetGuildQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -24,6 +24,7 @@ const navItems = (guildId: string) => [
   { href: `/servers/${guildId}/auto-roles`, icon: Tag, label: "Auto-Roles" },
   { href: `/servers/${guildId}/webhooks`, icon: Webhook, label: "Webhooks" },
   { href: `/servers/${guildId}/giveaways`, icon: Gift, label: "Sorteos" },
+  { href: `/servers/${guildId}/ai-channels`, icon: Sparkles, label: "Canales IA" },
   { href: `/servers/${guildId}/logs`, icon: FileText, label: "Logs" },
   { href: `/servers/${guildId}/premium`, icon: Star, label: "Premium" },
   { href: `/servers/${guildId}/backups`, icon: Database, label: "Backups" },
