@@ -46,7 +46,8 @@ import { generateWelcomeCard } from "./welcome-card";
 const DISCORD_API = "https://discord.com/api/v10";
 
 // ─── In-memory trackers ───────────────────────────────────────────────────────
-const joinTracker   = new Map<string, number[]>();
+const joinTracker   = new Map<string, { userId: string; username: string; ts: number }[]>();
+const raidLockdown  = new Map<string, number>(); // guildId → lockdown expiry timestamp
 const spamTracker   = new Map<string, number[]>();
 const floodTracker  = new Map<string, Map<string, number[]>>();
 const nukeTracker   = new Map<string, { count: number; resetAt: number }>();
@@ -579,19 +580,61 @@ export function startBot(): Client | undefined {
             const now = Date.now();
             const windowMs  = (antiraid.antiJoinInterval ?? 10) * 1000;
             const threshold = antiraid.antiJoinThreshold ?? 5;
-            const joins = (joinTracker.get(guildId) ?? []).filter((t) => now - t < windowMs);
-            joins.push(now);
-            joinTracker.set(guildId, joins);
-            if (joins.length >= threshold) {
-              const action = antiraid.antiJoinAction ?? "ban";
-              const banReason = `AntiRaid AntiJoin: ${joins.length} joins en ${antiraid.antiJoinInterval}s`;
+            const action    = antiraid.antiJoinAction ?? "ban";
+
+            // ── Lockdown mode: ban/kick everyone while active ─────────────
+            const lockdownExpiry = raidLockdown.get(guildId);
+            if (lockdownExpiry && now < lockdownExpiry) {
+              const lockReason = "AntiRaid Lockdown: Raid activo en el servidor";
               if (action === "ban") {
-                await (member as GuildMember).ban({ reason: banReason }).catch(() => {});
-                await autoBlacklist(userId, username, banReason);
-              } else if (action === "kick") await (member as GuildMember).kick("AntiRaid: AntiJoin").catch(() => {});
-              else await (member as GuildMember).timeout(5 * 60_000, "AntiRaid: AntiJoin").catch(() => {});
+                await (member as GuildMember).ban({ reason: lockReason }).catch(() => {});
+                await autoBlacklist(userId, username, lockReason);
+              } else if (action === "kick") await (member as GuildMember).kick(lockReason).catch(() => {});
+              await bumpStats(guildId, "blockedJoin");
               if (secChannel && logCfg?.logSecurity) {
-                await sendLog(secChannel, { title: "AntiJoin — Raid Detectado", description: `**Accion:** ${action}\n**Joins:** ${joins.length} en ${antiraid.antiJoinInterval}s\n**Usuario:** \`${username}\`${action === "ban" ? "\n**Blacklist:** Agregado automaticamente" : ""}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid" } }, botToken);
+                await sendLog(secChannel, { title: "AntiJoin — Lockdown Activo", description: `**Usuario bloqueado:** \`${username}\` (<@${userId}>)\n**Accion:** ${action}${action === "ban" ? "\n**Blacklist:** Agregado automaticamente" : ""}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid" } }, botToken);
+              }
+              return;
+            }
+
+            // ── Track this join with userId ───────────────────────────────
+            const recentJoins = (joinTracker.get(guildId) ?? []).filter(j => now - j.ts < windowMs);
+            recentJoins.push({ userId, username, ts: now });
+            joinTracker.set(guildId, recentJoins);
+
+            if (recentJoins.length >= threshold) {
+              // RAID DETECTED — ban ALL joiners in the window retroactively
+              joinTracker.set(guildId, []);
+              // Activate lockdown for 3× the window duration
+              raidLockdown.set(guildId, now + windowMs * 3);
+              setTimeout(() => raidLockdown.delete(guildId), windowMs * 3);
+
+              const banReason = `AntiRaid AntiJoin: Raid detectado — ${recentJoins.length} joins en ${antiraid.antiJoinInterval}s`;
+              let bannedCount = 0;
+              const bannedNames: string[] = [];
+
+              for (const joiner of recentJoins) {
+                try {
+                  const joinerMember = member.guild.members.cache.get(joiner.userId)
+                    ?? await member.guild.members.fetch(joiner.userId).catch(() => null);
+                  if (joinerMember) {
+                    if (action === "ban") {
+                      await (joinerMember as GuildMember).ban({ reason: banReason }).catch(() => {});
+                      await autoBlacklist(joiner.userId, joiner.username, banReason);
+                    } else if (action === "kick") await (joinerMember as GuildMember).kick(banReason).catch(() => {});
+                    bannedCount++;
+                    bannedNames.push(`\`${joiner.username}\``);
+                  }
+                } catch {}
+              }
+
+              await bumpStats(guildId, "blockedJoin");
+              if (secChannel && logCfg?.logSecurity) {
+                await sendLog(secChannel, {
+                  title: "AntiJoin — RAID DETECTADO",
+                  description: `**Joins:** ${recentJoins.length} en ${antiraid.antiJoinInterval}s\n**Accion:** ${action} (${bannedCount} usuarios)\n**Lockdown:** Activo por ${antiraid.antiJoinInterval * 3}s${action === "ban" ? "\n**Blacklist:** Todos agregados automaticamente" : ""}\n**Usuarios:** ${bannedNames.slice(0, 10).join(", ")}${bannedNames.length > 10 ? ` y ${bannedNames.length - 10} mas...` : ""}`,
+                  color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid" },
+                }, botToken);
               }
               return;
             }
