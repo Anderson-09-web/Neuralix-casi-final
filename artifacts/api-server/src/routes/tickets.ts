@@ -13,7 +13,7 @@ const ALLOWED_FIELDS = new Set([
   "panelColor", "panelImage", "panelFooter",
   "buttonLabel", "buttonEmoji", "buttonColor",
   "ticketNameFormat", "openMessage", "mentionSupport",
-  "autoClose", "satisfactionSurvey", "autoTranscript",
+  "autoClose", "satisfactionSurvey", "satisfactionLogChannelId", "autoTranscript",
   "claimEnabled", "deleteEnabled", "useModules",
 ]);
 

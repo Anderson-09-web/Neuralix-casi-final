@@ -1794,17 +1794,13 @@ export function startBot(): Client | undefined {
       const mentionParts: string[] = [];
       if (cfg.mentionSupport) { for (const rid of supportRoleIds) mentionParts.push(`<@&${rid}>`); }
 
-      const components = await buildTicketComponents(ticket.id, cfg);
-
-      await ticketChannel.send({ content: `${mentionParts.join(" ")} ${openMsg}`.trim(), components } as any);
-
-      // Per-module welcome message as follow-up
+      // 1. Per-module welcome message FIRST (above embed)
       if (mod?.welcomeMessage) {
         const modMsg = mod.welcomeMessage.replace("{user}", `<@${userId}>`).replace("{username}", username);
         await ticketChannel.send({ content: modMsg } as any).catch(() => {});
       }
 
-      // Per-module welcome embed as additional follow-up
+      // 2. Per-module welcome embed SECOND
       if (mod?.welcomeEmbedEnabled && (mod.welcomeEmbedTitle || mod.welcomeEmbedDescription)) {
         await ticketChannel.send({
           embeds: [{
@@ -1815,6 +1811,10 @@ export function startBot(): Client | undefined {
           }],
         } as any).catch(() => {});
       }
+
+      // 3. Open message + action buttons LAST (below everything)
+      const components = await buildTicketComponents(ticket.id, cfg);
+      await ticketChannel.send({ content: `${mentionParts.join(" ")} ${openMsg}`.trim(), components } as any);
 
       if (cfg.logsChannelId) {
         await sendToChannel(cfg.logsChannelId, {
@@ -1902,6 +1902,34 @@ export function startBot(): Client | undefined {
         }
       }
 
+      // Satisfaction survey DM
+      if (cfg?.satisfactionSurvey) {
+        try {
+          const dmRes = await axios.post(`${DISCORD_API}/users/@me/channels`,
+            { recipient_id: ticket.userId },
+            { headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" }, validateStatus: () => true }
+          );
+          if (dmRes.data?.id) {
+            await axios.post(`${DISCORD_API}/channels/${dmRes.data.id}/messages`, {
+              embeds: [{
+                title: "Califica tu experiencia",
+                description: `Tu ticket **#${ticketId}** ha sido cerrado.\n¿Como calificarias la atencion recibida?`,
+                color: 0x5865F2,
+                footer: { text: "Neuralix Tickets · Encuesta de satisfaccion" },
+              }],
+              components: [{
+                type: 1,
+                components: [1, 2, 3, 4, 5].map((s) => ({
+                  type: 2, style: 2,
+                  label: "⭐".repeat(s),
+                  custom_id: `ticket_rate_${ticketId}_${s}`,
+                })),
+              }],
+            }, { headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" }, validateStatus: () => true });
+          }
+        } catch {}
+      }
+
       await interaction.editReply({ content: "Ticket cerrado correctamente." });
     } catch (err: any) {
       logger.error({ err }, "Error al cerrar ticket");
@@ -1915,9 +1943,30 @@ export function startBot(): Client | undefined {
       const [ticket] = await db.select().from(ticketsTable).where(and(eq(ticketsTable.id, ticketId), eq(ticketsTable.guildId, guildId)));
       if (!ticket) { await interaction.editReply({ content: "Ticket no encontrado." }); return; }
       if (ticket.claimedBy) { await interaction.editReply({ content: `Este ticket ya fue reclamado por <@${ticket.claimedBy}>.` }); return; }
+
+      const [cfg] = await db.select().from(ticketConfigsTable).where(eq(ticketConfigsTable.guildId, guildId));
+      const supportRoleIds: string[] = cfg?.supportRoleIds?.length ? cfg.supportRoleIds : (cfg?.supportRoleId ? [cfg.supportRoleId] : []);
+      const member = interaction.guild?.members.cache.get(userId) || await interaction.guild?.members.fetch(userId).catch(() => null);
+      const memberRoles: string[] = member?.roles?.cache?.map((r: any) => r.id) ?? [];
+      const isSupport = supportRoleIds.some((rid: string) => memberRoles.includes(rid));
+      if (!isSupport && !member?.permissions?.has?.("ManageChannels")) {
+        await interaction.editReply({ content: "Solo el personal de soporte puede reclamar tickets." }); return;
+      }
+
       await db.update(ticketsTable).set({ claimedBy: userId, claimedByUsername: username }).where(eq(ticketsTable.id, ticketId));
-      await interaction.channel?.send({ embeds: [{ title: "Ticket Reclamado", description: `<@${userId}> esta atendiendo este ticket.`, color: 0x57F287, timestamp: new Date().toISOString(), footer: { text: "Neuralix Tickets" } }] } as any).catch(() => {});
-      await interaction.editReply({ content: "Has reclamado este ticket." });
+
+      // Restrict channel visibility: hide from other support roles, keep only claimer + ticket owner
+      try {
+        for (const roleId of supportRoleIds) {
+          await interaction.channel?.permissionOverwrites.edit(roleId, { ViewChannel: false }).catch(() => {});
+        }
+        await interaction.channel?.permissionOverwrites.edit(userId, {
+          ViewChannel: true, SendMessages: true, ReadMessageHistory: true, ManageMessages: true,
+        }).catch(() => {});
+      } catch {}
+
+      await interaction.channel?.send({ embeds: [{ title: "Ticket Reclamado", description: `<@${userId}> esta atendiendo este ticket.\nSolo el agente y el usuario pueden ver este canal.`, color: 0x57F287, timestamp: new Date().toISOString(), footer: { text: "Neuralix Tickets" } }] } as any).catch(() => {});
+      await interaction.editReply({ content: "Has reclamado este ticket. Solo tu y el usuario pueden verlo." });
     } catch { await interaction.editReply({ content: "Error al reclamar el ticket." }).catch(() => {}); }
   }
 
@@ -2077,6 +2126,32 @@ export function startBot(): Client | undefined {
     if (customId.startsWith("ticket_reopen_")) {
       const ticketId = Number(customId.replace("ticket_reopen_", ""));
       if (!isNaN(ticketId)) await handleTicketReopen(interaction, guildId, ticketId, userId, username);
+      return;
+    }
+
+    if (customId.startsWith("ticket_rate_")) {
+      const parts = customId.split("_"); // ticket_rate_{ticketId}_{stars}
+      const ticketId = Number(parts[2]);
+      const stars = Number(parts[3]);
+      if (!isNaN(ticketId) && stars >= 1 && stars <= 5) {
+        await safeDefer(interaction);
+        try {
+          const [ticket] = await db.select().from(ticketsTable).where(eq(ticketsTable.id, ticketId));
+          const [cfg] = ticket ? await db.select().from(ticketConfigsTable).where(eq(ticketConfigsTable.guildId, ticket.guildId)) : [null];
+          if (cfg?.satisfactionLogChannelId) {
+            await sendToChannel(cfg.satisfactionLogChannelId, {
+              embeds: [{
+                title: "Calificacion de Ticket",
+                description: `**Ticket:** #${ticketId}\n**Usuario:** <@${userId}> (\`${interaction.user.username}\`)\n**Calificacion:** ${"⭐".repeat(stars)} (${stars}/5)`,
+                color: stars >= 4 ? 0x57F287 : stars >= 3 ? 0xFEE75C : 0xED4245,
+                timestamp: new Date().toISOString(),
+                footer: { text: "Neuralix Tickets · Encuesta de satisfaccion" },
+              }],
+            }, botToken);
+          }
+          await interaction.editReply({ content: `Gracias por tu calificacion: ${"⭐".repeat(stars)}\nTu opinion nos ayuda a mejorar.` });
+        } catch { await interaction.editReply({ content: "Gracias por tu calificacion." }).catch(() => {}); }
+      }
       return;
     }
   });

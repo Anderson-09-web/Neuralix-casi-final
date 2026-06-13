@@ -26,7 +26,7 @@ type Tab = typeof TABS[number]["id"];
 
 const BUTTON_COLORS = ["PRIMARY", "SECONDARY", "SUCCESS", "DANGER"] as const;
 const emptyModule = { name: "", description: "", emoji: "", welcomeMessage: "", welcomeEmbedEnabled: false, welcomeEmbedTitle: "", welcomeEmbedDescription: "", welcomeEmbedColor: "", supportRoleIds: "", categoryId: "", buttonLabel: "", buttonColor: "PRIMARY", sortOrder: "0" };
-const emptyPanel = { name: "", description: "", channelId: "", buttonLabel: "Abrir Ticket", buttonColor: "PRIMARY", buttonEmoji: "", embedTitle: "", embedDescription: "", embedColor: "#5865F2", embedFooter: "", embedImage: "", useModules: false, sortOrder: "0", selectedModuleIds: [] as number[] };
+const emptyPanel = { name: "", description: "", channelId: "", panelType: "button", buttonLabel: "Abrir Ticket", buttonColor: "PRIMARY", buttonEmoji: "", embedTitle: "", embedDescription: "", embedColor: "#5865F2", embedFooter: "", embedImage: "", useModules: false, sortOrder: "0", selectedModuleIds: [] as number[] };
 
 function NativeSelect({ value, onChange, children }: { value: string; onChange: (v: string) => void; children: React.ReactNode }) {
   return (
@@ -124,6 +124,7 @@ export default function TicketsPage() {
       name: panelForm.name,
       description: panelForm.description,
       channelId: panelForm.channelId,
+      panelType: panelForm.panelType,
       buttonLabel: panelForm.buttonLabel,
       buttonColor: panelForm.buttonColor,
       buttonEmoji: panelForm.buttonEmoji,
@@ -186,7 +187,8 @@ export default function TicketsPage() {
     const assignedModuleIds = modules.filter((m: any) => m.panelId === p.id).map((m: any) => m.id);
     setPanelForm({
       name: p.name || "", description: p.description || "",
-      channelId: p.channelId || "", buttonLabel: p.buttonLabel || "Abrir Ticket",
+      channelId: p.channelId || "", panelType: p.panelType || "button",
+      buttonLabel: p.buttonLabel || "Abrir Ticket",
       buttonColor: p.buttonColor || "PRIMARY", buttonEmoji: p.buttonEmoji || "",
       embedTitle: p.embedTitle || "", embedDescription: p.embedDescription || "",
       embedColor: p.embedColor || "#5865F2", embedFooter: p.embedFooter || "",
@@ -363,6 +365,31 @@ export default function TicketsPage() {
                     </div>
                     {panelForm.useModules && (
                       <div className="md:col-span-2">
+                        <Label className="text-xs mb-1.5 block">Tipo de selector de modulos</Label>
+                        <div className="flex gap-2">
+                          {(["button", "select_menu"] as const).map((t) => (
+                            <button
+                              key={t}
+                              type="button"
+                              onClick={() => setPF("panelType")(t)}
+                              className={cn(
+                                "flex-1 py-2 px-3 rounded-lg border text-xs font-medium transition-all text-left",
+                                panelForm.panelType === t
+                                  ? "bg-primary/10 border-primary/50 text-foreground"
+                                  : "bg-secondary/30 border-border text-muted-foreground hover:border-primary/30"
+                              )}
+                            >
+                              <div className="font-semibold mb-0.5">{t === "button" ? "Botones" : "Menu de seleccion"}</div>
+                              <div className="text-xs text-muted-foreground leading-tight">
+                                {t === "button" ? "Hasta 5 botones (uno por modulo)" : "Lista desplegable (hasta 25 modulos)"}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {panelForm.useModules && (
+                      <div className="md:col-span-2">
                         <Label className="text-xs mb-2 block">Selecciona los modulos que aparecen en este panel</Label>
                         {modules.length === 0 ? (
                           <div className="p-3 bg-secondary/50 rounded-lg text-xs text-muted-foreground">
@@ -433,6 +460,7 @@ export default function TicketsPage() {
                             <div className="flex items-center gap-2 flex-wrap">
                               <p className="font-medium text-sm">{p.name}</p>
                               {p.useModules && <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-primary/15 text-primary">Modulos</span>}
+                              {p.useModules && p.panelType === "select_menu" && <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-violet-500/15 text-violet-400">Menu</span>}
                               {p._moduleCount != null && <span className="text-xs text-muted-foreground">{p._moduleCount} modulo{p._moduleCount !== 1 ? "s" : ""}</span>}
                             </div>
                             {p.embedTitle && <p className="text-xs text-muted-foreground mt-0.5">{p.embedTitle}</p>}
@@ -627,6 +655,11 @@ export default function TicketsPage() {
                   <div>
                     <Label className="text-sm mb-1.5 block">Canal de logs de tickets</Label>
                     <GuildChannelSelect guildId={guildId!} value={cfg.logsChannelId || ""} onChange={set("logsChannelId")} types={[0, 5]} />
+                  </div>
+                  <div>
+                    <Label className="text-sm mb-1.5 block">Canal de calificaciones (encuesta)</Label>
+                    <GuildChannelSelect guildId={guildId!} value={cfg.satisfactionLogChannelId || ""} onChange={set("satisfactionLogChannelId")} types={[0, 5]} />
+                    <p className="text-xs text-muted-foreground mt-1">Registra las calificaciones de usuarios cuando responden la encuesta de satisfaccion.</p>
                   </div>
                 </div>
               </div>

@@ -141,27 +141,31 @@ export default function AiAssistant({ guildId }: Props) {
         {/* Chat Tab */}
         <div style={{ display: tab === "chat" ? "flex" : "none", height: isUltra ? 320 : 288 }} className="flex-col">
           {isFree ? (
-            /* Free plan — BLOCKED from AI chat */
-            <div className="flex-1 flex flex-col items-center justify-center p-5 text-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center">
-                <Lock className="w-5 h-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold mb-1">Chat IA — Solo Premium</p>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  El asistente de IA esta disponible exclusivamente para servidores con plan Plus, Pro o Ultra.
-                </p>
-              </div>
-              <div className="w-full space-y-2 pt-1">
-                <a href="/servers" className="block">
-                  <Button size="sm" className="w-full gap-2 text-xs">
-                    <Crown className="w-3.5 h-3.5" /> Activar Premium
+            /* Free plan — Quick FAQ cards */
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              <p className="text-xs text-muted-foreground font-medium pb-1">Respuestas rapidas</p>
+              {[
+                { q: "¿Como activo AntiRaid?", a: "Ve al panel AntiRaid en el menu lateral. Activa el modulo principal y configura los sub-modulos. Activa el modo de emergencia si hay un raid en curso." },
+                { q: "¿Como configuro tickets?", a: "Ve a Tickets en el menu. Activa el sistema, configura el canal del panel y los roles de soporte. Luego usa 'Enviar Panel' para publicarlo en Discord." },
+                { q: "¿Como activo verificacion?", a: "Ve a Verificacion. Activa el sistema, elige el tipo (Captcha/Boton/Email), configura el rol que se asigna al verificarse y envia el panel." },
+                { q: "¿Como uso los logs?", a: "Ve a Logs en el menu. Activa el sistema y selecciona que eventos registrar y en que canal de Discord." },
+                { q: "¿Como activo Premium?", a: "Ve a la seccion Premium del dashboard de tu servidor e ingresa tu codigo de licencia. Si no tienes uno, obtenlo en nuestro Discord." },
+              ].map((item, i) => (
+                <div key={i} className="p-2.5 rounded-lg bg-secondary border border-border">
+                  <p className="text-xs font-semibold text-foreground mb-1">{item.q}</p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{item.a}</p>
+                </div>
+              ))}
+              <div className="pt-2 space-y-1.5">
+                <a href={DISCORD_LINK} target="_blank" rel="noopener noreferrer">
+                  <Button size="sm" variant="outline" className="w-full gap-2 text-xs">
+                    <ExternalLink className="w-3 h-3" /> Soporte en Discord
                   </Button>
                 </a>
-                <a href={DISCORD_LINK} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
-                  <ExternalLink className="w-3 h-3" /> Soporte en Discord
-                </a>
+                <p className="text-center text-xs text-muted-foreground">
+                  <Crown className="w-3 h-3 inline mr-1 text-primary" />
+                  <a href={`/servers/${guildId}/premium`} className="text-primary hover:underline">Activa Premium</a> para chat IA sin limites
+                </p>
               </div>
             </div>
           ) : (

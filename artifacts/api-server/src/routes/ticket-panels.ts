@@ -30,7 +30,7 @@ router.get("/guilds/:guildId/tickets/panels", requireAuth, async (req, res) => {
 router.post("/guilds/:guildId/tickets/panels", requireAuth, async (req, res) => {
   const guildId = req.params.guildId as string;
   try {
-    const { name, description, channelId, embedTitle, embedDescription, embedColor, embedImage, embedFooter, buttonLabel, buttonEmoji, buttonColor, useModules, sortOrder, moduleIds } = req.body;
+    const { name, description, channelId, embedTitle, embedDescription, embedColor, embedImage, embedFooter, panelType, buttonLabel, buttonEmoji, buttonColor, useModules, sortOrder, moduleIds } = req.body;
     if (!name) { res.status(400).json({ error: "El nombre es obligatorio" }); return; }
     const [created] = await db.insert(ticketPanelsTable).values({
       guildId, name,
@@ -41,6 +41,7 @@ router.post("/guilds/:guildId/tickets/panels", requireAuth, async (req, res) => 
       embedColor: embedColor || "#5865F2",
       embedImage: embedImage || null,
       embedFooter: embedFooter || null,
+      panelType: panelType || "button",
       buttonLabel: buttonLabel || "Abrir Ticket",
       buttonEmoji: buttonEmoji || "🎫",
       buttonColor: buttonColor || "PRIMARY",
@@ -66,7 +67,7 @@ router.put("/guilds/:guildId/tickets/panels/:panelId", requireAuth, async (req, 
   const panelId = Number(req.params.panelId as string);
   if (isNaN(panelId)) { res.status(400).json({ error: "ID invalido" }); return; }
   try {
-    const { name, description, channelId, embedTitle, embedDescription, embedColor, embedImage, embedFooter, buttonLabel, buttonEmoji, buttonColor, useModules, sortOrder, moduleIds } = req.body;
+    const { name, description, channelId, embedTitle, embedDescription, embedColor, embedImage, embedFooter, panelType, buttonLabel, buttonEmoji, buttonColor, useModules, sortOrder, moduleIds } = req.body;
     const [updated] = await db.update(ticketPanelsTable).set({
       name: name || undefined,
       description: description || null,
@@ -76,6 +77,7 @@ router.put("/guilds/:guildId/tickets/panels/:panelId", requireAuth, async (req, 
       embedColor: embedColor || "#5865F2",
       embedImage: embedImage || null,
       embedFooter: embedFooter || null,
+      panelType: panelType || "button",
       buttonLabel: buttonLabel || "Abrir Ticket",
       buttonEmoji: buttonEmoji || "🎫",
       buttonColor: buttonColor || "PRIMARY",
@@ -129,6 +131,8 @@ router.post("/guilds/:guildId/tickets/panels/:panelId/send", requireAuth, async 
     const buttonColors: Record<string, number> = { PRIMARY: 1, SECONDARY: 2, SUCCESS: 3, DANGER: 4 };
     let components: any[] = [];
 
+    const useSelectMenu = panel.panelType === "select_menu";
+
     if (panel.useModules) {
       const { isNull, or } = await import("drizzle-orm");
       const modules = await db.select().from(ticketModulesTable)
@@ -142,10 +146,10 @@ router.post("/guilds/:guildId/tickets/panels/:panelId/send", requireAuth, async 
         res.status(400).json({ ok: false, error: "No hay modulos activos para este panel. Crea modulos en la pestana 'Modulos' y asignalos a este panel." });
         return;
       }
-      if (modules.length <= 5) {
-        components = [{ type: 1, components: modules.map((m) => ({ type: 2, style: buttonColors[m.buttonColor || "PRIMARY"] ?? 1, label: m.buttonLabel || m.name, emoji: m.emoji ? { name: m.emoji } : undefined, custom_id: `ticket_open_module_${m.id}` })) }];
+      if (useSelectMenu || modules.length > 5) {
+        components = [{ type: 1, components: [{ type: 3, custom_id: "ticket_select_module", placeholder: "Selecciona el tipo de ticket...", min_values: 1, max_values: 1, options: modules.slice(0, 25).map((m) => ({ label: m.name, value: String(m.id), description: m.description ? m.description.substring(0, 100) : undefined, emoji: m.emoji ? { name: m.emoji } : undefined })) }] }];
       } else {
-        components = [{ type: 1, components: [{ type: 3, custom_id: "ticket_select_module", placeholder: "Selecciona el tipo de ticket...", options: modules.map((m) => ({ label: m.name, value: String(m.id), description: m.description || undefined, emoji: m.emoji ? { name: m.emoji } : undefined })) }] }];
+        components = [{ type: 1, components: modules.slice(0, 5).map((m) => ({ type: 2, style: buttonColors[m.buttonColor || "PRIMARY"] ?? 1, label: m.buttonLabel || m.name, emoji: m.emoji ? { name: m.emoji } : undefined, custom_id: `ticket_open_module_${m.id}` })) }];
       }
     } else {
       components = [{ type: 1, components: [{ type: 2, style: buttonColors[panel.buttonColor || "PRIMARY"] ?? 1, label: panel.buttonLabel || "Abrir Ticket", emoji: panel.buttonEmoji ? { name: panel.buttonEmoji } : { name: "🎫" }, custom_id: `ticket_panel_${panel.id}` }] }];
