@@ -149,7 +149,7 @@ router.get("/auth/discord/callback", async (req, res) => {
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
-    res.redirect(`${frontend}/servers`);
+    res.redirect(`${frontend}/auth/callback`);
   } catch (err: any) {
     req.log.error({ err }, "Discord OAuth error");
     res.redirect(`${frontend}/?error=oauth_failed`);
