@@ -63,6 +63,7 @@ export default function TicketsPage() {
   const [editingPanelId, setEditingPanelId] = useState<number | null>(null);
   const [showPanelForm, setShowPanelForm] = useState(false);
   const [sendingPanelId, setSendingPanelId] = useState<number | null>(null);
+  const [sendChannelInput, setSendChannelInput] = useState<{ panelId: number; channelId: string } | null>(null);
 
   const fetchModules = async () => {
     const res = await fetch(`/api/guilds/${guildId}/tickets/modules`, { credentials: "include" });
@@ -74,6 +75,7 @@ export default function TicketsPage() {
     if (res.ok) setPanels(await res.json());
   };
 
+  // Load modules whenever panels tab is shown (needed for module picker)
   useEffect(() => {
     if (config && !isMounted.current) {
       setCfg(config);
@@ -82,7 +84,7 @@ export default function TicketsPage() {
   }, [config]);
 
   useEffect(() => {
-    if (guildId && tab === "modules") fetchModules();
+    if (guildId && (tab === "modules" || tab === "paneles")) fetchModules();
   }, [guildId, tab]);
 
   useEffect(() => {
@@ -152,10 +154,21 @@ export default function TicketsPage() {
     else toast({ title: "Error al eliminar panel", variant: "destructive" });
   };
 
-  const sendPanel = async (id: number) => {
+  const sendPanel = async (id: number, overrideChannelId?: string) => {
+    const panel = panels.find((p) => p.id === id);
+    const channelId = overrideChannelId || panel?.channelId;
+    if (!channelId) {
+      setSendChannelInput({ panelId: id, channelId: "" });
+      return;
+    }
     setSendingPanelId(id);
+    setSendChannelInput(null);
     try {
-      const res = await fetch(`/api/guilds/${guildId}/tickets/panels/${id}/send`, { method: "POST", credentials: "include" });
+      const res = await fetch(`/api/guilds/${guildId}/tickets/panels/${id}/send`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channelId }),
+      });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?.ok !== false) toast({ title: "Panel enviado al canal correctamente" });
       else toast({ title: data?.error || "Error al enviar panel", description: data?.hint, variant: "destructive" });
@@ -340,6 +353,26 @@ export default function TicketsPage() {
                       </div>
                       <Switch checked={panelForm.useModules} onCheckedChange={(v) => setPF("useModules")(v)} />
                     </div>
+                    {panelForm.useModules && (
+                      <div className="md:col-span-2">
+                        <Label className="text-xs mb-2 block">Modulos disponibles para este panel</Label>
+                        {modules.length === 0 ? (
+                          <div className="p-3 bg-secondary/50 rounded-lg text-xs text-muted-foreground">
+                            Sin modulos creados. Crea modulos en la pestana "Modulos" primero.
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                            {modules.map((m: any) => (
+                              <div key={m.id} className="flex items-center gap-2 p-2.5 bg-secondary/40 rounded-lg border border-border text-xs">
+                                <span className="text-lg leading-none">{m.emoji || "🎫"}</span>
+                                <span className="font-medium truncate">{m.name}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-1.5">Todos los modulos habilitados apareceran como botones/selector en este panel al enviarlo.</p>
+                      </div>
+                    )}
                   </div>
                   <div className="flex gap-2 pt-1">
                     <Button size="sm" onClick={savePanel}>Guardar</Button>
@@ -395,6 +428,31 @@ export default function TicketsPage() {
                           </Button>
                         </div>
                       </div>
+                      {/* Inline channel prompt when no channelId is configured */}
+                      {sendChannelInput?.panelId === p.id && (
+                        <div className="mt-3 pt-3 border-t border-border flex items-center gap-2">
+                          <div className="flex-1">
+                            <p className="text-xs text-muted-foreground mb-1.5">Este panel no tiene canal configurado. Introduce el ID del canal de Discord donde enviarlo:</p>
+                            <input
+                              autoFocus
+                              className="h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring font-mono"
+                              placeholder="ID del canal (ej: 1234567890)"
+                              value={sendChannelInput.channelId}
+                              onChange={(e) => setSendChannelInput({ panelId: p.id, channelId: e.target.value })}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && sendChannelInput.channelId.trim()) sendPanel(p.id, sendChannelInput.channelId.trim());
+                                if (e.key === "Escape") setSendChannelInput(null);
+                              }}
+                            />
+                          </div>
+                          <div className="flex gap-1 mt-5">
+                            <Button size="sm" className="h-8 text-xs" disabled={!sendChannelInput.channelId.trim()} onClick={() => sendPanel(p.id, sendChannelInput.channelId.trim())}>
+                              <Send className="w-3 h-3 mr-1" />Enviar
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setSendChannelInput(null)}>Cancelar</Button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

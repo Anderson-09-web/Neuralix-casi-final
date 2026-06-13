@@ -174,13 +174,24 @@ export default function BackupsPage() {
                     </div>
                     <div>
                       <p className="font-semibold text-sm">{backup.label}</p>
-                      <div className="flex items-center gap-3 mt-0.5">
+                      <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
                           <Clock className="w-3 h-3" />
                           {new Date(backup.createdAt).toLocaleString("es")}
                         </span>
                         <span className="text-xs text-muted-foreground">{formatBytes(backup.size)}</span>
                         <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">v{backup.version}</span>
+                        {(backup.data as any)?.discordSnapshot && (() => {
+                          const snap = (backup.data as any).discordSnapshot;
+                          const roleCount = snap.roles?.length ?? 0;
+                          const channelCount = snap.channels?.length ?? 0;
+                          return (
+                            <>
+                              {channelCount > 0 && <span className="text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 font-medium">{channelCount} canales</span>}
+                              {roleCount > 0 && <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/10 text-green-400 font-medium">{roleCount} roles</span>}
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>

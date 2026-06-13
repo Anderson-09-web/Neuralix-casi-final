@@ -134,13 +134,13 @@ router.put("/guilds/:guildId/premium/webhook-config", requireAuth, async (req, r
   const guildId = req.params.guildId as string;
   const { webhookBotName, webhookBotAvatar } = req.body as { webhookBotName?: string; webhookBotAvatar?: string };
 
-  // Only Ultra plan can customize webhook name/avatar
+  // Pro and Ultra plans can customize webhook name/avatar
   const [cfg] = await db.select().from(guildConfigsTable).where(eq(guildConfigsTable.guildId, guildId));
-  const isUltra = cfg?.premiumActive && cfg?.premiumPlan === "ultra";
-  if (!isUltra) {
+  const canCustomize = cfg?.premiumActive && (cfg?.premiumPlan === "pro" || cfg?.premiumPlan === "ultra");
+  if (!canCustomize) {
     res.status(403).json({
-      error: "La personalizacion del bot (nombre y avatar) es exclusiva del plan Ultra. Actualiza tu plan para acceder a esta funcion.",
-      requiredPlan: "ultra",
+      error: "La personalizacion del bot es exclusiva de los planes Pro y Ultra.",
+      requiredPlan: "pro",
     });
     return;
   }

@@ -51,6 +51,7 @@ const tempRoleTimers    = new Map<string, NodeJS.Timeout>();
 const webhookSpamTracker = new Map<string, number[]>();    // `${guildId}:${userId}` → timestamps
 const suspiciousTracker  = new Map<string, { actions: string[]; resetAt: number }>(); // same key
 const aiCooldowns        = new Map<string, number>();      // `ai:${guildId}:${channelId}:${userId}` → timestamp
+const aiConversations    = new Map<string, { role: "user" | "assistant"; content: string }[]>(); // `ai:${guildId}:${channelId}` → history
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -933,12 +934,20 @@ export function startBot(): Client | undefined {
               try {
                 await message.channel.sendTyping().catch(() => {});
                 const systemPrompt = aiChannel.systemPrompt || "Eres un asistente util del servidor Discord. Responde de forma concisa y en el mismo idioma que el usuario.";
+
+                // Build conversation history (up to last 10 messages per channel)
+                const historyKey = `ai:${guildId}:${message.channelId}`;
+                const history = aiConversations.get(historyKey) ?? [];
+                history.push({ role: "user", content: content.substring(0, 1500) });
+                // Keep max 10 pairs (20 messages) to avoid exceeding context
+                const trimmedHistory = history.slice(-20);
+
                 const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
                   method: "POST",
                   headers: { "Content-Type": "application/json", "Authorization": `Bearer ${aiGroqKey}` },
                   body: JSON.stringify({
                     model: aiChannel.model || "llama-3.1-8b-instant",
-                    messages: [{ role: "system", content: systemPrompt }, { role: "user", content: content.substring(0, 2000) }],
+                    messages: [{ role: "system", content: systemPrompt }, ...trimmedHistory],
                     max_tokens: aiChannel.maxTokens || 500,
                     temperature: (aiChannel.temperature || 70) / 100,
                   }),
@@ -946,7 +955,56 @@ export function startBot(): Client | undefined {
                 if (resp.ok) {
                   const data = await resp.json() as any;
                   const reply = data?.choices?.[0]?.message?.content?.trim();
-                  if (reply) await message.reply({ content: reply.substring(0, 1990) }).catch(() => {});
+                  if (reply) {
+                    // Save assistant response to history
+                    trimmedHistory.push({ role: "assistant", content: reply.substring(0, 1500) });
+                    aiConversations.set(historyKey, trimmedHistory.slice(-20));
+
+                    // Try webhook response for Pro/Ultra guilds (custom name/avatar)
+                    let sentViaWebhook = false;
+                    const [gCfg] = await db.select().from(guildConfigsTable).where(eq(guildConfigsTable.guildId, guildId));
+                    const isPremiumPro = gCfg?.premiumActive && (gCfg.premiumPlan === "pro" || gCfg.premiumPlan === "ultra");
+                    if (isPremiumPro && (gCfg.webhookBotName || gCfg.webhookBotAvatar)) {
+                      try {
+                        const botToken2 = process.env.DISCORD_BOT_TOKEN;
+                        // Get or create webhook for this channel
+                        const whRes = await fetch(`https://discord.com/api/v10/channels/${message.channelId}/webhooks`, {
+                          headers: { "Authorization": `Bot ${botToken2}` },
+                        });
+                        if (whRes.ok) {
+                          const webhooks = await whRes.json() as any[];
+                          const existing = webhooks.find((w: any) => w.name === "Neuralix AI" || w.user?.id === client.user?.id);
+                          let webhookUrl = existing ? `https://discord.com/api/webhooks/${existing.id}/${existing.token}` : null;
+                          if (!webhookUrl) {
+                            const createRes = await fetch(`https://discord.com/api/v10/channels/${message.channelId}/webhooks`, {
+                              method: "POST",
+                              headers: { "Authorization": `Bot ${botToken2}`, "Content-Type": "application/json" },
+                              body: JSON.stringify({ name: "Neuralix AI" }),
+                            });
+                            if (createRes.ok) {
+                              const wh = await createRes.json() as any;
+                              webhookUrl = `https://discord.com/api/webhooks/${wh.id}/${wh.token}`;
+                            }
+                          }
+                          if (webhookUrl) {
+                            const sendRes = await fetch(webhookUrl, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                content: reply.substring(0, 1990),
+                                username: gCfg.webhookBotName || "Neuralix AI",
+                                avatar_url: gCfg.webhookBotAvatar || undefined,
+                              }),
+                            });
+                            if (sendRes.ok) sentViaWebhook = true;
+                          }
+                        }
+                      } catch {}
+                    }
+                    if (!sentViaWebhook) {
+                      await message.reply({ content: reply.substring(0, 1990) }).catch(() => {});
+                    }
+                  }
                 }
               } catch {}
             }
