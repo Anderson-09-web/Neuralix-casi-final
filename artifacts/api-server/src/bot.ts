@@ -225,6 +225,20 @@ async function isWhitelisted(guildId: string, userId: string, memberRoleIds?: st
   } catch { return false; }
 }
 
+async function autoBlacklist(userId: string, username: string, reason: string): Promise<void> {
+  try {
+    await db.insert(blacklistTable).values({
+      userId,
+      username,
+      reason,
+      addedBy: "bot",
+      addedByUsername: "Neuralix AntiRaid",
+      evidence: [],
+      sanctionHistory: [{ action: "ban", reason, by: "Neuralix AntiRaid", at: new Date().toISOString() }],
+    }).onConflictDoNothing();
+  } catch {}
+}
+
 async function addWarning(guildId: string, userId: string, username: string, reason: string, severity: string, botToken: string, logChannel?: string | null) {
   try {
     await db.insert(warningsTable).values({
@@ -570,14 +584,15 @@ export function startBot(): Client | undefined {
             joinTracker.set(guildId, joins);
             if (joins.length >= threshold) {
               const action = antiraid.antiJoinAction ?? "ban";
-              try {
-                if (action === "ban") await (member as GuildMember).ban({ reason: `AntiRaid: ${joins.length} joins en ${antiraid.antiJoinInterval}s` });
-                else if (action === "kick") await (member as GuildMember).kick("AntiRaid: AntiJoin");
-                else await (member as GuildMember).timeout(5 * 60_000, "AntiRaid: AntiJoin");
-                if (secChannel && logCfg?.logSecurity) {
-                  await sendLog(secChannel, { title: "AntiJoin — Raid Detectado", description: `**Accion:** ${action}\n**Joins:** ${joins.length} en ${antiraid.antiJoinInterval}s\n**Usuario:** \`${username}\``, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid" } }, botToken);
-                }
-              } catch {}
+              const banReason = `AntiRaid AntiJoin: ${joins.length} joins en ${antiraid.antiJoinInterval}s`;
+              if (action === "ban") {
+                await (member as GuildMember).ban({ reason: banReason }).catch(() => {});
+                await autoBlacklist(userId, username, banReason);
+              } else if (action === "kick") await (member as GuildMember).kick("AntiRaid: AntiJoin").catch(() => {});
+              else await (member as GuildMember).timeout(5 * 60_000, "AntiRaid: AntiJoin").catch(() => {});
+              if (secChannel && logCfg?.logSecurity) {
+                await sendLog(secChannel, { title: "AntiJoin — Raid Detectado", description: `**Accion:** ${action}\n**Joins:** ${joins.length} en ${antiraid.antiJoinInterval}s\n**Usuario:** \`${username}\`${action === "ban" ? "\n**Blacklist:** Agregado automaticamente" : ""}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid" } }, botToken);
+              }
               return;
             }
           }
@@ -924,15 +939,17 @@ export function startBot(): Client | undefined {
             } catch {}
           }
           if (target) {
-            if (action === "ban") await target.ban({ reason: "AntiRaid: Flood detectado" }).catch(() => {});
-            else if (action === "kick") await target.kick("AntiRaid: Flood detectado").catch(() => {});
+            if (action === "ban") {
+              await target.ban({ reason: "AntiRaid: Flood masivo de mensajes" }).catch(() => {});
+              await autoBlacklist(userId, username, "AntiRaid AntiFlood: Flood masivo de mensajes");
+            } else if (action === "kick") await target.kick("AntiRaid: Flood detectado").catch(() => {});
             else await target.timeout(10 * 60_000, "AntiRaid: Flood").catch(() => {});
           }
           await bumpStats(guildId, "blockedSpam");
           if (secChannel && logCfg?.logSecurity) {
             await sendLog(secChannel, {
               title: "AntiFlood — Flood Detectado",
-              description: `**Usuario:** \`${username}\` (<@${userId}>)\n**Mensajes:** ${userMsgs.length} en ${antiraid.floodInterval}s\n**Accion:** ${action}${!target ? " (sin efecto: miembro no encontrado)" : ""}\n**Canal:** <#${message.channelId}>`,
+              description: `**Usuario:** \`${username}\` (<@${userId}>)\n**Mensajes:** ${userMsgs.length} en ${antiraid.floodInterval}s\n**Accion:** ${action}${!target ? " (sin efecto: miembro no encontrado)" : ""}${action === "ban" ? "\n**Blacklist:** Agregado automaticamente" : ""}\n**Canal:** <#${message.channelId}>`,
               color: 0xFF6B35, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid" },
             }, botToken);
           }
@@ -955,15 +972,17 @@ export function startBot(): Client | undefined {
           // Fetch member explicitly if not cached
           const target = message.member ?? await message.guild.members.fetch(userId).catch(() => null);
           if (target) {
-            if (action === "ban") await target.ban({ reason: "AntiRaid: Spam" }).catch(() => {});
-            else if (action === "kick") await target.kick("AntiRaid: Spam").catch(() => {});
+            if (action === "ban") {
+              await target.ban({ reason: "AntiRaid: Spam masivo" }).catch(() => {});
+              await autoBlacklist(userId, username, "AntiRaid AntiSpam: Spam masivo de mensajes");
+            } else if (action === "kick") await target.kick("AntiRaid: Spam").catch(() => {});
             else await target.timeout(10 * 60_000, "AntiRaid: Spam").catch(() => {});
           }
           await bumpStats(guildId, "blockedSpam");
           if (secChannel && logCfg?.logSecurity) {
             await sendLog(secChannel, {
               title: "AntiSpam Activado",
-              description: `**Usuario:** \`${username}\` (<@${userId}>)\n**Accion:** ${action}${!target ? " (sin efecto: miembro no encontrado)" : ""}\n**Mensajes:** ${msgs.length} en ${antiraid.antiSpamInterval}s`,
+              description: `**Usuario:** \`${username}\` (<@${userId}>)\n**Accion:** ${action}${!target ? " (sin efecto: miembro no encontrado)" : ""}${action === "ban" ? "\n**Blacklist:** Agregado automaticamente" : ""}\n**Mensajes:** ${msgs.length} en ${antiraid.antiSpamInterval}s`,
               color: 0xFF6B35, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid" },
             }, botToken);
           }
@@ -1547,8 +1566,10 @@ export function startBot(): Client | undefined {
                   try {
                     const member = guild.members.cache.get(executor.id) || await guild.members.fetch(executor.id).catch(() => null);
                     if (member) {
-                      if (raidCfg.nukeAction === "ban") await member.ban({ reason: "AntiRaid: Webhook spam" }).catch(() => {});
-                      else if (raidCfg.nukeAction === "kick") await member.kick("AntiRaid: Webhook spam").catch(() => {});
+                      if (raidCfg.nukeAction === "ban") {
+                        await member.ban({ reason: "AntiRaid: Webhook spam" }).catch(() => {});
+                        await autoBlacklist(executor.id, executor.username, "AntiRaid AntiWebhook: Spam masivo de webhooks");
+                      } else if (raidCfg.nukeAction === "kick") await member.kick("AntiRaid: Webhook spam").catch(() => {});
                       else await member.roles.set([], "AntiRaid: Webhook spam").catch(() => {});
                     }
                     if (secCh) await sendLog(secCh, { title: "AntiWebhook — Webhook Spam", description: `**Responsable:** ${executorStr}\n**Webhooks:** ${timestamps.length} en ${raidCfg.webhookSpamInterval}s\n**Accion:** ${raidCfg.nukeAction}`, color: 0xED4245, timestamp: ts, footer: { text: "Neuralix AntiRaid" } }, botToken);
@@ -1664,13 +1685,15 @@ export function startBot(): Client | undefined {
           const exceeded = trackNukeAction(guildId, executorId, antiraid.nukeThreshold ?? 10);
           if (exceeded && antiraid.antiNuke) {
             try {
-              const member = channel.guild.members.cache.get(executorId);
+              const member = channel.guild.members.cache.get(executorId) || await channel.guild.members.fetch(executorId).catch(() => null);
               if (member) {
-                if (antiraid.nukeAction === "ban") await member.ban({ reason: "AntiNuke: Creacion masiva de canales" });
-                else if (antiraid.nukeAction === "kick") await member.kick("AntiNuke");
-                else await member.roles.set([], "AntiNuke: Permisos revocados");
+                if (antiraid.nukeAction === "ban") {
+                  await member.ban({ reason: "AntiNuke: Creacion masiva de canales" }).catch(() => {});
+                  await autoBlacklist(executorId, executorTag ?? executorId, "AntiNuke: Creacion masiva de canales");
+                } else if (antiraid.nukeAction === "kick") await member.kick("AntiNuke").catch(() => {});
+                else await member.roles.set([], "AntiNuke: Permisos revocados").catch(() => {});
               }
-              if (secChannel) { await sendLog(secChannel, { title: "AntiNuke — Canales Masivos", description: `**Responsable:** <@${executorId}>\n**Accion:** ${antiraid.nukeAction}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiNuke" } }, botToken); }
+              if (secChannel) { await sendLog(secChannel, { title: "AntiNuke — Canales Masivos", description: `**Responsable:** <@${executorId}>\n**Accion:** ${antiraid.nukeAction}${antiraid.nukeAction === "ban" ? "\n**Blacklist:** Agregado automaticamente" : ""}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiNuke" } }, botToken); }
             } catch {}
           }
         }
@@ -1707,13 +1730,15 @@ export function startBot(): Client | undefined {
           const exceeded = trackNukeAction(guildId, executorId, antiraid.nukeThreshold ?? 10);
           if (exceeded && antiraid.antiNuke) {
             try {
-              const member = channel.guild.members.cache.get(executorId);
+              const member = channel.guild.members.cache.get(executorId) || await channel.guild.members.fetch(executorId).catch(() => null);
               if (member) {
-                if (antiraid.nukeAction === "ban") await member.ban({ reason: "AntiNuke: Destruccion masiva" });
-                else if (antiraid.nukeAction === "kick") await member.kick("AntiNuke");
-                else await member.roles.set([], "AntiNuke: Permisos revocados");
+                if (antiraid.nukeAction === "ban") {
+                  await member.ban({ reason: "AntiNuke: Destruccion masiva de canales" }).catch(() => {});
+                  await autoBlacklist(executorId, executorTag ?? executorId, "AntiNuke: Destruccion masiva de canales");
+                } else if (antiraid.nukeAction === "kick") await member.kick("AntiNuke").catch(() => {});
+                else await member.roles.set([], "AntiNuke: Permisos revocados").catch(() => {});
               }
-              if (secChannel) { await sendLog(secChannel, { title: "AntiNuke — Destruccion Masiva", description: `**Responsable:** <@${executorId}>\n**Accion:** ${antiraid.nukeAction}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiNuke" } }, botToken); }
+              if (secChannel) { await sendLog(secChannel, { title: "AntiNuke — Destruccion Masiva", description: `**Responsable:** <@${executorId}>\n**Accion:** ${antiraid.nukeAction}${antiraid.nukeAction === "ban" ? "\n**Blacklist:** Agregado automaticamente" : ""}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiNuke" } }, botToken); }
             } catch {}
           }
         }
@@ -1748,13 +1773,15 @@ export function startBot(): Client | undefined {
         if (!whitelisted) {
           const exceeded = trackNukeAction(guildId, executorId, antiraid.nukeThreshold ?? 10);
           if (exceeded && antiraid.antiNuke) {
-            const member = role.guild.members.cache.get(executorId);
+            const member = role.guild.members.cache.get(executorId) || await role.guild.members.fetch(executorId).catch(() => null);
             if (member) {
-              if (antiraid.nukeAction === "ban") await member.ban({ reason: "AntiNuke: Roles masivos" }).catch(() => {});
-              else if (antiraid.nukeAction === "kick") await member.kick("AntiNuke").catch(() => {});
+              if (antiraid.nukeAction === "ban") {
+                await member.ban({ reason: "AntiNuke: Creacion masiva de roles" }).catch(() => {});
+                await autoBlacklist(executorId, executorTag ?? executorId, "AntiNuke: Creacion masiva de roles");
+              } else if (antiraid.nukeAction === "kick") await member.kick("AntiNuke").catch(() => {});
               else await member.roles.set([], "AntiNuke").catch(() => {});
             }
-            if (secChannel) { await sendLog(secChannel, { title: "AntiNuke — Roles Masivos", description: `**Responsable:** <@${executorId}>\n**Accion:** ${antiraid.nukeAction}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiNuke" } }, botToken); }
+            if (secChannel) { await sendLog(secChannel, { title: "AntiNuke — Roles Masivos", description: `**Responsable:** <@${executorId}>\n**Accion:** ${antiraid.nukeAction}${antiraid.nukeAction === "ban" ? "\n**Blacklist:** Agregado automaticamente" : ""}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiNuke" } }, botToken); }
           }
         }
       }
@@ -1788,13 +1815,15 @@ export function startBot(): Client | undefined {
         if (!whitelisted) {
           const exceeded = trackNukeAction(guildId, executorId, antiraid.nukeThreshold ?? 10);
           if (exceeded && antiraid.antiNuke) {
-            const member = role.guild.members.cache.get(executorId);
+            const member = role.guild.members.cache.get(executorId) || await role.guild.members.fetch(executorId).catch(() => null);
             if (member) {
-              if (antiraid.nukeAction === "ban") await member.ban({ reason: "AntiNuke: Destruccion masiva de roles" }).catch(() => {});
-              else if (antiraid.nukeAction === "kick") await member.kick("AntiNuke").catch(() => {});
+              if (antiraid.nukeAction === "ban") {
+                await member.ban({ reason: "AntiNuke: Eliminacion masiva de roles" }).catch(() => {});
+                await autoBlacklist(executorId, executorTag ?? executorId, "AntiNuke: Eliminacion masiva de roles");
+              } else if (antiraid.nukeAction === "kick") await member.kick("AntiNuke").catch(() => {});
               else await member.roles.set([], "AntiNuke").catch(() => {});
             }
-            if (secChannel) { await sendLog(secChannel, { title: "AntiNuke — Roles Eliminados", description: `**Responsable:** <@${executorId}>\n**Accion:** ${antiraid.nukeAction}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiNuke" } }, botToken); }
+            if (secChannel) { await sendLog(secChannel, { title: "AntiNuke — Roles Eliminados", description: `**Responsable:** <@${executorId}>\n**Accion:** ${antiraid.nukeAction}${antiraid.nukeAction === "ban" ? "\n**Blacklist:** Agregado automaticamente" : ""}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiNuke" } }, botToken); }
           }
         }
       }
@@ -1828,13 +1857,15 @@ export function startBot(): Client | undefined {
         if (!whitelisted) {
           const exceeded = trackNukeAction(guildId, executorId, antiraid.nukeThreshold ?? 10);
           if (exceeded && antiraid.antiNuke) {
-            const member = ban.guild.members.cache.get(executorId);
+            const member = ban.guild.members.cache.get(executorId) || await ban.guild.members.fetch(executorId).catch(() => null);
             if (member) {
-              if (antiraid.nukeAction === "ban") await member.ban({ reason: "AntiNuke: Bans masivos" }).catch(() => {});
-              else if (antiraid.nukeAction === "kick") await member.kick("AntiNuke").catch(() => {});
+              if (antiraid.nukeAction === "ban") {
+                await member.ban({ reason: "AntiNuke: Bans masivos" }).catch(() => {});
+                await autoBlacklist(executorId, member.user.username, "AntiNuke: Bans masivos en el servidor");
+              } else if (antiraid.nukeAction === "kick") await member.kick("AntiNuke").catch(() => {});
               else await member.roles.set([], "AntiNuke").catch(() => {});
             }
-            if (secChannel) { await sendLog(secChannel, { title: "AntiNuke — Bans Masivos", description: `**Responsable:** <@${executorId}>\n**Accion:** ${antiraid.nukeAction}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiNuke" } }, botToken); }
+            if (secChannel) { await sendLog(secChannel, { title: "AntiNuke — Bans Masivos", description: `**Responsable:** <@${executorId}>\n**Accion:** ${antiraid.nukeAction}${antiraid.nukeAction === "ban" ? "\n**Blacklist:** Agregado automaticamente" : ""}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiNuke" } }, botToken); }
           }
         }
       }
