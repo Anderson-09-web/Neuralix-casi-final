@@ -43,7 +43,16 @@ function isSafeUrl(url: string): boolean {
 async function fetchImageBuffer(url: string): Promise<Buffer | null> {
   if (!isSafeUrl(url)) return null;
   try {
-    const res = await axios.get(url, { responseType: "arraybuffer", timeout: 5000, validateStatus: () => true });
+    const res = await axios.get(url, {
+      responseType: "arraybuffer",
+      timeout: 10000,
+      validateStatus: () => true,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; Neuralix-Bot/1.0)",
+        "Accept": "image/*,*/*",
+      },
+      maxRedirects: 5,
+    });
     if (res.status === 200) return Buffer.from(res.data);
   } catch {}
   return null;

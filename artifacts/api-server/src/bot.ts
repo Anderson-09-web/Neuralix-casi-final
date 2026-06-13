@@ -648,7 +648,7 @@ export function startBot(): Client | undefined {
             const cardBuf = await generateWelcomeCard({
               username, tag: opts.tag, guildName, memberCount,
               avatarUrl,
-              background: (welcomeCfg as any).cardBackground || null,
+              background: (welcomeCfg as any).cardBackgroundUrl ? null : ((welcomeCfg as any).cardBackground || null),
               backgroundUrl: (welcomeCfg as any).cardBackgroundUrl || null,
               textColor: (welcomeCfg as any).cardTextColor || null,
               avatarBorderColor: (welcomeCfg as any).cardAvatarBorderColor || null,
@@ -771,7 +771,54 @@ export function startBot(): Client | undefined {
         const hasCustom = guildCfg?.webhookBotName || guildCfg?.webhookBotAvatar;
         const useGoodbyeWebhook = hasCustom && goodbyeWebhookRow?.webhookId && goodbyeWebhookRow?.webhookToken;
 
-        if (useGoodbyeWebhook) {
+        if ((goodbyeCfg as any).cardEnabled) {
+          try {
+            const avatarUrl = member.user?.avatar
+              ? `https://cdn.discordapp.com/avatars/${userId}/${member.user.avatar}.png?size=128`
+              : null;
+            const cardBuf = await generateWelcomeCard({
+              username, tag: username, guildName, memberCount,
+              avatarUrl,
+              background: (goodbyeCfg as any).cardBackgroundUrl ? null : ((goodbyeCfg as any).cardBackground || null),
+              backgroundUrl: (goodbyeCfg as any).cardBackgroundUrl || null,
+              textColor: (goodbyeCfg as any).cardTextColor || null,
+              welcomeText: "HASTA LUEGO EN",
+            });
+            if (cardBuf) {
+              const hasEmbed = payload.embeds && Array.isArray(payload.embeds) && (payload.embeds as any[]).length > 0;
+              const cardUrl = useGoodbyeWebhook
+                ? `${DISCORD_API}/webhooks/${goodbyeWebhookRow!.webhookId}/${goodbyeWebhookRow!.webhookToken}`
+                : `${DISCORD_API}/channels/${goodbyeCfg.channelId}/messages`;
+              const extraFields = useGoodbyeWebhook
+                ? { username: guildCfg!.webhookBotName || undefined, avatar_url: guildCfg!.webhookBotAvatar || undefined }
+                : {};
+              const authHdr = useGoodbyeWebhook ? {} : { Authorization: `Bot ${botToken!.trim()}` };
+              if (hasEmbed) {
+                const embeds = (payload.embeds as any[]).map((e: any, i: number) =>
+                  i === 0 ? { ...e, image: { url: "attachment://goodbye-card.png" } } : e
+                );
+                const form = new FormData();
+                form.append("payload_json", JSON.stringify({ ...payload, ...extraFields, embeds }));
+                form.append("files[0]", new Blob([new Uint8Array(cardBuf)], { type: "image/png" }), "goodbye-card.png");
+                await axios.post(cardUrl, form, { headers: authHdr, validateStatus: () => true });
+              } else {
+                const cardForm = new FormData();
+                cardForm.append("payload_json", JSON.stringify({ ...extraFields, content: payload.content || undefined }));
+                cardForm.append("files[0]", new Blob([new Uint8Array(cardBuf)], { type: "image/png" }), "goodbye-card.png");
+                await axios.post(cardUrl, cardForm, { headers: authHdr, validateStatus: () => true });
+              }
+            } else {
+              if (useGoodbyeWebhook) {
+                const wp = { ...payload, username: guildCfg!.webhookBotName || undefined, avatar_url: guildCfg!.webhookBotAvatar || undefined };
+                await axios.post(`${DISCORD_API}/webhooks/${goodbyeWebhookRow!.webhookId}/${goodbyeWebhookRow!.webhookToken}`, wp, { headers: { "Content-Type": "application/json" }, validateStatus: () => true });
+              } else {
+                await sendToChannel(goodbyeCfg.channelId, payload, botToken);
+              }
+            }
+          } catch {
+            await sendToChannel(goodbyeCfg.channelId, payload, botToken);
+          }
+        } else if (useGoodbyeWebhook) {
           const wp = { ...payload, username: guildCfg!.webhookBotName || undefined, avatar_url: guildCfg!.webhookBotAvatar || undefined };
           const r = await axios.post(`${DISCORD_API}/webhooks/${goodbyeWebhookRow!.webhookId}/${goodbyeWebhookRow!.webhookToken}`, wp, {
             headers: { "Content-Type": "application/json" }, validateStatus: () => true,

@@ -11,13 +11,13 @@ const WELCOME_ALLOWED = new Set([
   "enabled", "channelId", "message",
   "embedEnabled", "embedColor", "embedTitle", "embedDescription", "embedFooter", "embedImage",
   "imageEnabled", "dmEnabled", "dmMessage", "autoRoleIds",
-  "cardEnabled", "cardBackground", "cardTextColor",
+  "cardEnabled", "cardBackground", "cardBackgroundUrl", "cardTextColor",
 ]);
 
 const GOODBYE_ALLOWED = new Set([
   "enabled", "channelId", "message",
   "embedEnabled", "embedColor", "embedTitle", "embedDescription", "embedFooter", "embedImage", "imageEnabled",
-  "cardEnabled", "cardBackground", "cardTextColor",
+  "cardEnabled", "cardBackground", "cardBackgroundUrl", "cardTextColor",
 ]);
 
 function whitelistBody(body: Record<string, unknown>, allowed: Set<string>) {
