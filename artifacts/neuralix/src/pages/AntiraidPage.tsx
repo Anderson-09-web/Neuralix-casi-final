@@ -231,7 +231,7 @@ export default function AntiraidPage() {
                     </NativeSelect>
                   </div>
                   <div className="flex items-center gap-3 pt-5">
-                    <Switch checked={(cfg as any).antiDiscordInvites !== false} onCheckedChange={set("antiDiscordInvites")} />
+                    <Switch checked={cfg.antiDiscordInvites ?? true} onCheckedChange={set("antiDiscordInvites")} />
                     <Label className="text-sm">Bloquear invitaciones Discord</Label>
                   </div>
                 </div>
