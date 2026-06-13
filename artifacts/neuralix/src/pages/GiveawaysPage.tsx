@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import GuildChannelSelect from "@/components/GuildChannelSelect";
+import GuildRoleSelect from "@/components/GuildRoleSelect";
 
 type Giveaway = {
   id: number;
@@ -216,8 +218,8 @@ export default function GiveawaysPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label>ID del canal <span className="text-destructive">*</span></Label>
-                <Input placeholder="123456789012345678" value={form.channelId} onChange={(e) => setForm((f) => ({ ...f, channelId: e.target.value }))} />
+                <Label>Canal <span className="text-destructive">*</span></Label>
+                <GuildChannelSelect guildId={guildId!} value={form.channelId} onChange={(v) => setForm((f) => ({ ...f, channelId: v }))} types={[0, 5]} />
                 <p className="text-xs text-muted-foreground">Canal de Discord donde se publicara</p>
               </div>
               <div className="space-y-1.5">
@@ -238,8 +240,8 @@ export default function GiveawaysPage() {
                 <Input type="number" min="1" max="20" value={form.winnerCount} onChange={(e) => setForm((f) => ({ ...f, winnerCount: e.target.value }))} />
               </div>
               <div className="space-y-1.5">
-                <Label>Rol requerido (ID, opcional)</Label>
-                <Input placeholder="ID del rol" value={form.reqRole} onChange={(e) => setForm((f) => ({ ...f, reqRole: e.target.value }))} />
+                <Label>Rol requerido (opcional)</Label>
+                <GuildRoleSelect guildId={guildId!} value={form.reqRole} onChange={(v) => setForm((f) => ({ ...f, reqRole: v }))} placeholder="Sin requisito de rol" />
               </div>
               <div className="space-y-1.5">
                 <Label>Edad minima de cuenta (dias, opcional)</Label>

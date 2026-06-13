@@ -1,6 +1,7 @@
 import { useParams } from "wouter";
 import { useState, useEffect, useRef } from "react";
 import { ShieldAlert, RefreshCw, Shield, Users, Plus, Trash2, UserCheck, TrendingDown } from "lucide-react";
+import GuildRoleSelect from "@/components/GuildRoleSelect";
 import { useGetAntiraidConfig, useUpdateAntiraidConfig, useGetAntiraidStats, getGetAntiraidConfigQueryKey, getGetAntiraidStatsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import Layout from "@/components/Layout";
@@ -382,8 +383,14 @@ export default function AntiraidPage() {
               <h3 className="font-semibold text-sm">Agregar a Whitelist</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-xs mb-1.5 block">ID de usuario o rol *</Label>
-                  <Input value={wlForm.entityId} onChange={(e) => setWlForm((f) => ({ ...f, entityId: e.target.value }))} placeholder="ID de Discord" />
+                  <Label className="text-xs mb-1.5 block">
+                    {wlForm.entityType === "role" ? "Rol *" : "ID de Discord *"}
+                  </Label>
+                  {wlForm.entityType === "role" ? (
+                    <GuildRoleSelect guildId={guildId!} value={wlForm.entityId} onChange={(v) => setWlForm((f) => ({ ...f, entityId: v }))} placeholder="Seleccionar rol..." />
+                  ) : (
+                    <Input value={wlForm.entityId} onChange={(e) => setWlForm((f) => ({ ...f, entityId: e.target.value }))} placeholder="ID de Discord" />
+                  )}
                 </div>
                 <div>
                   <Label className="text-xs mb-1.5 block">Tipo</Label>

@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
+import GuildChannelSelect from "@/components/GuildChannelSelect";
+import GuildRoleMultiSelect from "@/components/GuildRoleMultiSelect";
 
 const API = (path: string) => `/api${path}`;
 
@@ -193,8 +195,8 @@ export default function AutoRolesPage() {
           </div>
 
           <div>
-            <Label className="text-xs mb-1.5 block">IDs de Roles (separados por comas)</Label>
-            <Input value={form.roleIds} onChange={(e) => setF("roleIds")(e.target.value)} placeholder="123456789012345678, 987654321098765432" />
+            <Label className="text-xs mb-1.5 block">Roles</Label>
+            <GuildRoleMultiSelect guildId={guildId!} value={form.roleIds} onChange={setF("roleIds")} />
           </div>
           <div>
             <Label className="text-xs mb-1.5 block">Descripcion</Label>
@@ -223,8 +225,8 @@ export default function AutoRolesPage() {
                 )}
               </div>
               <div>
-                <Label className="text-xs mb-1.5 block">Canal donde enviar el panel (ID)</Label>
-                <Input value={form.channelId} onChange={(e) => setF("channelId")(e.target.value)} placeholder="ID del canal" />
+                <Label className="text-xs mb-1.5 block">Canal donde enviar el panel</Label>
+                <GuildChannelSelect guildId={guildId!} value={form.channelId} onChange={setF("channelId")} types={[0, 5]} />
               </div>
               {form.type === "select" && (
                 <p className="text-xs text-muted-foreground bg-blue-500/5 border border-blue-500/20 rounded px-3 py-2">

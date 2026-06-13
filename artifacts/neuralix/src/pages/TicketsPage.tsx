@@ -12,6 +12,9 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { VariablesModal, TICKET_VARIABLES } from "@/components/VariablesModal";
 import { cn } from "@/lib/utils";
+import GuildChannelSelect from "@/components/GuildChannelSelect";
+import GuildRoleSelect from "@/components/GuildRoleSelect";
+import GuildRoleMultiSelect from "@/components/GuildRoleMultiSelect";
 
 const TABS = [
   { id: "paneles", label: "Paneles", icon: PanelIcon },
@@ -303,8 +306,8 @@ export default function TicketsPage() {
                       <input className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.name} onChange={(e) => setPF("name")(e.target.value)} placeholder="Panel Principal" />
                     </div>
                     <div>
-                      <Label className="text-xs mb-1.5 block">Canal de Discord (ID)</Label>
-                      <input className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.channelId} onChange={(e) => setPF("channelId")(e.target.value)} placeholder="ID del canal" />
+                      <Label className="text-xs mb-1.5 block">Canal de Discord</Label>
+                      <GuildChannelSelect guildId={guildId!} value={panelForm.channelId} onChange={setPF("channelId")} types={[0, 5]} />
                     </div>
                     <div className="md:col-span-2">
                       <Label className="text-xs mb-1.5 block">Descripcion</Label>
@@ -460,26 +463,21 @@ export default function TicketsPage() {
                       </div>
                       {/* Inline channel prompt when no channelId is configured */}
                       {sendChannelInput?.panelId === p.id && (
-                        <div className="mt-3 pt-3 border-t border-border flex items-center gap-2">
-                          <div className="flex-1">
-                            <p className="text-xs text-muted-foreground mb-1.5">Este panel no tiene canal configurado. Introduce el ID del canal de Discord donde enviarlo:</p>
-                            <input
-                              autoFocus
-                              className="h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring font-mono"
-                              placeholder="ID del canal (ej: 1234567890)"
-                              value={sendChannelInput.channelId}
-                              onChange={(e) => setSendChannelInput({ panelId: p.id, channelId: e.target.value })}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter" && sendChannelInput.channelId.trim()) sendPanel(p.id, sendChannelInput.channelId.trim());
-                                if (e.key === "Escape") setSendChannelInput(null);
-                              }}
-                            />
-                          </div>
-                          <div className="flex gap-1 mt-5">
-                            <Button size="sm" className="h-8 text-xs" disabled={!sendChannelInput.channelId.trim()} onClick={() => sendPanel(p.id, sendChannelInput.channelId.trim())}>
+                        <div className="mt-3 pt-3 border-t border-border space-y-2">
+                          <p className="text-xs text-muted-foreground">Este panel no tiene canal configurado. Selecciona el canal de Discord donde enviarlo:</p>
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1">
+                              <GuildChannelSelect
+                                guildId={guildId!}
+                                value={sendChannelInput.channelId}
+                                onChange={(v) => setSendChannelInput({ panelId: p.id, channelId: v })}
+                                types={[0, 5]}
+                              />
+                            </div>
+                            <Button size="sm" className="h-9 text-xs" disabled={!sendChannelInput.channelId} onClick={() => sendPanel(p.id, sendChannelInput.channelId)}>
                               <Send className="w-3 h-3 mr-1" />Enviar
                             </Button>
-                            <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setSendChannelInput(null)}>Cancelar</Button>
+                            <Button size="sm" variant="ghost" className="h-9 text-xs" onClick={() => setSendChannelInput(null)}>Cancelar</Button>
                           </div>
                         </div>
                       )}
@@ -517,12 +515,12 @@ export default function TicketsPage() {
                       <Input value={moduleForm.description} onChange={(e) => setMF("description")(e.target.value)} placeholder="Para dudas y consultas generales" />
                     </div>
                     <div>
-                      <Label className="text-xs mb-1.5 block">Categoria de Discord (ID)</Label>
-                      <Input value={moduleForm.categoryId} onChange={(e) => setMF("categoryId")(e.target.value)} placeholder="ID de categoria" />
+                      <Label className="text-xs mb-1.5 block">Categoria de Discord</Label>
+                      <GuildChannelSelect guildId={guildId!} value={moduleForm.categoryId} onChange={setMF("categoryId")} types={[4]} placeholder="Seleccionar categoria..." />
                     </div>
                     <div className="md:col-span-2">
-                      <Label className="text-xs mb-1.5 block">Roles de soporte para este modulo (IDs separados por coma)</Label>
-                      <Input value={moduleForm.supportRoleIds} onChange={(e) => setMF("supportRoleIds")(e.target.value)} placeholder="ID1, ID2, ID3" />
+                      <Label className="text-xs mb-1.5 block">Roles de soporte para este modulo</Label>
+                      <GuildRoleMultiSelect guildId={guildId!} value={moduleForm.supportRoleIds} onChange={setMF("supportRoleIds")} />
                     </div>
                     <div className="md:col-span-2">
                       <Label className="text-xs mb-1.5 block">Mensaje de bienvenida del ticket</Label>
@@ -619,16 +617,16 @@ export default function TicketsPage() {
                 <h3 className="font-semibold text-sm">Canales</h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label className="text-sm mb-1.5 block">Categoria de tickets (ID)</Label>
-                    <Input placeholder="Categoria donde se crean los tickets" value={cfg.categoryId || ""} onChange={(e) => set("categoryId")(e.target.value)} />
+                    <Label className="text-sm mb-1.5 block">Categoria de tickets</Label>
+                    <GuildChannelSelect guildId={guildId!} value={cfg.categoryId || ""} onChange={set("categoryId")} types={[4]} placeholder="Seleccionar categoria..." />
                   </div>
                   <div>
-                    <Label className="text-sm mb-1.5 block">Canal de transcripciones (ID)</Label>
-                    <Input placeholder="Canal de transcripciones" value={cfg.transcriptChannelId || ""} onChange={(e) => set("transcriptChannelId")(e.target.value)} />
+                    <Label className="text-sm mb-1.5 block">Canal de transcripciones</Label>
+                    <GuildChannelSelect guildId={guildId!} value={cfg.transcriptChannelId || ""} onChange={set("transcriptChannelId")} types={[0, 5]} />
                   </div>
                   <div>
-                    <Label className="text-sm mb-1.5 block">Canal de logs de tickets (ID)</Label>
-                    <Input placeholder="Canal de auditoria" value={cfg.logsChannelId || ""} onChange={(e) => set("logsChannelId")(e.target.value)} />
+                    <Label className="text-sm mb-1.5 block">Canal de logs de tickets</Label>
+                    <GuildChannelSelect guildId={guildId!} value={cfg.logsChannelId || ""} onChange={set("logsChannelId")} types={[0, 5]} />
                   </div>
                 </div>
               </div>
@@ -636,17 +634,17 @@ export default function TicketsPage() {
               <div className="bg-card border border-card-border rounded-xl p-6 space-y-5">
                 <h3 className="font-semibold text-sm">Roles de soporte</h3>
                 <div>
-                  <Label className="text-sm mb-1.5 block">Roles de soporte (IDs separados por coma)</Label>
-                  <Input
-                    placeholder="ID1, ID2, ID3"
+                  <Label className="text-sm mb-1.5 block">Roles de soporte</Label>
+                  <GuildRoleMultiSelect
+                    guildId={guildId!}
                     value={Array.isArray(cfg.supportRoleIds) ? cfg.supportRoleIds.join(", ") : (cfg.supportRoleIds || "")}
-                    onChange={(e) => set("supportRoleIds")(e.target.value.split(",").map((s: string) => s.trim()).filter(Boolean))}
+                    onChange={(v) => set("supportRoleIds")(v.split(",").map((s: string) => s.trim()).filter(Boolean))}
                   />
                   <p className="text-xs text-muted-foreground mt-1">Estos roles pueden ver y gestionar todos los tickets (a menos que el modulo tenga sus propios roles).</p>
                 </div>
                 <div>
-                  <Label className="text-sm mb-1.5 block">Rol de soporte principal (legacy ID)</Label>
-                  <Input placeholder="ID del rol principal" value={cfg.supportRoleId || ""} onChange={(e) => set("supportRoleId")(e.target.value)} />
+                  <Label className="text-sm mb-1.5 block">Rol de soporte principal</Label>
+                  <GuildRoleSelect guildId={guildId!} value={cfg.supportRoleId || ""} onChange={set("supportRoleId")} placeholder="Seleccionar rol..." />
                 </div>
               </div>
 

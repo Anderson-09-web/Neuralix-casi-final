@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
+import GuildChannelSelect from "@/components/GuildChannelSelect";
 
 const API = (path: string) => `/api${path}`;
 
@@ -129,8 +130,8 @@ export default function AiChannelsPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <Label className="text-xs mb-1.5 block">ID del Canal *</Label>
-              <Input value={form.channelId} onChange={(e) => setF("channelId")(e.target.value)} placeholder="ID del canal de Discord" />
+              <Label className="text-xs mb-1.5 block">Canal *</Label>
+              <GuildChannelSelect guildId={guildId!} value={form.channelId} onChange={setF("channelId")} types={[0, 5]} />
             </div>
             <div>
               <Label className="text-xs mb-1.5 block">Nombre (referencia)</Label>

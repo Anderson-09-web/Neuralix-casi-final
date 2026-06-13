@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import GuildChannelSelect from "@/components/GuildChannelSelect";
 
 const API = (path: string) => `/api${path}`;
 
@@ -113,8 +114,8 @@ export default function WebhooksPage() {
               <Input value={form.name} onChange={(e) => setF("name")(e.target.value)} placeholder="Mi Webhook" />
             </div>
             <div>
-              <Label className="text-xs mb-1.5 block">ID del canal *</Label>
-              <Input value={form.channelId} onChange={(e) => setF("channelId")(e.target.value)} placeholder="ID del canal de Discord" />
+              <Label className="text-xs mb-1.5 block">Canal *</Label>
+              <GuildChannelSelect guildId={guildId!} value={form.channelId} onChange={setF("channelId")} types={[0, 5]} />
             </div>
             <div>
               <Label className="text-xs mb-1.5 block">URL de avatar (opcional)</Label>
