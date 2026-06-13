@@ -30,10 +30,11 @@ router.get("/guilds/:guildId/tickets/panels", requireAuth, async (req, res) => {
 router.post("/guilds/:guildId/tickets/panels", requireAuth, async (req, res) => {
   const guildId = req.params.guildId as string;
   try {
-    const { name, channelId, embedTitle, embedDescription, embedColor, embedImage, embedFooter, buttonLabel, buttonEmoji, buttonColor, useModules, sortOrder } = req.body;
+    const { name, description, channelId, embedTitle, embedDescription, embedColor, embedImage, embedFooter, buttonLabel, buttonEmoji, buttonColor, useModules, sortOrder } = req.body;
     if (!name) { res.status(400).json({ error: "El nombre es obligatorio" }); return; }
     const [created] = await db.insert(ticketPanelsTable).values({
       guildId, name,
+      description: description || null,
       channelId: channelId || null,
       embedTitle: embedTitle || null,
       embedDescription: embedDescription || null,
@@ -57,9 +58,10 @@ router.put("/guilds/:guildId/tickets/panels/:panelId", requireAuth, async (req, 
   const panelId = Number(req.params.panelId as string);
   if (isNaN(panelId)) { res.status(400).json({ error: "ID invalido" }); return; }
   try {
-    const { name, channelId, embedTitle, embedDescription, embedColor, embedImage, embedFooter, buttonLabel, buttonEmoji, buttonColor, useModules, sortOrder } = req.body;
+    const { name, description, channelId, embedTitle, embedDescription, embedColor, embedImage, embedFooter, buttonLabel, buttonEmoji, buttonColor, useModules, sortOrder } = req.body;
     const [updated] = await db.update(ticketPanelsTable).set({
       name: name || undefined,
+      description: description || null,
       channelId: channelId || null,
       embedTitle: embedTitle || null,
       embedDescription: embedDescription || null,

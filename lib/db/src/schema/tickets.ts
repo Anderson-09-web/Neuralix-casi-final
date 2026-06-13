@@ -63,6 +63,7 @@ export const ticketPanelsTable = pgTable("ticket_panels", {
   id: serial("id").primaryKey(),
   guildId: text("guild_id").notNull(),
   name: text("name").notNull(),
+  description: text("description"),
   channelId: text("channel_id"),
   embedTitle: text("embed_title"),
   embedDescription: text("embed_description"),

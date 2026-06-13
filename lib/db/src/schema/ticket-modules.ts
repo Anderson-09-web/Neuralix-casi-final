@@ -18,6 +18,8 @@ export const ticketModulesTable = pgTable("ticket_modules", {
   buttonLabel: text("button_label"),
   buttonColor: text("button_color").notNull().default("PRIMARY"),
   buttonStyle: text("button_style").notNull().default("button"),
+  panelId: integer("panel_id"),
+  staffRoleId: text("staff_role_id"),
   sortOrder: integer("sort_order").notNull().default(0),
   enabled: boolean("enabled").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

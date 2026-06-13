@@ -1,6 +1,6 @@
 import { useParams } from "wouter";
 import { useState, useEffect } from "react";
-import { Plus, Trash2, Settings, Bot, Hash, Sparkles, Info } from "lucide-react";
+import { Plus, Trash2, Settings, Bot, Hash, Sparkles } from "lucide-react";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -121,15 +121,6 @@ export default function AiChannelsPage() {
         <Button size="sm" onClick={() => { setForm({ ...emptyForm }); setEditingId(null); setShowForm(true); }}>
           <Plus className="w-4 h-4 mr-1" /> Nuevo Canal IA
         </Button>
-      </div>
-
-      {/* Setup notice */}
-      <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 mb-6 flex gap-3">
-        <Info className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
-        <div className="text-sm">
-          <p className="font-medium text-blue-300 mb-0.5">Configuracion requerida</p>
-          <p className="text-muted-foreground">Esta funcion requiere una clave API de <strong className="text-foreground">Groq</strong> (gratis en console.groq.com). Configura <code className="bg-card px-1 rounded text-xs">GROQ_API_KEY</code> en las variables de entorno del servidor.</p>
-        </div>
       </div>
 
       {showForm && (
