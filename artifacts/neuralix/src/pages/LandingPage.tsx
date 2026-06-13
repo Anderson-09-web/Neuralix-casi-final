@@ -24,12 +24,26 @@ function AppealModal({ onClose }: { onClose: () => void }) {
   const [chatMsg, setChatMsg] = useState("");
   const [sending, setSending] = useState(false);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
+  const [ticketClosed, setTicketClosed] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const fetchMessages = async (id: number, token: string) => {
     try {
       const res = await fetch(`/api/support/appeals/${id}/messages?token=${token}`);
-      if (res.ok) { const data = await res.json(); setMessages(data); }
+      if (res.status === 404) {
+        // Ticket deleted or not found — clear localStorage
+        localStorage.removeItem(APPEAL_LS_KEY);
+        setTicketClosed(true);
+        return;
+      }
+      if (res.ok) {
+        const data = await res.json();
+        setMessages(data.messages ?? data);
+        if (data.status === "closed") {
+          setTicketClosed(true);
+          localStorage.removeItem(APPEAL_LS_KEY);
+        }
+      }
     } catch {}
   };
 
@@ -116,6 +130,19 @@ function AppealModal({ onClose }: { onClose: () => void }) {
               {submitting ? "Enviando..." : "Enviar apelacion"}
             </Button>
             <p className="text-xs text-center text-muted-foreground">Tu apelacion sera revisada por el equipo de moderacion.</p>
+          </div>
+        ) : ticketClosed ? (
+          <div className="flex flex-col items-center justify-center flex-1 p-8 gap-4">
+            <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center">
+              <CheckCircle className="w-7 h-7 text-muted-foreground" />
+            </div>
+            <div className="text-center space-y-1">
+              <p className="font-semibold text-sm">Apelacion cerrada</p>
+              <p className="text-xs text-muted-foreground">Esta apelacion ha sido resuelta por un administrador. Si crees que fue un error, puedes enviar una nueva apelacion.</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => { setTicketClosed(false); setAppeal(null); setMessages([]); setStep("form"); }}>
+              Nueva apelacion
+            </Button>
           </div>
         ) : (
           <div className="flex flex-col flex-1 min-h-0">

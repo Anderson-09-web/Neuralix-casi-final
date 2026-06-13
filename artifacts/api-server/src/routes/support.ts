@@ -262,7 +262,7 @@ router.get("/support/appeals/:id/messages", async (req, res) => {
   const messages = await db.select().from(supportMessagesTable)
     .where(eq(supportMessagesTable.ticketId, id))
     .orderBy(supportMessagesTable.createdAt);
-  res.json(messages);
+  res.json({ status: ticket.status, messages });
 });
 
 router.post("/support/appeals/:id/messages", async (req, res) => {

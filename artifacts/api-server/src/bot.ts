@@ -914,26 +914,28 @@ export function startBot(): Client | undefined {
         if (userMsgs.length >= limit) {
           guildFlood.set(userId, []);
           const action = antiraid.floodAction ?? "mute";
-          try {
-            if (antiraid.deleteOnTrigger) {
-              try {
-                const msgs = await message.channel.messages.fetch({ limit: 10 });
-                const userMsgsList = msgs.filter((m) => m.author.id === userId);
-                for (const [, m] of userMsgsList) { await m.delete().catch(() => {}); }
-              } catch {}
-            }
-            if (action === "ban") await message.member?.ban({ reason: "AntiRaid: Flood detectado" });
-            else if (action === "kick") await message.member?.kick("AntiRaid: Flood detectado");
-            else await message.member?.timeout(10 * 60_000, "AntiRaid: Flood");
-            await bumpStats(guildId, "blockedSpam");
-            if (secChannel && logCfg?.logSecurity) {
-              await sendLog(secChannel, {
-                title: "AntiFlood — Flood Detectado",
-                description: `**Usuario:** \`${username}\` (<@${userId}>)\n**Mensajes:** ${userMsgs.length} en ${antiraid.floodInterval}s\n**Accion:** ${action}\n**Canal:** <#${message.channelId}>`,
-                color: 0xFF6B35, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid" },
-              }, botToken);
-            }
-          } catch {}
+          // Fetch member explicitly if not cached
+          const target = message.member ?? await message.guild.members.fetch(userId).catch(() => null);
+          if (antiraid.deleteOnTrigger) {
+            try {
+              const fetchedMsgs = await message.channel.messages.fetch({ limit: 10 });
+              const userMsgsList = fetchedMsgs.filter((m) => m.author.id === userId);
+              for (const [, m] of userMsgsList) { await m.delete().catch(() => {}); }
+            } catch {}
+          }
+          if (target) {
+            if (action === "ban") await target.ban({ reason: "AntiRaid: Flood detectado" }).catch(() => {});
+            else if (action === "kick") await target.kick("AntiRaid: Flood detectado").catch(() => {});
+            else await target.timeout(10 * 60_000, "AntiRaid: Flood").catch(() => {});
+          }
+          await bumpStats(guildId, "blockedSpam");
+          if (secChannel && logCfg?.logSecurity) {
+            await sendLog(secChannel, {
+              title: "AntiFlood — Flood Detectado",
+              description: `**Usuario:** \`${username}\` (<@${userId}>)\n**Mensajes:** ${userMsgs.length} en ${antiraid.floodInterval}s\n**Accion:** ${action}${!target ? " (sin efecto: miembro no encontrado)" : ""}\n**Canal:** <#${message.channelId}>`,
+              color: 0xFF6B35, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid" },
+            }, botToken);
+          }
           return;
         }
       }
@@ -948,17 +950,23 @@ export function startBot(): Client | undefined {
         spamTracker.set(key, msgs);
         if (msgs.length >= threshold) {
           spamTracker.set(key, []);
-          try {
-            if (antiraid.deleteOnTrigger) { await message.delete().catch(() => {}); }
-            const action = antiraid.antiSpamAction ?? "mute";
-            if (action === "ban") await message.member?.ban({ reason: "AntiRaid: Spam" });
-            else if (action === "kick") await message.member?.kick("AntiRaid: Spam");
-            else await message.member?.timeout(10 * 60_000, "AntiRaid: Spam");
-            await bumpStats(guildId, "blockedSpam");
-            if (secChannel && logCfg?.logSecurity) {
-              await sendLog(secChannel, { title: "AntiSpam Activado", description: `**Usuario:** \`${username}\` (<@${userId}>)\n**Accion:** ${action}\n**Mensajes:** ${msgs.length} en ${antiraid.antiSpamInterval}s`, color: 0xFF6B35, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid" } }, botToken);
-            }
-          } catch {}
+          if (antiraid.deleteOnTrigger) { await message.delete().catch(() => {}); }
+          const action = antiraid.antiSpamAction ?? "mute";
+          // Fetch member explicitly if not cached
+          const target = message.member ?? await message.guild.members.fetch(userId).catch(() => null);
+          if (target) {
+            if (action === "ban") await target.ban({ reason: "AntiRaid: Spam" }).catch(() => {});
+            else if (action === "kick") await target.kick("AntiRaid: Spam").catch(() => {});
+            else await target.timeout(10 * 60_000, "AntiRaid: Spam").catch(() => {});
+          }
+          await bumpStats(guildId, "blockedSpam");
+          if (secChannel && logCfg?.logSecurity) {
+            await sendLog(secChannel, {
+              title: "AntiSpam Activado",
+              description: `**Usuario:** \`${username}\` (<@${userId}>)\n**Accion:** ${action}${!target ? " (sin efecto: miembro no encontrado)" : ""}\n**Mensajes:** ${msgs.length} en ${antiraid.antiSpamInterval}s`,
+              color: 0xFF6B35, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid" },
+            }, botToken);
+          }
           return;
         }
       }
@@ -992,7 +1000,7 @@ export function startBot(): Client | undefined {
               if (nsfwPatterns.some((p) => hn.includes(p))) { blockedReason = "Contenido NSFW"; return true; }
               if (maliciousPatterns.some((p) => link.toLowerCase().includes(p))) { blockedReason = "Enlace malicioso"; return true; }
               if (blocked.length > 0 && blocked.some((d: string) => hn.includes(d))) { blockedReason = "Dominio bloqueado"; return true; }
-              if (blocked.length === 0) { blockedReason = "Enlace no permitido"; return true; }
+              if (blocked.length === 0) return false;
               return false;
             } catch { blockedReason = "Enlace invalido"; return true; }
           });
@@ -1305,7 +1313,7 @@ export function startBot(): Client | undefined {
                 if (nsfwPatterns.some((p) => hn.includes(p))) { blockedReason = "Contenido NSFW"; return true; }
                 if (maliciousPatterns.some((p) => link.toLowerCase().includes(p))) { blockedReason = "Enlace malicioso"; return true; }
                 if (blocked.length > 0 && blocked.some((d) => hn.includes(d))) { blockedReason = "Dominio bloqueado"; return true; }
-                if (blocked.length === 0) { blockedReason = "Enlace no permitido"; return true; }
+                if (blocked.length === 0) return false;
                 return false;
               } catch { blockedReason = "Enlace invalido"; return true; }
             });
