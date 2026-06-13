@@ -114,6 +114,12 @@ router.post("/guilds/:guildId/auto-roles/:id/send", requireAuth, async (req, res
     }
 
     const buttonColors: Record<string, number> = { PRIMARY: 1, SECONDARY: 2, SUCCESS: 3, DANGER: 4 };
+    function parseEmoji(emojiStr: string | null | undefined): any {
+      if (!emojiStr) return undefined;
+      const m = emojiStr.match(/^<(a?):([^:]+):(\d+)>$/);
+      if (m) return { id: m[3], name: m[2], animated: m[1] === "a" };
+      return { name: emojiStr };
+    }
     let components: any[];
 
     if (role.type === "select") {
@@ -136,7 +142,7 @@ router.post("/guilds/:guildId/auto-roles/:id/send", requireAuth, async (req, res
             label: ar.buttonLabel || ar.name,
             value: String(ar.id),
             description: ar.description || undefined,
-            emoji: ar.buttonEmoji ? { name: ar.buttonEmoji } : undefined,
+            emoji: ar.buttonEmoji ? parseEmoji(ar.buttonEmoji) : undefined,
           })),
         }],
       }];
@@ -148,7 +154,7 @@ router.post("/guilds/:guildId/auto-roles/:id/send", requireAuth, async (req, res
           type: 2,
           style,
           label: role.buttonLabel || role.name,
-          emoji: role.buttonEmoji ? { name: role.buttonEmoji } : undefined,
+          emoji: role.buttonEmoji ? parseEmoji(role.buttonEmoji) : undefined,
           custom_id: `autorole_${role.id}`,
         }],
       }];

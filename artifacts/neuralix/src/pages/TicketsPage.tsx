@@ -26,6 +26,17 @@ const TABS = [
 type Tab = typeof TABS[number]["id"];
 
 const BUTTON_COLORS = ["PRIMARY", "SECONDARY", "SUCCESS", "DANGER"] as const;
+
+// Renders a custom Discord emoji (<:name:id>) as an image, or returns text for unicode
+function renderEmoji(emoji: string | null | undefined, fallback = "🎫") {
+  if (!emoji) return <span>{fallback}</span>;
+  const m = emoji.match(/^<(a?):([^:]+):(\d+)>$/);
+  if (m) {
+    const ext = m[1] === "a" ? "gif" : "webp";
+    return <img src={`https://cdn.discordapp.com/emojis/${m[3]}.${ext}?size=32`} alt={m[2]} className="w-5 h-5 object-contain" />;
+  }
+  return <span>{emoji}</span>;
+}
 const emptyModule = { name: "", description: "", emoji: "", welcomeMessage: "", welcomeEmbedEnabled: false, welcomeEmbedTitle: "", welcomeEmbedDescription: "", welcomeEmbedColor: "", supportRoleIds: "", categoryId: "", buttonLabel: "", buttonColor: "PRIMARY", sortOrder: "0" };
 const emptyPanel = { name: "", description: "", channelId: "", panelType: "button", buttonLabel: "Abrir Ticket", buttonColor: "PRIMARY", buttonEmoji: "", embedTitle: "", embedDescription: "", embedColor: "#5865F2", embedFooter: "", embedImage: "", useModules: false, sortOrder: "0", selectedModuleIds: [] as number[] };
 
@@ -424,7 +435,7 @@ export default function TicketsPage() {
                                   <div className={cn("w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center text-[10px]", isSelected ? "bg-primary border-primary text-primary-foreground" : "border-border")}>
                                     {isSelected && "✓"}
                                   </div>
-                                  <span className="text-base leading-none">{m.emoji || "🎫"}</span>
+                                  <span className="text-base leading-none flex items-center">{renderEmoji(m.emoji)}</span>
                                   <span className="font-medium truncate">{m.name}</span>
                                 </button>
                               );
@@ -617,7 +628,7 @@ export default function TicketsPage() {
                   {modules.map((m) => (
                     <div key={m.id} className="bg-card border border-card-border rounded-xl p-4 flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-lg">{m.emoji || "🎫"}</div>
+                        <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-lg">{renderEmoji(m.emoji)}</div>
                         <div>
                           <p className="font-medium text-sm">{m.name}</p>
                           <p className="text-xs text-muted-foreground">{m.description || "Sin descripcion"}</p>

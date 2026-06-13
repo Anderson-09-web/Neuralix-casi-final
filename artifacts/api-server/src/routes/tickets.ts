@@ -203,6 +203,13 @@ router.post("/guilds/:guildId/tickets/send-panel", requireAuth, async (req, res)
 
     const buttonColors: Record<string, number> = { PRIMARY: 1, SECONDARY: 2, SUCCESS: 3, DANGER: 4 };
 
+    function parseEmoji(emojiStr: string | null | undefined): any {
+      if (!emojiStr) return undefined;
+      const m = emojiStr.match(/^<(a?):([^:]+):(\d+)>$/);
+      if (m) return { id: m[3], name: m[2], animated: m[1] === "a" };
+      return { name: emojiStr };
+    }
+
     let components: any[] = [];
 
     if (cfg?.useModules) {
@@ -220,7 +227,7 @@ router.post("/guilds/:guildId/tickets/send-panel", requireAuth, async (req, res)
             type: 2,
             style: buttonColors[m.buttonColor || "PRIMARY"] ?? 1,
             label: m.buttonLabel || m.name,
-            emoji: m.emoji ? { name: m.emoji } : undefined,
+            emoji: parseEmoji(m.emoji),
             custom_id: `ticket_open_module_${m.id}`,
           })),
         }];
@@ -235,7 +242,7 @@ router.post("/guilds/:guildId/tickets/send-panel", requireAuth, async (req, res)
               label: m.name,
               value: String(m.id),
               description: m.description || undefined,
-              emoji: m.emoji ? { name: m.emoji } : undefined,
+              emoji: parseEmoji(m.emoji),
             })),
           }],
         }];
@@ -247,7 +254,7 @@ router.post("/guilds/:guildId/tickets/send-panel", requireAuth, async (req, res)
           type: 2,
           style: buttonColors[cfg?.buttonColor || "PRIMARY"] ?? 1,
           label: cfg?.buttonLabel || "Abrir Ticket",
-          emoji: cfg?.buttonEmoji ? { name: cfg.buttonEmoji } : undefined,
+          emoji: parseEmoji(cfg?.buttonEmoji),
           custom_id: "ticket_open",
         }],
       }];
@@ -296,8 +303,14 @@ router.post("/guilds/:guildId/tickets/test", requireAuth, async (req, res) => {
       return;
     }
     const buttonColors: Record<string, number> = { PRIMARY: 1, SECONDARY: 2, SUCCESS: 3, DANGER: 4 };
+    function parseEmojiTest(emojiStr: string | null | undefined): any {
+      if (!emojiStr) return undefined;
+      const m = emojiStr.match(/^<(a?):([^:]+):(\d+)>$/);
+      if (m) return { id: m[3], name: m[2], animated: m[1] === "a" };
+      return { name: emojiStr };
+    }
     const payload: Record<string, unknown> = {
-      components: [{ type: 1, components: [{ type: 2, style: buttonColors[cfg.buttonColor || "PRIMARY"] ?? 1, label: cfg.buttonLabel || "Abrir Ticket", emoji: cfg.buttonEmoji ? { name: cfg.buttonEmoji } : undefined, custom_id: "ticket_open" }] }],
+      components: [{ type: 1, components: [{ type: 2, style: buttonColors[cfg.buttonColor || "PRIMARY"] ?? 1, label: cfg.buttonLabel || "Abrir Ticket", emoji: parseEmojiTest(cfg.buttonEmoji), custom_id: "ticket_open" }] }],
     };
     if (cfg.panelTitle || cfg.panelDescription || cfg.panelMessage) {
       payload.embeds = [{ title: cfg.panelTitle || "Soporte", description: cfg.panelDescription || cfg.panelMessage || "Haz click en el boton.", color: cfg.panelColor ? parseInt(cfg.panelColor.replace("#", ""), 16) : 0x5865F2, footer: cfg.panelFooter ? { text: cfg.panelFooter } : { text: "Neuralix Tickets · Prueba" }, image: cfg.panelImage ? { url: cfg.panelImage } : undefined }];

@@ -1784,10 +1784,24 @@ export function startBot(): Client | undefined {
   });
 
   // ─── Ticket open helper ───────────────────────────────────────────────────
-  // Safe defer helper — prevents "already acknowledged" crashes
+  // Safe defer — tries ephemeral deferReply, swallows errors
   async function safeDefer(interaction: any) {
     if (!interaction.deferred && !interaction.replied) {
       try { await interaction.deferReply({ ephemeral: true }); } catch {}
+    }
+  }
+
+  // Safe edit/reply — works even if deferReply silently failed
+  async function safeEditReply(interaction: any, options: { content: string }) {
+    try {
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply(options);
+      } else {
+        await interaction.reply({ ...options, ephemeral: true });
+      }
+    } catch {
+      // Last resort: followUp
+      try { await interaction.followUp({ ...options, ephemeral: true }); } catch {}
     }
   }
 
@@ -1858,7 +1872,7 @@ export function startBot(): Client | undefined {
       } else if (!cfg.enabled) {
         // If opened via a panel or module, the admin explicitly set it up — allow through
         if (!panelId && !moduleId) {
-          await interaction.editReply({ content: "El sistema de tickets no esta activo. Activalo en el dashboard." }); return;
+          await safeEditReply(interaction, { content: "El sistema de tickets no esta activo. Activalo en el dashboard." }); return;
         }
       }
 
@@ -1866,7 +1880,7 @@ export function startBot(): Client | undefined {
         and(eq(ticketsTable.guildId, guildId), eq(ticketsTable.userId, userId), eq(ticketsTable.status, "open")),
       );
       if (openTickets.length >= (cfg.maxTicketsPerUser ?? 1)) {
-        await interaction.editReply({ content: `Ya tienes ${openTickets.length} ticket(s) abierto(s). Maximo: ${cfg.maxTicketsPerUser}.` }); return;
+        await safeEditReply(interaction, { content: `Ya tienes ${openTickets.length} ticket(s) abierto(s). Maximo: ${cfg.maxTicketsPerUser}.` }); return;
       }
 
       // Queue check — if concurrent limit reached, add to waiting list
@@ -1875,7 +1889,7 @@ export function startBot(): Client | undefined {
         if (allOpen.length >= cfg.maxConcurrentTickets) {
           await db.insert(ticketQueueTable).values({ guildId, userId, username, moduleId, panelId: panelId ?? null });
           const queueAll = await db.select().from(ticketQueueTable).where(eq(ticketQueueTable.guildId, guildId));
-          await interaction.editReply({ content: `Todos los agentes estan ocupados (maximo ${cfg.maxConcurrentTickets} ticket(s) simultaneos). Fuiste añadido a la lista de espera en la posicion **${queueAll.length}**. Te notificaremos cuando sea tu turno.` });
+          await safeEditReply(interaction, { content: `Todos los agentes estan ocupados (maximo ${cfg.maxConcurrentTickets} ticket(s) simultaneos). Fuiste añadido a la lista de espera en la posicion **${queueAll.length}**. Te notificaremos cuando sea tu turno.` });
           return;
         }
       }
@@ -1970,10 +1984,10 @@ export function startBot(): Client | undefined {
         }, botToken);
       }
 
-      await interaction.editReply({ content: `Tu ticket fue creado: <#${ticketChannel.id}>` });
+      await safeEditReply(interaction, { content: `Tu ticket fue creado: <#${ticketChannel.id}>` });
     } catch (err: any) {
       logger.error({ err, guildId, userId }, "Error al crear ticket");
-      await interaction.editReply({ content: "Error al crear el ticket. Contacta a un administrador." }).catch(() => {});
+      await safeEditReply(interaction, { content: "Error al crear el ticket. Contacta a un administrador." }).catch(() => {});
     }
   }
 
@@ -1982,8 +1996,8 @@ export function startBot(): Client | undefined {
     await safeDefer(interaction);
     try {
       const [ticket] = await db.select().from(ticketsTable).where(and(eq(ticketsTable.id, ticketId), eq(ticketsTable.guildId, guildId)));
-      if (!ticket) { await interaction.editReply({ content: "Ticket no encontrado." }); return; }
-      if (ticket.status === "closed") { await interaction.editReply({ content: "Este ticket ya esta cerrado." }); return; }
+      if (!ticket) { await safeEditReply(interaction, { content: "Ticket no encontrado." }); return; }
+      if (ticket.status === "closed") { await safeEditReply(interaction, { content: "Este ticket ya esta cerrado." }); return; }
 
       const [cfg] = await db.select().from(ticketConfigsTable).where(eq(ticketConfigsTable.guildId, guildId));
       const supportRoleIds = cfg?.supportRoleIds?.length ? cfg.supportRoleIds : (cfg?.supportRoleId ? [cfg.supportRoleId] : []);
@@ -1992,7 +2006,7 @@ export function startBot(): Client | undefined {
       const isSupport = supportRoleIds.some((rid: string) => memberRoles.includes(rid));
       const isOwnerOfTicket = ticket.userId === userId;
       if (!isSupport && !isOwnerOfTicket && !member?.permissions?.has?.("ManageChannels")) {
-        await interaction.editReply({ content: "No tienes permisos para cerrar este ticket." }); return;
+        await safeEditReply(interaction, { content: "No tienes permisos para cerrar este ticket." }); return;
       }
 
       let transcriptText = "";
@@ -2083,10 +2097,10 @@ export function startBot(): Client | undefined {
         } catch {}
       }
 
-      await interaction.editReply({ content: "Ticket cerrado correctamente." });
+      await safeEditReply(interaction, { content: "Ticket cerrado correctamente." });
     } catch (err: any) {
       logger.error({ err }, "Error al cerrar ticket");
-      await interaction.editReply({ content: "Error al cerrar el ticket." }).catch(() => {});
+      await safeEditReply(interaction, { content: "Error al cerrar el ticket." }).catch(() => {});
     }
   }
 
@@ -2094,8 +2108,8 @@ export function startBot(): Client | undefined {
     await safeDefer(interaction);
     try {
       const [ticket] = await db.select().from(ticketsTable).where(and(eq(ticketsTable.id, ticketId), eq(ticketsTable.guildId, guildId)));
-      if (!ticket) { await interaction.editReply({ content: "Ticket no encontrado." }); return; }
-      if (ticket.claimedBy) { await interaction.editReply({ content: `Este ticket ya fue reclamado por <@${ticket.claimedBy}>. Solo ese agente puede liberarlo.` }); return; }
+      if (!ticket) { await safeEditReply(interaction, { content: "Ticket no encontrado." }); return; }
+      if (ticket.claimedBy) { await safeEditReply(interaction, { content: `Este ticket ya fue reclamado por <@${ticket.claimedBy}>. Solo ese agente puede liberarlo.` }); return; }
 
       const [cfgReal] = await db.select().from(ticketConfigsTable).where(eq(ticketConfigsTable.guildId, guildId));
 
@@ -2111,7 +2125,7 @@ export function startBot(): Client | undefined {
       const isSupport = supportRoleIds.some((rid: string) => memberRoles.includes(rid));
       const isAdmin = member?.permissions?.has?.("Administrator") || member?.permissions?.has?.("ManageChannels");
       if (!isSupport && !isAdmin) {
-        await interaction.editReply({ content: "Solo el personal de soporte o administradores pueden reclamar tickets." }); return;
+        await safeEditReply(interaction, { content: "Solo el personal de soporte o administradores pueden reclamar tickets." }); return;
       }
 
       await db.update(ticketsTable).set({ claimedBy: userId, claimedByUsername: username }).where(eq(ticketsTable.id, ticketId));
@@ -2133,23 +2147,23 @@ export function startBot(): Client | undefined {
       } catch {}
 
       await interaction.channel?.send({ embeds: [{ title: "Ticket Reclamado", description: `<@${userId}> esta atendiendo este ticket.\nEl canal es privado: solo el agente y el usuario pueden verlo.\nPara liberar el ticket, haz clic en **Liberar Ticket**.`, color: 0x57F287, timestamp: new Date().toISOString(), footer: { text: "Neuralix Tickets" } }] } as any).catch(() => {});
-      await interaction.editReply({ content: "Has reclamado este ticket." });
-    } catch { await interaction.editReply({ content: "Error al reclamar el ticket." }).catch(() => {}); }
+      await safeEditReply(interaction, { content: "Has reclamado este ticket." });
+    } catch { await safeEditReply(interaction, { content: "Error al reclamar el ticket." }).catch(() => {}); }
   }
 
   async function handleTicketUnclaim(interaction: any, guildId: string, ticketId: number, userId: string) {
     await safeDefer(interaction);
     try {
       const [ticket] = await db.select().from(ticketsTable).where(and(eq(ticketsTable.id, ticketId), eq(ticketsTable.guildId, guildId)));
-      if (!ticket) { await interaction.editReply({ content: "Ticket no encontrado." }); return; }
-      if (!ticket.claimedBy) { await interaction.editReply({ content: "Este ticket no esta reclamado." }); return; }
+      if (!ticket) { await safeEditReply(interaction, { content: "Ticket no encontrado." }); return; }
+      if (!ticket.claimedBy) { await safeEditReply(interaction, { content: "Este ticket no esta reclamado." }); return; }
 
       const [cfg] = await db.select().from(ticketConfigsTable).where(eq(ticketConfigsTable.guildId, guildId));
       const member = interaction.guild?.members.cache.get(userId) || await interaction.guild?.members.fetch(userId).catch(() => null);
       const isAdmin = member?.permissions?.has?.("Administrator") || member?.permissions?.has?.("ManageChannels");
 
       if (ticket.claimedBy !== userId && !isAdmin) {
-        await interaction.editReply({ content: `Solo <@${ticket.claimedBy}> o un administrador puede liberar este ticket.` }); return;
+        await safeEditReply(interaction, { content: `Solo <@${ticket.claimedBy}> o un administrador puede liberar este ticket.` }); return;
       }
 
       const prevClaimer = ticket.claimedBy;
@@ -2175,36 +2189,36 @@ export function startBot(): Client | undefined {
       } catch {}
 
       await interaction.channel?.send({ embeds: [{ title: "Ticket Liberado", description: `<@${userId}> ha liberado el ticket. Cualquier agente puede reclamarlo ahora.`, color: 0xFEE75C, timestamp: new Date().toISOString(), footer: { text: "Neuralix Tickets" } }] } as any).catch(() => {});
-      await interaction.editReply({ content: "Has liberado el ticket. Cualquier agente puede reclamarlo." });
-    } catch { await interaction.editReply({ content: "Error al liberar el ticket." }).catch(() => {}); }
+      await safeEditReply(interaction, { content: "Has liberado el ticket. Cualquier agente puede reclamarlo." });
+    } catch { await safeEditReply(interaction, { content: "Error al liberar el ticket." }).catch(() => {}); }
   }
 
   async function handleTicketDelete(interaction: any, guildId: string, ticketId: number, userId: string, username: string) {
     await safeDefer(interaction);
     try {
       const [ticket] = await db.select().from(ticketsTable).where(and(eq(ticketsTable.id, ticketId), eq(ticketsTable.guildId, guildId)));
-      if (!ticket) { await interaction.editReply({ content: "Ticket no encontrado." }); return; }
+      if (!ticket) { await safeEditReply(interaction, { content: "Ticket no encontrado." }); return; }
       const [cfg] = await db.select().from(ticketConfigsTable).where(eq(ticketConfigsTable.guildId, guildId));
       const supportRoleIds = cfg?.supportRoleIds?.length ? cfg.supportRoleIds : (cfg?.supportRoleId ? [cfg.supportRoleId] : []);
       const member = interaction.guild?.members.cache.get(userId) || await interaction.guild?.members.fetch(userId).catch(() => null);
       const memberRoles = member?.roles?.cache?.map((r: any) => r.id) ?? [];
       const isSupport = supportRoleIds.some((rid: string) => memberRoles.includes(rid));
-      if (!isSupport && !member?.permissions?.has?.("ManageChannels")) { await interaction.editReply({ content: "No tienes permisos para eliminar este ticket." }); return; }
-      await interaction.editReply({ content: "Canal de ticket sera eliminado en 5 segundos..." });
+      if (!isSupport && !member?.permissions?.has?.("ManageChannels")) { await safeEditReply(interaction, { content: "No tienes permisos para eliminar este ticket." }); return; }
+      await safeEditReply(interaction, { content: "Canal de ticket sera eliminado en 5 segundos..." });
       await db.update(ticketsTable).set({ status: "deleted", closedAt: new Date() }).where(eq(ticketsTable.id, ticketId));
       try {
         await interaction.channel?.send({ content: "Este canal sera eliminado en **5 segundos**..." }).catch(() => {});
         setTimeout(async () => { try { await interaction.channel?.delete("Ticket eliminado"); } catch {} }, 5000);
       } catch {}
-    } catch { await interaction.editReply({ content: "Error al eliminar el ticket." }).catch(() => {}); }
+    } catch { await safeEditReply(interaction, { content: "Error al eliminar el ticket." }).catch(() => {}); }
   }
 
   async function handleTicketReopen(interaction: any, guildId: string, ticketId: number, userId: string, username: string) {
     await safeDefer(interaction);
     try {
       const [ticket] = await db.select().from(ticketsTable).where(and(eq(ticketsTable.id, ticketId), eq(ticketsTable.guildId, guildId)));
-      if (!ticket) { await interaction.editReply({ content: "Ticket no encontrado." }); return; }
-      if (ticket.status === "open") { await interaction.editReply({ content: "El ticket ya esta abierto." }); return; }
+      if (!ticket) { await safeEditReply(interaction, { content: "Ticket no encontrado." }); return; }
+      if (ticket.status === "open") { await safeEditReply(interaction, { content: "El ticket ya esta abierto." }); return; }
       await db.update(ticketsTable).set({ status: "open", closedAt: null }).where(eq(ticketsTable.id, ticketId));
       try {
         await interaction.channel?.permissionOverwrites.edit(ticket.userId, { SendMessages: true }).catch(() => {});
@@ -2214,8 +2228,8 @@ export function startBot(): Client | undefined {
         const components = await buildTicketComponents(ticketId, cfg);
         await interaction.channel?.send({ embeds: [{ title: "Ticket Reabierto", description: `Reabierto por <@${userId}>`, color: 0x57F287, timestamp: new Date().toISOString(), footer: { text: "Neuralix Tickets" } }], components } as any).catch(() => {});
       } catch {}
-      await interaction.editReply({ content: "Ticket reabierto correctamente." });
-    } catch { await interaction.editReply({ content: "Error al reabrir el ticket." }).catch(() => {}); }
+      await safeEditReply(interaction, { content: "Ticket reabierto correctamente." });
+    } catch { await safeEditReply(interaction, { content: "Error al reabrir el ticket." }).catch(() => {}); }
   }
 
   // ─── Interaction Create ───────────────────────────────────────────────────
@@ -2232,9 +2246,9 @@ export function startBot(): Client | undefined {
       try {
         await safeDefer(interaction);
         const [ar] = await db.select().from(autoRolesTable).where(and(eq(autoRolesTable.id, roleId), eq(autoRolesTable.guildId, guildId)));
-        if (!ar || !ar.enabled) { await interaction.editReply({ content: "Este auto-rol no esta disponible." }); return; }
+        if (!ar || !ar.enabled) { await safeEditReply(interaction, { content: "Este auto-rol no esta disponible." }); return; }
         const member = interaction.guild?.members.cache.get(userId) || await interaction.guild?.members.fetch(userId).catch(() => null);
-        if (!member) { await interaction.editReply({ content: "No se pudo obtener tu informacion de miembro." }); return; }
+        if (!member) { await safeEditReply(interaction, { content: "No se pudo obtener tu informacion de miembro." }); return; }
         const addedRoles: string[] = []; const removedRoles: string[] = [];
         for (const rid of (ar.roleIds ?? [])) {
           if (member.roles.cache.has(rid)) { await member.roles.remove(rid).catch(() => {}); removedRoles.push(`<@&${rid}>`); }
@@ -2250,8 +2264,8 @@ export function startBot(): Client | undefined {
         const lines: string[] = [];
         if (addedRoles.length) lines.push(`Roles asignados: ${addedRoles.join(", ")}`);
         if (removedRoles.length) lines.push(`Roles removidos: ${removedRoles.join(", ")}`);
-        await interaction.editReply({ content: lines.join("\n") || "Sin cambios." });
-      } catch { await interaction.editReply({ content: "Error al gestionar el rol." }).catch(() => {}); }
+        await safeEditReply(interaction, { content: lines.join("\n") || "Sin cambios." });
+      } catch { await safeEditReply(interaction, { content: "Error al gestionar el rol." }).catch(() => {}); }
       return;
     }
 
@@ -2260,11 +2274,11 @@ export function startBot(): Client | undefined {
       try {
         await safeDefer(interaction);
         const selectedId = Number(interaction.values[0]);
-        if (isNaN(selectedId)) { await interaction.editReply({ content: "Opcion invalida." }); return; }
+        if (isNaN(selectedId)) { await safeEditReply(interaction, { content: "Opcion invalida." }); return; }
         const [ar] = await db.select().from(autoRolesTable).where(and(eq(autoRolesTable.id, selectedId), eq(autoRolesTable.guildId, guildId)));
-        if (!ar || !ar.enabled) { await interaction.editReply({ content: "Este auto-rol no esta disponible." }); return; }
+        if (!ar || !ar.enabled) { await safeEditReply(interaction, { content: "Este auto-rol no esta disponible." }); return; }
         const member = interaction.guild?.members.cache.get(userId) || await interaction.guild?.members.fetch(userId).catch(() => null);
-        if (!member) { await interaction.editReply({ content: "No se pudo obtener tu informacion de miembro." }); return; }
+        if (!member) { await safeEditReply(interaction, { content: "No se pudo obtener tu informacion de miembro." }); return; }
         const addedRoles: string[] = []; const removedRoles: string[] = [];
         for (const rid of (ar.roleIds ?? [])) {
           if (member.roles.cache.has(rid)) { await member.roles.remove(rid).catch(() => {}); removedRoles.push(`<@&${rid}>`); }
@@ -2280,8 +2294,8 @@ export function startBot(): Client | undefined {
         const lines: string[] = [];
         if (addedRoles.length) lines.push(`Roles asignados: ${addedRoles.join(", ")}`);
         if (removedRoles.length) lines.push(`Roles removidos: ${removedRoles.join(", ")}`);
-        await interaction.editReply({ content: lines.join("\n") || "Sin cambios." });
-      } catch { await interaction.editReply({ content: "Error al gestionar el rol." }).catch(() => {}); }
+        await safeEditReply(interaction, { content: lines.join("\n") || "Sin cambios." });
+      } catch { await safeEditReply(interaction, { content: "Error al gestionar el rol." }).catch(() => {}); }
       return;
     }
 
@@ -2315,13 +2329,13 @@ export function startBot(): Client | undefined {
       try {
         await safeDefer(interaction);
         const moduleId = Number(interaction.values[0]);
-        if (isNaN(moduleId)) { await interaction.editReply({ content: "Opcion invalida." }); return; }
+        if (isNaN(moduleId)) { await safeEditReply(interaction, { content: "Opcion invalida." }); return; }
         // Extract panelId from custom_id if present (format: ticket_select_module_{panelId})
         const parts = interaction.customId.split("_");
         const panelIdFromMenu = parts.length > 4 ? Number(parts[4]) : null;
         const panelIdForTicket = panelIdFromMenu && !isNaN(panelIdFromMenu) ? panelIdFromMenu : null;
         await handleTicketOpen(interaction, guildId, userId, username, moduleId, panelIdForTicket);
-      } catch { await interaction.editReply({ content: "Error al procesar la seleccion." }).catch(() => {}); }
+      } catch { await safeEditReply(interaction, { content: "Error al procesar la seleccion." }).catch(() => {}); }
       return;
     }
 
@@ -2400,8 +2414,8 @@ export function startBot(): Client | undefined {
               }],
             }, botToken);
           }
-          await interaction.editReply({ content: `Gracias por tu calificacion: ${"⭐".repeat(stars)}\nTu opinion nos ayuda a mejorar.` });
-        } catch { await interaction.editReply({ content: "Gracias por tu calificacion." }).catch(() => {}); }
+          await safeEditReply(interaction, { content: `Gracias por tu calificacion: ${"⭐".repeat(stars)}\nTu opinion nos ayuda a mejorar.` });
+        } catch { await safeEditReply(interaction, { content: "Gracias por tu calificacion." }).catch(() => {}); }
       }
       return;
     }
