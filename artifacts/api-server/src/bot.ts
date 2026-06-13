@@ -55,6 +55,7 @@ const webhookSpamTracker = new Map<string, number[]>();    // `${guildId}:${user
 const suspiciousTracker  = new Map<string, { actions: string[]; resetAt: number }>(); // same key
 const aiCooldowns        = new Map<string, number>();      // `ai:${guildId}:${channelId}:${userId}` → timestamp
 const aiConversations    = new Map<string, { role: "user" | "assistant"; content: string }[]>(); // `ai:${guildId}:${channelId}` → history
+const blacklistDmSent    = new Map<string, number>();      // userId → timestamp of last DM sent (rate-limit to avoid spam)
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -504,8 +505,13 @@ export function startBot(): Client | undefined {
       // ── Global Blacklist ─────────────────────────────────────────────────
       if (blacklistEntry && (!blacklistEntry.expiresAt || new Date() < new Date(blacklistEntry.expiresAt))) {
         try {
-          // DM the user before applying the action
-          await dmUserBlacklistNotice(userId, blacklistEntry.reason, botToken, blacklistEntry.evidence ?? []);
+          // DM the user only once per 24h to avoid spam on repeated join attempts
+          const lastDm = blacklistDmSent.get(userId);
+          const dmCooldownMs = 24 * 60 * 60 * 1000;
+          if (!lastDm || Date.now() - lastDm > dmCooldownMs) {
+            await dmUserBlacklistNotice(userId, blacklistEntry.reason, botToken, blacklistEntry.evidence ?? []);
+            blacklistDmSent.set(userId, Date.now());
+          }
 
           if (blacklistAction === "kick") {
             await (member as GuildMember).kick(`Blacklist Global: ${blacklistEntry.reason}`);
@@ -1878,8 +1884,14 @@ export function startBot(): Client | undefined {
       const components = await buildTicketComponents(ticket.id, cfg, null);
       const openMsg = applyTicketVars(cfg.openMessage || `Hola {user}, tu ticket fue creado. Pronto te atendemos.`, tvars);
       await ticketChannel.send({ content: openMsg } as any).catch(() => {});
-      const embedDesc = applyTicketVars((mod?.welcomeEmbedEnabled && mod.welcomeEmbedDescription) || cfg.panelDescription || `Bienvenido {user}. Un agente de soporte te atendera en breve.\n\nDescribe tu consulta con el mayor detalle posible.`, tvars);
-      await ticketChannel.send({ embeds: [{ title: mod ? `Ticket — ${mod.name}` : (cfg.panelTitle || "Nuevo Ticket"), description: embedDesc, color: hexColor(cfg.panelColor || "#5865F2"), footer: { text: `Ticket #${ticket.id}` }, timestamp: new Date().toISOString() }] } as any).catch(() => {});
+      const embedTitleQ = mod?.welcomeEmbedTitle
+        ? applyTicketVars(mod.welcomeEmbedTitle, tvars)
+        : (mod ? `Ticket — ${mod.name}` : (cfg.panelTitle || "Nuevo Ticket"));
+      const embedDescQ = mod?.welcomeEmbedDescription
+        ? applyTicketVars(mod.welcomeEmbedDescription, tvars)
+        : applyTicketVars(cfg.panelDescription || `Bienvenido {user}. Un agente de soporte te atendera en breve.\n\nDescribe tu consulta con el mayor detalle posible.`, tvars);
+      const embedColorQ = hexColor(mod?.welcomeEmbedColor || cfg.panelColor || "#5865F2");
+      await ticketChannel.send({ embeds: [{ title: embedTitleQ, description: embedDescQ, color: embedColorQ, footer: { text: `Ticket #${ticket.id}${mod ? ` · ${mod.name}` : ""}` }, timestamp: new Date().toISOString() }] } as any).catch(() => {});
       await ticketChannel.send({ components } as any).catch(() => {});
       // DM the queued user
       try {
@@ -1985,15 +1997,15 @@ export function startBot(): Client | undefined {
         await ticketChannel.send({ content: modMsg } as any).catch(() => {});
       }
 
-      // 3) Welcome embed — ALWAYS sent (module-specific or default)
+      // 3) Welcome embed — SIEMPRE enviado (obligatorio), usa datos del módulo si existen
       {
-        const embedTitle = (mod?.welcomeEmbedEnabled && mod.welcomeEmbedTitle)
+        const embedTitle = mod?.welcomeEmbedTitle
           ? applyTicketVars(mod.welcomeEmbedTitle, tvars)
           : (mod ? `Ticket — ${mod.name}` : (cfg.panelTitle || "Nuevo Ticket"));
-        const embedDesc = (mod?.welcomeEmbedEnabled && mod.welcomeEmbedDescription)
+        const embedDesc = mod?.welcomeEmbedDescription
           ? applyTicketVars(mod.welcomeEmbedDescription, tvars)
           : applyTicketVars(cfg.panelDescription || `Bienvenido {user}.\n\nUn agente de soporte te atendera en breve.\nDescribe tu consulta con el mayor detalle posible.`, tvars);
-        const embedColor = hexColor((mod?.welcomeEmbedEnabled ? mod.welcomeEmbedColor : null) || cfg.panelColor || "#5865F2");
+        const embedColor = hexColor(mod?.welcomeEmbedColor || cfg.panelColor || "#5865F2");
         await ticketChannel.send({
           embeds: [{
             title: embedTitle,
@@ -2014,7 +2026,7 @@ export function startBot(): Client | undefined {
         }, botToken!);
       }
 
-      await safeEditReply(interaction, { content: `Tu ticket fue creado: <#${ticketChannel.id}>` });
+      await safeEditReply(interaction, { content: `Ticket abierto en <#${ticketChannel.id}>` });
     } catch (err: any) {
       logger.error({ err, guildId, userId }, "Error al crear ticket");
       await safeEditReply(interaction, { content: "Error al crear el ticket. Contacta a un administrador." }).catch(() => {});

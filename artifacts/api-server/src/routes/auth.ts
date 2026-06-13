@@ -153,7 +153,7 @@ router.get("/auth/discord/callback", async (req, res) => {
     res.cookie("token", token, {
       httpOnly: true,
       secure: isHttps,
-      sameSite: isHttps ? "none" : "lax",
+      sameSite: "lax",
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
@@ -202,7 +202,7 @@ router.post("/auth/logout", (_req, res) => {
   res.clearCookie("token", {
     path: "/",
     secure: isHttps,
-    sameSite: isHttps ? "none" : "lax",
+    sameSite: "lax",
   });
   res.json({ ok: true });
 });
