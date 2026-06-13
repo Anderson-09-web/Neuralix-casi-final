@@ -130,7 +130,7 @@ function AdminSupportChat({ ticketId, ticketSubject, ticketStatus, ticketUsernam
   useEffect(() => { setLocalStatus(ticketStatus); }, [ticketStatus]);
 
   const { data: messages } = useGetSupportMessages(ticketId, {
-    query: { enabled: !!ticketId, queryKey: getGetSupportMessagesQueryKey(ticketId), refetchInterval: 3000 },
+    query: { enabled: !!ticketId, queryKey: getGetSupportMessagesQueryKey(ticketId), refetchInterval: 3000, refetchIntervalInBackground: false },
   });
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);

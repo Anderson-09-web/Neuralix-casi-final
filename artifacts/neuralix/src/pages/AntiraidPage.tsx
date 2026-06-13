@@ -39,8 +39,8 @@ export default function AntiraidPage() {
   const [tab, setTab] = useState<Tab>("config");
   const [testing, setTesting] = useState(false);
 
-  const { data: config, isLoading } = useGetAntiraidConfig(guildId, { query: { queryKey: getGetAntiraidConfigQueryKey(guildId), enabled: !!guildId, refetchInterval: 10000 } });
-  const { data: stats } = useGetAntiraidStats(guildId, { query: { queryKey: getGetAntiraidStatsQueryKey(guildId), enabled: !!guildId && tab === "stats", refetchInterval: 5000 } });
+  const { data: config, isLoading } = useGetAntiraidConfig(guildId, { query: { queryKey: getGetAntiraidConfigQueryKey(guildId), enabled: !!guildId, refetchInterval: 10000, refetchIntervalInBackground: false } });
+  const { data: stats } = useGetAntiraidStats(guildId, { query: { queryKey: getGetAntiraidStatsQueryKey(guildId), enabled: !!guildId && tab === "stats", refetchInterval: 5000, refetchIntervalInBackground: false } });
   const update = useUpdateAntiraidConfig();
   const [cfg, setCfg] = useState<any>(null);
   const isMounted = useRef(false);

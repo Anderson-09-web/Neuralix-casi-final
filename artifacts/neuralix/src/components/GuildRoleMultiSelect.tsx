@@ -1,7 +1,29 @@
-import { useEffect, useState, useRef } from "react";
-import { X, Plus } from "lucide-react";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { X, Plus, RefreshCw } from "lucide-react";
 
 type DiscordRole = { id: string; name: string; color: number; position: number };
+
+type CacheEntry = { data: DiscordRole[]; ts: number };
+const cache = new Map<string, CacheEntry>();
+const CACHE_TTL = 60_000;
+
+const pendingRequests = new Map<string, Promise<DiscordRole[]>>();
+
+async function fetchRoles(guildId: string): Promise<DiscordRole[]> {
+  const existing = pendingRequests.get(guildId);
+  if (existing) return existing;
+
+  const promise = fetch(`/api/guilds/${guildId}/roles`, { credentials: "include" })
+    .then((r) => {
+      if (!r.ok) throw new Error(`${r.status}`);
+      return r.json();
+    })
+    .then((data) => (Array.isArray(data) ? data : []))
+    .finally(() => pendingRequests.delete(guildId));
+
+  pendingRequests.set(guildId, promise);
+  return promise;
+}
 
 function roleColor(color: number): string {
   if (!color) return "#6b7280";
@@ -15,23 +37,41 @@ type Props = {
   placeholder?: string;
 };
 
+type State = "loading" | "ok" | "empty" | "error";
+
 export default function GuildRoleMultiSelect({ guildId, value, onChange, placeholder = "Agregar rol..." }: Props) {
   const [roles, setRoles] = useState<DiscordRole[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [state, setState] = useState<State>("loading");
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const selectedIds = value ? value.split(",").map((s) => s.trim()).filter(Boolean) : [];
 
-  useEffect(() => {
+  const load = useCallback(async (bust = false) => {
     if (!guildId) return;
-    setLoading(true);
-    fetch(`/api/guilds/${guildId}/roles`, { credentials: "include" })
-      .then((r) => r.json())
-      .then((data) => setRoles(Array.isArray(data) ? data : []))
-      .catch(() => setRoles([]))
-      .finally(() => setLoading(false));
+    setState("loading");
+    setOpen(false);
+
+    if (!bust) {
+      const hit = cache.get(guildId);
+      if (hit && Date.now() - hit.ts < CACHE_TTL) {
+        setRoles(hit.data);
+        setState(hit.data.length ? "ok" : "empty");
+        return;
+      }
+    }
+
+    try {
+      const data = await fetchRoles(guildId);
+      cache.set(guildId, { data, ts: Date.now() });
+      setRoles(data);
+      setState(data.length ? "ok" : "empty");
+    } catch {
+      setState("error");
+    }
   }, [guildId]);
+
+  useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -54,7 +94,7 @@ export default function GuildRoleMultiSelect({ guildId, value, onChange, placeho
   const roleName = (id: string) => roles.find((r) => r.id === id)?.name || id;
   const roleCol = (id: string) => roleColor(roles.find((r) => r.id === id)?.color || 0);
 
-  if (loading) {
+  if (state === "loading") {
     return (
       <div className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm text-muted-foreground flex items-center gap-2">
         <div className="w-3 h-3 border border-primary border-t-transparent rounded-full animate-spin flex-shrink-0" />
@@ -63,15 +103,38 @@ export default function GuildRoleMultiSelect({ guildId, value, onChange, placeho
     );
   }
 
-  if (!roles.length) {
+  if (state === "error") {
     return (
-      <input
-        type="text"
-        value={value || ""}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="ID1, ID2, ID3"
-        className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
-      />
+      <button
+        type="button"
+        onClick={() => load(true)}
+        className="h-9 w-full rounded-md border border-destructive/50 bg-background px-3 py-1 text-sm text-destructive flex items-center gap-2 hover:bg-destructive/5 transition-colors"
+      >
+        <RefreshCw className="w-3 h-3 flex-shrink-0" />
+        Error al cargar — Reintentar
+      </button>
+    );
+  }
+
+  if (state === "empty") {
+    return (
+      <div className="flex gap-1.5">
+        <input
+          type="text"
+          value={value || ""}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="ID1, ID2, ID3"
+          className="h-9 flex-1 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+        <button
+          type="button"
+          onClick={() => load(true)}
+          title="Reintentar"
+          className="h-9 w-9 flex-shrink-0 rounded-md border border-input bg-background flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+        </button>
+      </div>
     );
   }
 

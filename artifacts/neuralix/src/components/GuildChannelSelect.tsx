@@ -1,14 +1,5 @@
-import { useEffect, useState } from "react";
-import { Hash, Volume2, Folder, Megaphone, MonitorPlay } from "lucide-react";
-
-// Discord channel types
-const CHANNEL_TYPE_ICONS: Record<number, React.ComponentType<{ className?: string }>> = {
-  0: Hash,
-  2: Volume2,
-  4: Folder,
-  5: Megaphone,
-  13: MonitorPlay,
-};
+import { useEffect, useState, useCallback } from "react";
+import { RefreshCw } from "lucide-react";
 
 export type DiscordChannel = {
   id: string;
@@ -18,6 +9,28 @@ export type DiscordChannel = {
   position: number;
 };
 
+type CacheEntry = { data: DiscordChannel[]; ts: number };
+const cache = new Map<string, CacheEntry>();
+const CACHE_TTL = 60_000;
+
+const pendingRequests = new Map<string, Promise<DiscordChannel[]>>();
+
+async function fetchChannels(guildId: string): Promise<DiscordChannel[]> {
+  const existing = pendingRequests.get(guildId);
+  if (existing) return existing;
+
+  const promise = fetch(`/api/guilds/${guildId}/channels`, { credentials: "include" })
+    .then((r) => {
+      if (!r.ok) throw new Error(`${r.status}`);
+      return r.json();
+    })
+    .then((data) => (Array.isArray(data) ? data : []))
+    .finally(() => pendingRequests.delete(guildId));
+
+  pendingRequests.set(guildId, promise);
+  return promise;
+}
+
 type Props = {
   guildId: string;
   value: string;
@@ -26,25 +39,42 @@ type Props = {
   types?: number[];
 };
 
+type State = "loading" | "ok" | "empty" | "error";
+
 export default function GuildChannelSelect({ guildId, value, onChange, placeholder = "Seleccionar canal...", types }: Props) {
-  const [channels, setChannels] = useState<DiscordChannel[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [all, setAll] = useState<DiscordChannel[]>([]);
+  const [state, setState] = useState<State>("loading");
 
-  useEffect(() => {
+  const load = useCallback(async (bust = false) => {
     if (!guildId) return;
-    setLoading(true);
-    fetch(`/api/guilds/${guildId}/channels`, { credentials: "include" })
-      .then((r) => r.json())
-      .then((data) => {
-        let all: DiscordChannel[] = Array.isArray(data) ? data : [];
-        if (types?.length) all = all.filter((c) => types.includes(c.type));
-        setChannels(all);
-      })
-      .catch(() => setChannels([]))
-      .finally(() => setLoading(false));
-  }, [guildId]);
+    setState("loading");
 
-  if (loading) {
+    if (!bust) {
+      const hit = cache.get(guildId);
+      if (hit && Date.now() - hit.ts < CACHE_TTL) {
+        let filtered = hit.data;
+        if (types?.length) filtered = filtered.filter((c) => types.includes(c.type));
+        setAll(filtered);
+        setState(filtered.length ? "ok" : "empty");
+        return;
+      }
+    }
+
+    try {
+      const data = await fetchChannels(guildId);
+      cache.set(guildId, { data, ts: Date.now() });
+      let filtered = data;
+      if (types?.length) filtered = filtered.filter((c) => types.includes(c.type));
+      setAll(filtered);
+      setState(filtered.length ? "ok" : "empty");
+    } catch {
+      setState("error");
+    }
+  }, [guildId, types?.join(",")]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (state === "loading") {
     return (
       <div className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm text-muted-foreground flex items-center gap-2">
         <div className="w-3 h-3 border border-primary border-t-transparent rounded-full animate-spin flex-shrink-0" />
@@ -53,15 +83,38 @@ export default function GuildChannelSelect({ guildId, value, onChange, placehold
     );
   }
 
-  if (!channels.length) {
+  if (state === "error") {
     return (
-      <input
-        type="text"
-        value={value || ""}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="ID del canal"
-        className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
-      />
+      <button
+        type="button"
+        onClick={() => load(true)}
+        className="h-9 w-full rounded-md border border-destructive/50 bg-background px-3 py-1 text-sm text-destructive flex items-center gap-2 hover:bg-destructive/5 transition-colors"
+      >
+        <RefreshCw className="w-3 h-3 flex-shrink-0" />
+        Error al cargar — Reintentar
+      </button>
+    );
+  }
+
+  if (state === "empty") {
+    return (
+      <div className="flex gap-1.5">
+        <input
+          type="text"
+          value={value || ""}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="ID del canal"
+          className="h-9 flex-1 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+        <button
+          type="button"
+          onClick={() => load(true)}
+          title="Reintentar"
+          className="h-9 w-9 flex-shrink-0 rounded-md border border-input bg-background flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+        </button>
+      </div>
     );
   }
 
@@ -77,7 +130,7 @@ export default function GuildChannelSelect({ guildId, value, onChange, placehold
       }}
     >
       <option value="">{placeholder}</option>
-      {channels.map((c) => (
+      {all.map((c) => (
         <option key={c.id} value={c.id}>
           {c.type === 2 ? "🔊" : c.type === 4 ? "📁" : c.type === 5 ? "📣" : "#"} {c.name}
         </option>
