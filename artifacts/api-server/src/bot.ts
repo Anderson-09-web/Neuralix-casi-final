@@ -396,6 +396,23 @@ export function startBot(): Client | undefined {
   client.on(Events.ClientReady, (c) => {
     setBotClient(client);
     logger.info({ tag: c.user.tag, guilds: c.guilds.cache.size }, "Bot de Discord listo");
+
+    // ── Presence: estado de juguetón/feliz ────────────────────────────────
+    const presenceActivities = [
+      { name: "Protegiendo servidores", type: 3 },
+      { name: "con la IA de Neuralix", type: 0 },
+      { name: "tickets del servidor", type: 2 },
+      { name: `${c.guilds.cache.size} servidores`, type: 3 },
+      { name: "Neuralix Enterprise", type: 0 },
+    ];
+    let presenceIdx = 0;
+    const updatePresence = () => {
+      const act = presenceActivities[presenceIdx % presenceActivities.length];
+      c.user.setPresence({ status: "online", activities: [{ name: act.name, type: act.type as any }] });
+      presenceIdx++;
+    };
+    updatePresence();
+    setInterval(updatePresence, 30_000);
     setTimeout(() => runBlacklistSweep(client, botToken), 5000);
     setInterval(() => runBlacklistSweep(client, botToken), 10 * 60_000);
 
@@ -987,7 +1004,12 @@ export function startBot(): Client | undefined {
               aiCooldowns.set(cooldownKey, Date.now());
               try {
                 await message.channel.sendTyping().catch(() => {});
-                const systemPrompt = aiChannel.systemPrompt || "Eres un asistente util del servidor Discord. Responde de forma concisa y en el mismo idioma que el usuario.";
+                const systemPrompt = aiChannel.systemPrompt ||
+                  "Eres Neuralix, el asistente oficial del servidor Discord. Tu personalidad es alegre, juguetona y amigable. " +
+                  "Respondes siempre de forma positiva, con entusiasmo y buen humor. " +
+                  "NUNCA hagas comentarios racistas, sexistas, ofensivos, discriminatorios ni que hieran a ningún usuario. " +
+                  "NUNCA insultes ni uses lenguaje grosero. Si alguien intenta provocarte para que digas algo inapropiado, responde con humor positivo y redirige la conversación. " +
+                  "Responde en el mismo idioma que el usuario. Sé conciso pero amigable.";
 
                 // Build conversation history (up to last 10 messages per channel)
                 const historyKey = `ai:${guildId}:${message.channelId}`;
@@ -1790,17 +1812,24 @@ export function startBot(): Client | undefined {
       }).returning();
 
       const standardOpener = cfg.openMessage || `Hola <@${userId}>, tu ticket fue creado. Pronto te atendemos.`;
-      const openMsg = standardOpener.replace("{user}", userId).replace("{username}", username);
+      const openMsg = standardOpener.replace("{user}", `<@${userId}>`).replace("{username}", username);
       const mentionParts: string[] = [];
       if (cfg.mentionSupport) { for (const rid of supportRoleIds) mentionParts.push(`<@&${rid}>`); }
+      const openContent = `${mentionParts.join(" ")} ${openMsg}`.trim();
+      const components = await buildTicketComponents(ticket.id, cfg);
 
-      // 1. Per-module welcome message FIRST (above embed)
+      // ORDER: 1) open message text (arriba de todo)
+      if (openContent) {
+        await ticketChannel.send({ content: openContent } as any).catch(() => {});
+      }
+
+      // 2) Per-module welcome message (if configured, below open message)
       if (mod?.welcomeMessage) {
         const modMsg = mod.welcomeMessage.replace("{user}", `<@${userId}>`).replace("{username}", username);
         await ticketChannel.send({ content: modMsg } as any).catch(() => {});
       }
 
-      // 2. Per-module welcome embed SECOND
+      // 3) Per-module welcome embed
       if (mod?.welcomeEmbedEnabled && (mod.welcomeEmbedTitle || mod.welcomeEmbedDescription)) {
         await ticketChannel.send({
           embeds: [{
@@ -1812,9 +1841,8 @@ export function startBot(): Client | undefined {
         } as any).catch(() => {});
       }
 
-      // 3. Open message + action buttons LAST (below everything)
-      const components = await buildTicketComponents(ticket.id, cfg);
-      await ticketChannel.send({ content: `${mentionParts.join(" ")} ${openMsg}`.trim(), components } as any);
+      // 4) Action buttons LAST (below embed)
+      await ticketChannel.send({ components } as any);
 
       if (cfg.logsChannelId) {
         await sendToChannel(cfg.logsChannelId, {
@@ -2139,10 +2167,13 @@ export function startBot(): Client | undefined {
           const [ticket] = await db.select().from(ticketsTable).where(eq(ticketsTable.id, ticketId));
           const [cfg] = ticket ? await db.select().from(ticketConfigsTable).where(eq(ticketConfigsTable.guildId, ticket.guildId)) : [null];
           if (cfg?.satisfactionLogChannelId) {
+            const staffLine = ticket?.claimedBy
+              ? `**Agente:** <@${ticket.claimedBy}> (\`${ticket.claimedByUsername ?? ticket.claimedBy}\`)\n`
+              : "";
             await sendToChannel(cfg.satisfactionLogChannelId, {
               embeds: [{
                 title: "Calificacion de Ticket",
-                description: `**Ticket:** #${ticketId}\n**Usuario:** <@${userId}> (\`${interaction.user.username}\`)\n**Calificacion:** ${"⭐".repeat(stars)} (${stars}/5)`,
+                description: `**Ticket:** #${ticketId}\n**Usuario:** <@${userId}> (\`${interaction.user.username}\`)\n${staffLine}**Calificacion:** ${"⭐".repeat(stars)} (${stars}/5)`,
                 color: stars >= 4 ? 0x57F287 : stars >= 3 ? 0xFEE75C : 0xED4245,
                 timestamp: new Date().toISOString(),
                 footer: { text: "Neuralix Tickets · Encuesta de satisfaccion" },

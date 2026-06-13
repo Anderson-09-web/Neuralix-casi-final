@@ -338,20 +338,24 @@ export default function TicketsPage() {
                       <Label className="text-xs mb-1.5 block">Imagen del panel (URL)</Label>
                       <input className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.embedImage} onChange={(e) => setPF("embedImage")(e.target.value)} placeholder="https://..." />
                     </div>
-                    <div>
-                      <Label className="text-xs mb-1.5 block">Etiqueta del boton</Label>
-                      <input className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.buttonLabel} onChange={(e) => setPF("buttonLabel")(e.target.value)} placeholder="Abrir Ticket" />
-                    </div>
-                    <div>
-                      <Label className="text-xs mb-1.5 block">Emoji del boton</Label>
-                      <input className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.buttonEmoji} onChange={(e) => setPF("buttonEmoji")(e.target.value)} placeholder="🎫" />
-                    </div>
-                    <div>
-                      <Label className="text-xs mb-1.5 block">Color del boton</Label>
-                      <NativeSelect value={panelForm.buttonColor} onChange={setPF("buttonColor")}>
-                        {BUTTON_COLORS.map((c) => <option key={c} value={c}>{c}</option>)}
-                      </NativeSelect>
-                    </div>
+                    {!panelForm.useModules && (
+                      <>
+                        <div>
+                          <Label className="text-xs mb-1.5 block">Etiqueta del boton</Label>
+                          <input className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.buttonLabel} onChange={(e) => setPF("buttonLabel")(e.target.value)} placeholder="Abrir Ticket" />
+                        </div>
+                        <div>
+                          <Label className="text-xs mb-1.5 block">Emoji del boton</Label>
+                          <input className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.buttonEmoji} onChange={(e) => setPF("buttonEmoji")(e.target.value)} placeholder="🎫" />
+                        </div>
+                        <div>
+                          <Label className="text-xs mb-1.5 block">Color del boton</Label>
+                          <NativeSelect value={panelForm.buttonColor} onChange={setPF("buttonColor")}>
+                            {BUTTON_COLORS.map((c) => <option key={c} value={c}>{c}</option>)}
+                          </NativeSelect>
+                        </div>
+                      </>
+                    )}
                     <div>
                       <Label className="text-xs mb-1.5 block">Orden</Label>
                       <input type="number" min="0" className="h-9 w-24 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.sortOrder} onChange={(e) => setPF("sortOrder")(e.target.value)} />
