@@ -263,37 +263,50 @@ router.post("/admin/blacklist/sweep", requireOwner, async (_req, res) => {
     const client = getBotClient();
     if (!client) { res.status(503).json({ error: "Bot no conectado" }); return; }
 
+    const botToken = process.env.DISCORD_BOT_TOKEN;
+    if (!botToken) { res.status(503).json({ error: "Token del bot no configurado" }); return; }
+
+    const DISCORD_API = "https://discord.com/api/v10";
+    const axios = (await import("axios")).default;
+
     const blacklisted = await db.select().from(blacklistTable);
-    const blacklistMap = new Map(blacklisted.map((b) => [b.userId, b]));
+    const active = blacklisted.filter((e) => !e.expiresAt || new Date(e.expiresAt) > new Date());
+    if (!active.length) { res.json({ ok: true, actioned: 0, guilds: 0 }); return; }
+
     const configs = await db.select({ guildId: guildConfigsTable.guildId, blacklistAction: guildConfigsTable.blacklistAction }).from(guildConfigsTable);
 
     let actioned = 0;
     const guildsProcessed = new Set<string>();
 
-    await Promise.allSettled(
-      configs.map(async ({ guildId, blacklistAction }) => {
+    // Blacklist-first approach: iterate by user → per guild → ban via REST (no full member fetch)
+    for (const entry of active) {
+      for (const { guildId, blacklistAction } of configs) {
         const guild = client.guilds.cache.get(guildId);
-        if (!guild) return;
+        if (!guild) continue;
         guildsProcessed.add(guildId);
         const action = blacklistAction || "ban";
-        if (action === "none") return;
+        if (action === "none") continue;
 
-        const members = await guild.members.fetch().catch(() => null);
-        if (!members) return;
-
-        for (const [memberId, member] of members) {
-          const entry = blacklistMap.get(memberId);
-          if (!entry) continue;
-          if (entry.expiresAt && new Date(entry.expiresAt) < new Date()) continue;
-          try {
-            if (action === "ban") await member.ban({ reason: `Blacklist Global Sweep: ${entry.reason}` });
-            else if (action === "kick") await member.kick(`Blacklist Global Sweep: ${entry.reason}`);
-            else if (action === "timeout") await member.timeout(3600000, `Blacklist Global Sweep: ${entry.reason}`);
-            actioned++;
-          } catch {}
-        }
-      })
-    );
+        try {
+          if (action === "ban") {
+            // Direct REST ban — works even if member is not cached, and is idempotent
+            const r = await axios.put(
+              `${DISCORD_API}/guilds/${guildId}/bans/${entry.userId}`,
+              { delete_message_seconds: 0, reason: `Blacklist Global Sweep: ${entry.reason}` },
+              { headers: { Authorization: `Bot ${botToken}`, "Content-Type": "application/json" }, validateStatus: () => true }
+            );
+            if (r.status === 200 || r.status === 204) actioned++;
+          } else {
+            // For kick/timeout we need the member object
+            const member = guild.members.cache.get(entry.userId)
+              || await guild.members.fetch(entry.userId).catch(() => null);
+            if (!member) continue;
+            if (action === "kick") { await member.kick(`Blacklist Global Sweep: ${entry.reason}`); actioned++; }
+            else if (action === "timeout") { await member.timeout(3600000, `Blacklist Global Sweep: ${entry.reason}`); actioned++; }
+          }
+        } catch {}
+      }
+    }
 
     res.json({ ok: true, actioned, guilds: guildsProcessed.size });
   } catch (err: any) {

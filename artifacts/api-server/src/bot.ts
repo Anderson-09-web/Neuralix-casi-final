@@ -337,24 +337,36 @@ function applyTicketVars(template: string, vars: { userId: string; username: str
 // ─── Global Blacklist Sweep ────────────────────────────────────────────────────
 
 const BLACKLIST_APPEAL_SERVER_ID = "1493023527887048724";
-const BLACKLIST_APPEAL_INVITE    = "https://discord.gg/neuralix-appeal";
+const BLACKLIST_APPEAL_INVITE    = "https://discord.gg/wukr8apdQq";
 
-async function dmUserBlacklistNotice(userId: string, reason: string, botToken: string) {
+function isBlacklistImageUrl(url: string): boolean {
+  return /^https?:\/\/.+\.(png|jpg|jpeg|gif|webp)(\?.*)?$/i.test(url);
+}
+
+async function dmUserBlacklistNotice(userId: string, reason: string, botToken: string, evidence?: string[]) {
   try {
     const dmRes = await axios.post(`${DISCORD_API}/users/@me/channels`, { recipient_id: userId }, {
       headers: { Authorization: `Bot ${botToken!.trim()}`, "Content-Type": "application/json" },
       validateStatus: () => true,
     });
     if (!dmRes.data?.id) return;
-    await axios.post(`${DISCORD_API}/channels/${dmRes.data.id}/messages`, {
-      embeds: [{
-        title: "Has sido incluido en la Blacklist Global de Neuralix",
-        description: `Fuiste expulsado/baneado de todos los servidores protegidos por **Neuralix**.\n\n**Razon:** ${reason}\n\n**¿Crees que es un error?**\nPuedes apelar uniendote a nuestro servidor:\n${BLACKLIST_APPEAL_INVITE}\n\n**ID del servidor de apelaciones:** \`${BLACKLIST_APPEAL_SERVER_ID}\``,
-        color: 0xED4245,
-        footer: { text: "Neuralix Blacklist Global" },
-        timestamp: new Date().toISOString(),
-      }],
-    }, {
+
+    const evidenceList = (evidence ?? []).filter(Boolean);
+    const evidenceText = evidenceList.length
+      ? `\n\n**Pruebas registradas:**\n${evidenceList.map((e, i) => `[${i + 1}] ${e}`).join("\n")}`
+      : "";
+    const firstImage = evidenceList.find(isBlacklistImageUrl);
+
+    const embed: Record<string, any> = {
+      title: "Has sido incluido en la Blacklist Global de Neuralix",
+      description: `Fuiste expulsado/baneado de todos los servidores protegidos por **Neuralix**.\n\n**Razon:** ${reason}${evidenceText}\n\n**¿Crees que es un error?**\nPuedes apelar uniendote a nuestro servidor:\n${BLACKLIST_APPEAL_INVITE}\n\n**ID del servidor de apelaciones:** \`${BLACKLIST_APPEAL_SERVER_ID}\``,
+      color: 0xED4245,
+      footer: { text: "Neuralix Blacklist Global" },
+      timestamp: new Date().toISOString(),
+    };
+    if (firstImage) embed.image = { url: firstImage };
+
+    await axios.post(`${DISCORD_API}/channels/${dmRes.data.id}/messages`, { embeds: [embed] }, {
       headers: { Authorization: `Bot ${botToken!.trim()}`, "Content-Type": "application/json" },
       validateStatus: () => true,
     });
@@ -493,7 +505,7 @@ export function startBot(): Client | undefined {
       if (blacklistEntry && (!blacklistEntry.expiresAt || new Date() < new Date(blacklistEntry.expiresAt))) {
         try {
           // DM the user before applying the action
-          await dmUserBlacklistNotice(userId, blacklistEntry.reason, botToken);
+          await dmUserBlacklistNotice(userId, blacklistEntry.reason, botToken, blacklistEntry.evidence ?? []);
 
           if (blacklistAction === "kick") {
             await (member as GuildMember).kick(`Blacklist Global: ${blacklistEntry.reason}`);

@@ -8,7 +8,7 @@ import axios from "axios";
 const router = Router();
 
 const APPEAL_SERVER_ID = "1493023527887048724";
-const APPEAL_INVITE = `https://discord.gg/neuralix-appeal`;
+const APPEAL_INVITE = `https://discord.gg/wukr8apdQq`;
 const DISCORD_API = "https://discord.com/api/v10";
 
 async function log(actor: any, action: string, target?: string, details?: Record<string, any>) {
@@ -35,11 +35,22 @@ function getLogChannel(logCfg: any): string | null {
   return logCfg.securityChannelId || logCfg.channelId || null;
 }
 
-async function sweepUserFromAllGuilds(userId: string, reason: string): Promise<void> {
+function isImageUrl(url: string): boolean {
+  return /^https?:\/\/.+\.(png|jpg|jpeg|gif|webp)(\?.*)?$/i.test(url);
+}
+
+async function sweepUserFromAllGuilds(userId: string, reason: string, evidence?: string[]): Promise<void> {
   const botToken = process.env.DISCORD_BOT_TOKEN;
   if (!botToken) return;
   const client = getBotClient();
   if (!client) return;
+
+  // Build evidence section for DM
+  const evidenceList = (evidence ?? []).filter(Boolean);
+  const evidenceText = evidenceList.length
+    ? `\n\n**Pruebas registradas:**\n${evidenceList.map((e, i) => `[${i + 1}] ${e}`).join("\n")}`
+    : "";
+  const firstImage = evidenceList.find(isImageUrl);
 
   // Send DM to the user before sweeping
   try {
@@ -48,15 +59,15 @@ async function sweepUserFromAllGuilds(userId: string, reason: string): Promise<v
       validateStatus: () => true,
     });
     if (dmRes.data?.id) {
-      await axios.post(`${DISCORD_API}/channels/${dmRes.data.id}/messages`, {
-        embeds: [{
-          title: "Has sido incluido en la Blacklist Global de Neuralix",
-          description: `Fuiste baneado/expulsado de todos los servidores protegidos por **Neuralix**.\n\n**Razon:** ${reason}\n\n**¿Crees que es un error?**\nPuedes apelar uniendote a nuestro servidor de apelaciones:\n${APPEAL_INVITE}\n\n**ID Servidor de Apelaciones:** \`${APPEAL_SERVER_ID}\``,
-          color: 0xED4245,
-          footer: { text: "Neuralix Blacklist Global" },
-          timestamp: new Date().toISOString(),
-        }],
-      }, {
+      const embed: Record<string, any> = {
+        title: "Has sido incluido en la Blacklist Global de Neuralix",
+        description: `Fuiste baneado/expulsado de todos los servidores protegidos por **Neuralix**.\n\n**Razon:** ${reason}${evidenceText}\n\n**¿Crees que es un error?**\nPuedes apelar uniendote a nuestro servidor de apelaciones:\n${APPEAL_INVITE}\n\n**ID Servidor de Apelaciones:** \`${APPEAL_SERVER_ID}\``,
+        color: 0xED4245,
+        footer: { text: "Neuralix Blacklist Global" },
+        timestamp: new Date().toISOString(),
+      };
+      if (firstImage) embed.image = { url: firstImage };
+      await axios.post(`${DISCORD_API}/channels/${dmRes.data.id}/messages`, { embeds: [embed] }, {
         headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" },
         validateStatus: () => true,
       });
@@ -106,7 +117,23 @@ router.get("/blacklist/check/:discordId", async (req, res) => {
   if (!discordId) { res.status(400).json({ error: "discordId requerido" }); return; }
   const [entry] = await db.select().from(blacklistTable).where(eq(blacklistTable.userId, discordId));
   if (!entry) {
-    res.json({ blacklisted: false });
+    // Even if not blacklisted, return basic Discord user info if possible
+    const botToken = process.env.DISCORD_BOT_TOKEN;
+    let discordUser: any = null;
+    if (botToken) {
+      const r = await axios.get(`${DISCORD_API}/users/${discordId}`, {
+        headers: { Authorization: `Bot ${botToken}` }, validateStatus: () => true,
+      });
+      if (r.status === 200) discordUser = r.data;
+    }
+    res.json({
+      blacklisted: false,
+      discordId,
+      discordUsername: discordUser?.global_name || discordUser?.username || null,
+      discordAvatar: discordUser?.avatar
+        ? `https://cdn.discordapp.com/avatars/${discordId}/${discordUser.avatar}.${discordUser.avatar.startsWith("a_") ? "gif" : "png"}`
+        : null,
+    });
     return;
   }
 
@@ -114,6 +141,16 @@ router.get("/blacklist/check/:discordId", async (req, res) => {
     await db.delete(blacklistTable).where(eq(blacklistTable.userId, discordId));
     res.json({ blacklisted: false, expired: true });
     return;
+  }
+
+  // Fetch live Discord user info to enrich the response
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  let discordUser: any = null;
+  if (botToken) {
+    const r = await axios.get(`${DISCORD_API}/users/${discordId}`, {
+      headers: { Authorization: `Bot ${botToken}` }, validateStatus: () => true,
+    });
+    if (r.status === 200) discordUser = r.data;
   }
 
   res.json({
@@ -129,6 +166,14 @@ router.get("/blacklist/check/:discordId", async (req, res) => {
     permanent: !entry.expiresAt,
     appealServerId: APPEAL_SERVER_ID,
     appealInvite: APPEAL_INVITE,
+    // Live Discord user info
+    discordUsername: discordUser?.global_name || discordUser?.username || entry.username,
+    discordGlobalName: discordUser?.global_name || null,
+    discordAvatar: discordUser?.avatar
+      ? `https://cdn.discordapp.com/avatars/${discordId}/${discordUser.avatar}.${discordUser.avatar.startsWith("a_") ? "gif" : "png"}`
+      : (entry.avatarHash
+        ? `https://cdn.discordapp.com/avatars/${discordId}/${entry.avatarHash}.png`
+        : null),
   });
 });
 
@@ -164,7 +209,7 @@ router.post("/blacklist", requireAdminAccess("manage_blacklist"), async (req, re
     await log(actor, "update_blacklist", username, { userId, reason, durationDays: parsedDuration });
 
     // Trigger immediate sweep for updated entry
-    sweepUserFromAllGuilds(userId as string, reason).catch(() => {});
+    sweepUserFromAllGuilds(userId as string, reason, evidence || []).catch(() => {});
 
     res.json(updated);
     return;
@@ -181,7 +226,7 @@ router.post("/blacklist", requireAdminAccess("manage_blacklist"), async (req, re
   await log(actor, "add_blacklist", username, { userId, reason, durationDays: parsedDuration });
 
   // Trigger immediate sweep for new entry
-  sweepUserFromAllGuilds(userId as string, reason).catch(() => {});
+  sweepUserFromAllGuilds(userId as string, reason, evidence || []).catch(() => {});
 
   res.status(201).json(entry);
 });
