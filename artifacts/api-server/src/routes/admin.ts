@@ -357,7 +357,7 @@ router.put("/admin/links", requireOwner, async (req, res) => {
 
 // ─── Bulk license revoke ────────────────────────────────────────────────────
 router.post("/admin/licenses/bulk-revoke", requireOwner, async (req, res) => {
-  const actor = req.user!;
+  const actor = (req as any).user!;
   const { plan } = req.body as { plan: string };
   if (!plan?.trim()) { res.status(400).json({ error: "plan requerido" }); return; }
   try {

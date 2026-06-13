@@ -506,7 +506,7 @@ export default function TicketsPage() {
                         </div>
                       </div>
                       {/* Inline channel prompt when no channelId is configured */}
-                      {sendChannelInput?.panelId === p.id && (
+                      {sendChannelInput !== null && sendChannelInput.panelId === p.id && (
                         <div className="mt-3 pt-3 border-t border-border space-y-2">
                           <p className="text-xs text-muted-foreground">Este panel no tiene canal configurado. Selecciona el canal de Discord donde enviarlo:</p>
                           <div className="flex items-center gap-2">

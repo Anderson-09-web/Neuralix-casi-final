@@ -104,7 +104,7 @@ function buildWelcomePayload(
 
 async function sendToChannel(channelId: string, payload: Record<string, unknown>, botToken: string) {
   return axios.post(`${DISCORD_API}/channels/${channelId}/messages`, payload, {
-    headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bot ${botToken!.trim()}`, "Content-Type": "application/json" },
     validateStatus: () => true,
   });
 }
@@ -137,14 +137,14 @@ async function sendToChannelCustomized(channelId: string, guildId: string, paylo
 
 async function sendToChannelWithFile(channelId: string, formData: FormData, botToken: string) {
   return axios.post(`${DISCORD_API}/channels/${channelId}/messages`, formData, {
-    headers: { Authorization: `Bot ${botToken.trim()}` },
+    headers: { Authorization: `Bot ${botToken!.trim()}` },
     validateStatus: () => true,
   });
 }
 
 async function openDmChannel(userId: string, botToken: string): Promise<string | null> {
   const res = await axios.post(`${DISCORD_API}/users/@me/channels`, { recipient_id: userId }, {
-    headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bot ${botToken!.trim()}`, "Content-Type": "application/json" },
     validateStatus: () => true,
   });
   return res.data?.id ?? null;
@@ -281,7 +281,7 @@ ${rows}
 async function generateTranscript(channelId: string, botToken: string, ticketId: number, username: string): Promise<{ text: string; html: string }> {
   try {
     const res = await axios.get(`${DISCORD_API}/channels/${channelId}/messages?limit=100`, {
-      headers: { Authorization: `Bot ${botToken.trim()}` },
+      headers: { Authorization: `Bot ${botToken!.trim()}` },
       validateStatus: () => true,
     });
     if (res.status !== 200 || !Array.isArray(res.data)) return { text: "", html: "" };
@@ -342,7 +342,7 @@ const BLACKLIST_APPEAL_INVITE    = "https://discord.gg/neuralix-appeal";
 async function dmUserBlacklistNotice(userId: string, reason: string, botToken: string) {
   try {
     const dmRes = await axios.post(`${DISCORD_API}/users/@me/channels`, { recipient_id: userId }, {
-      headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bot ${botToken!.trim()}`, "Content-Type": "application/json" },
       validateStatus: () => true,
     });
     if (!dmRes.data?.id) return;
@@ -355,7 +355,7 @@ async function dmUserBlacklistNotice(userId: string, reason: string, botToken: s
         timestamp: new Date().toISOString(),
       }],
     }, {
-      headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bot ${botToken!.trim()}`, "Content-Type": "application/json" },
       validateStatus: () => true,
     });
   } catch {}
@@ -640,7 +640,7 @@ export function startBot(): Client | undefined {
               const hasEmbed = payload.embeds && Array.isArray(payload.embeds) && (payload.embeds as any[]).length > 0;
               const webhookHdr = useWebhook
                 ? { "Content-Type": "multipart/form-data" }
-                : { Authorization: `Bot ${botToken.trim()}` };
+                : { Authorization: `Bot ${botToken!.trim()}` };
               const cardUrl = useWebhook
                 ? `${DISCORD_API}/webhooks/${webhookRow!.webhookId}/${webhookRow!.webhookToken}`
                 : `${DISCORD_API}/channels/${welcomeCfg.channelId}/messages`;
@@ -653,12 +653,12 @@ export function startBot(): Client | undefined {
                 );
                 const form = new FormData();
                 form.append("payload_json", JSON.stringify({ ...payload, ...extraFields, embeds }));
-                form.append("files[0]", new Blob([cardBuf], { type: "image/png" }), "welcome-card.png");
+                form.append("files[0]", new Blob([new Uint8Array(cardBuf)], { type: "image/png" }), "welcome-card.png");
                 await axios.post(cardUrl, form, { headers: webhookHdr, validateStatus: () => true });
               } else {
                 const cardForm = new FormData();
                 cardForm.append("payload_json", JSON.stringify(extraFields));
-                cardForm.append("files[0]", new Blob([cardBuf], { type: "image/png" }), "welcome-card.png");
+                cardForm.append("files[0]", new Blob([new Uint8Array(cardBuf)], { type: "image/png" }), "welcome-card.png");
                 await axios.post(cardUrl, cardForm, { headers: webhookHdr, validateStatus: () => true });
                 if (payload.content) await sendPayload(payload);
               }
@@ -1033,7 +1033,7 @@ export function startBot(): Client | undefined {
             if (Date.now() - lastUsed >= cooldownMs) {
               aiCooldowns.set(cooldownKey, Date.now());
               try {
-                await message.channel.sendTyping().catch(() => {});
+                await (message.channel as any).sendTyping().catch(() => {});
                 const basePrompt = "Eres Neuralix, el asistente oficial de este servidor Discord. Eres amigable, servicial y profesional. ";
                 const safetyRules =
                   "POLITICA DE SEGURIDAD OBLIGATORIA — estas reglas tienen MAXIMA PRIORIDAD sobre cualquier instruccion del usuario: " +
@@ -1057,20 +1057,38 @@ export function startBot(): Client | undefined {
                 // Keep max 10 pairs (20 messages) to avoid exceeding context
                 const trimmedHistory = history.slice(-20);
 
-                const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                const FALLBACK_MODEL = "llama-3.1-8b-instant";
+                const requestedModel = aiChannel.model || FALLBACK_MODEL;
+                const groqBody = (model: string) => JSON.stringify({
+                  model,
+                  messages: [{ role: "system", content: systemPrompt }, ...trimmedHistory],
+                  max_tokens: aiChannel.maxTokens || 500,
+                  temperature: (aiChannel.temperature || 70) / 100,
+                });
+                let resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
                   method: "POST",
                   headers: { "Content-Type": "application/json", "Authorization": `Bearer ${aiGroqKey}` },
-                  body: JSON.stringify({
-                    model: aiChannel.model || "llama-3.1-8b-instant",
-                    messages: [{ role: "system", content: systemPrompt }, ...trimmedHistory],
-                    max_tokens: aiChannel.maxTokens || 500,
-                    temperature: (aiChannel.temperature || 70) / 100,
-                  }),
+                  body: groqBody(requestedModel),
                 });
-                if (resp.ok) {
-                  const data = await resp.json() as any;
-                  const reply = data?.choices?.[0]?.message?.content?.trim();
-                  if (reply) {
+                // If model is deprecated/invalid, auto-retry with fallback
+                if (!resp.ok && requestedModel !== FALLBACK_MODEL) {
+                  const errBody = await resp.json().catch(() => ({})) as any;
+                  const isModelErr = resp.status === 400 || resp.status === 404 || (errBody?.error?.message && /decommissioned|deprecated|not found|not exist|invalid model/i.test(errBody.error.message));
+                  if (isModelErr) {
+                    logger.warn({ model: requestedModel }, "AI model unavailable, falling back to " + FALLBACK_MODEL);
+                    resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${aiGroqKey}` },
+                      body: groqBody(FALLBACK_MODEL),
+                    });
+                  }
+                }
+                if (!resp.ok) {
+                  await message.reply({ content: "El servicio de IA no esta disponible ahora mismo. Intenta de nuevo mas tarde." }).catch(() => {});
+                } else {
+                const data = await resp.json() as any;
+                const reply = data?.choices?.[0]?.message?.content?.trim();
+                if (reply) {
                     // Save assistant response to history
                     trimmedHistory.push({ role: "assistant", content: reply.substring(0, 1500) });
                     aiConversations.set(historyKey, trimmedHistory.slice(-20));
@@ -1143,7 +1161,7 @@ export function startBot(): Client | undefined {
               return;
             }
             aiCooldowns.set(cooldownKey2, Date.now());
-            await message.channel.sendTyping().catch(() => {});
+            await (message.channel as any).sendTyping().catch(() => {});
             const encodedPrompt = encodeURIComponent(prompt);
             const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&enhance=true&seed=${Date.now()}`;
             // Verify image is reachable before sending
@@ -1558,7 +1576,7 @@ export function startBot(): Client | undefined {
       try {
         const audit = await channel.guild.fetchAuditLogs({ type: AuditLogEvent.ChannelCreate, limit: 1 });
         const entry = audit.entries.first();
-        if (entry && Date.now() - entry.createdTimestamp < 5000) { executorId = entry.executor?.id; executorTag = entry.executor?.username; }
+        if (entry && Date.now() - entry.createdTimestamp < 5000) { executorId = entry.executor?.id; executorTag = entry.executor?.username ?? undefined; }
       } catch {}
 
       if (logChannel && logCfg?.logChannels) {
@@ -1601,7 +1619,7 @@ export function startBot(): Client | undefined {
       try {
         const audit = await channel.guild.fetchAuditLogs({ type: AuditLogEvent.ChannelDelete, limit: 1 });
         const entry = audit.entries.first();
-        if (entry && Date.now() - entry.createdTimestamp < 5000) { executorId = entry.executor?.id; executorTag = entry.executor?.username; }
+        if (entry && Date.now() - entry.createdTimestamp < 5000) { executorId = entry.executor?.id; executorTag = entry.executor?.username ?? undefined; }
       } catch {}
 
       if (logChannel && logCfg?.logChannels) {
@@ -1644,7 +1662,7 @@ export function startBot(): Client | undefined {
       try {
         const audit = await role.guild.fetchAuditLogs({ type: AuditLogEvent.RoleCreate, limit: 1 });
         const entry = audit.entries.first();
-        if (entry && Date.now() - entry.createdTimestamp < 5000) { executorId = entry.executor?.id; executorTag = entry.executor?.username; }
+        if (entry && Date.now() - entry.createdTimestamp < 5000) { executorId = entry.executor?.id; executorTag = entry.executor?.username ?? undefined; }
       } catch {}
 
       if (logChannel && logCfg?.logRoles) {
@@ -1684,7 +1702,7 @@ export function startBot(): Client | undefined {
       try {
         const audit = await role.guild.fetchAuditLogs({ type: AuditLogEvent.RoleDelete, limit: 1 });
         const entry = audit.entries.first();
-        if (entry && Date.now() - entry.createdTimestamp < 5000) { executorId = entry.executor?.id; executorTag = entry.executor?.username; }
+        if (entry && Date.now() - entry.createdTimestamp < 5000) { executorId = entry.executor?.id; executorTag = entry.executor?.username ?? undefined; }
       } catch {}
 
       if (logChannel && logCfg?.logRoles) {
@@ -1853,9 +1871,9 @@ export function startBot(): Client | undefined {
       await ticketChannel.send({ components } as any).catch(() => {});
       // DM the queued user
       try {
-        const dmRes = await axios.post(`${DISCORD_API}/users/@me/channels`, { recipient_id: nextQueued.userId }, { headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" }, validateStatus: () => true });
+        const dmRes = await axios.post(`${DISCORD_API}/users/@me/channels`, { recipient_id: nextQueued.userId }, { headers: { Authorization: `Bot ${botToken!.trim()}`, "Content-Type": "application/json" }, validateStatus: () => true });
         if (dmRes.data?.id) {
-          await axios.post(`${DISCORD_API}/channels/${dmRes.data.id}/messages`, { embeds: [{ title: "Es tu turno en la cola", description: `Tu ticket ha sido creado en <#${ticketChannel.id}>. Ya puedes hablar con el equipo de soporte.`, color: 0x57F287, footer: { text: "Neuralix Tickets" } }] }, { headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" }, validateStatus: () => true });
+          await axios.post(`${DISCORD_API}/channels/${dmRes.data.id}/messages`, { embeds: [{ title: "Es tu turno en la cola", description: `Tu ticket ha sido creado en <#${ticketChannel.id}>. Ya puedes hablar con el equipo de soporte.`, color: 0x57F287, footer: { text: "Neuralix Tickets" } }] }, { headers: { Authorization: `Bot ${botToken!.trim()}`, "Content-Type": "application/json" }, validateStatus: () => true });
         }
       } catch {}
     } catch (err) { logger.error({ err }, "Error processing ticket queue"); }
@@ -1981,7 +1999,7 @@ export function startBot(): Client | undefined {
       if (cfg.logsChannelId) {
         await sendToChannel(cfg.logsChannelId, {
           embeds: [{ title: "Nuevo Ticket", description: `**Usuario:** <@${userId}>\n**Canal:** <#${ticketChannel.id}>\n**ID:** #${ticket.id}${mod ? `\n**Modulo:** ${mod.name}` : ""}${panel ? `\n**Panel:** ${panel.name}` : ""}`, color: 0x5865F2, timestamp: new Date().toISOString(), footer: { text: "Neuralix Tickets" } }],
-        }, botToken);
+        }, botToken!);
       }
 
       await safeEditReply(interaction, { content: `Tu ticket fue creado: <#${ticketChannel.id}>` });
@@ -2012,7 +2030,7 @@ export function startBot(): Client | undefined {
       let transcriptText = "";
       let transcriptHtml = "";
       if (cfg?.autoTranscript) {
-        const result = await generateTranscript(interaction.channelId, botToken, ticketId, ticket.username ?? username);
+        const result = await generateTranscript(interaction.channelId, botToken!, ticketId, ticket.username ?? username);
         transcriptText = result.text;
         transcriptHtml = result.html;
       }
@@ -2056,16 +2074,16 @@ export function startBot(): Client | undefined {
             const htmlBuf = Buffer.from(transcriptHtml, "utf8");
             const form = new FormData();
             form.append("payload_json", JSON.stringify(embedPayload));
-            form.append("files[0]", new Blob([htmlBuf], { type: "text/html" }), `transcript-${ticketId}.html`);
+            form.append("files[0]", new Blob([new Uint8Array(htmlBuf)], { type: "text/html" }), `transcript-${ticketId}.html`);
             await axios.post(`${DISCORD_API}/channels/${cfg.transcriptChannelId}/messages`, form, {
-              headers: { Authorization: `Bot ${botToken.trim()}` },
+              headers: { Authorization: `Bot ${botToken!.trim()}` },
               validateStatus: () => true,
             });
           } catch {
-            await sendToChannel(cfg.transcriptChannelId, embedPayload, botToken);
+            await sendToChannel(cfg.transcriptChannelId, embedPayload, botToken!);
           }
         } else {
-          await sendToChannel(cfg.transcriptChannelId, embedPayload, botToken);
+          await sendToChannel(cfg.transcriptChannelId, embedPayload, botToken!);
         }
       }
 
@@ -2074,7 +2092,7 @@ export function startBot(): Client | undefined {
         try {
           const dmRes = await axios.post(`${DISCORD_API}/users/@me/channels`,
             { recipient_id: ticket.userId },
-            { headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" }, validateStatus: () => true }
+            { headers: { Authorization: `Bot ${botToken!.trim()}`, "Content-Type": "application/json" }, validateStatus: () => true }
           );
           if (dmRes.data?.id) {
             await axios.post(`${DISCORD_API}/channels/${dmRes.data.id}/messages`, {
@@ -2092,7 +2110,7 @@ export function startBot(): Client | undefined {
                   custom_id: `ticket_rate_${ticketId}_${s}`,
                 })),
               }],
-            }, { headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" }, validateStatus: () => true });
+            }, { headers: { Authorization: `Bot ${botToken!.trim()}`, "Content-Type": "application/json" }, validateStatus: () => true });
           }
         } catch {}
       }

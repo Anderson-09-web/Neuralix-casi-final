@@ -35,17 +35,22 @@ type AiChannel = {
 };
 
 const models = [
-  { value: "llama-3.1-8b-instant", label: "Llama 3.1 8B — Rapido" },
+  // ── Llama 3 (estables) ──────────────────────────────────────────────────
+  { value: "llama-3.1-8b-instant", label: "Llama 3.1 8B Instant — Muy rapido" },
   { value: "llama-3.3-70b-versatile", label: "Llama 3.3 70B — Versatil (recomendado)" },
-  { value: "llama-3.1-70b-versatile", label: "Llama 3.1 70B — Versatil" },
-  { value: "mixtral-8x7b-32768", label: "Mixtral 8x7B — Contexto largo" },
-  { value: "gemma2-9b-it", label: "Gemma 2 9B — Google" },
+  { value: "llama3-8b-8192", label: "Llama 3 8B — Contexto 8K" },
+  { value: "llama3-70b-8192", label: "Llama 3 70B — Contexto 8K, alta calidad" },
+  // ── Llama 4 (nuevos) ────────────────────────────────────────────────────
+  { value: "meta-llama/llama-4-scout-17b-16e-instruct", label: "Llama 4 Scout 17B — Rapido y potente" },
+  { value: "meta-llama/llama-4-maverick-17b-128e-instruct", label: "Llama 4 Maverick 17B — Contexto largo" },
+  // ── Google ──────────────────────────────────────────────────────────────
+  { value: "gemma2-9b-it", label: "Gemma 2 9B — Google, eficiente" },
+  // ── Razonamiento ────────────────────────────────────────────────────────
   { value: "deepseek-r1-distill-llama-70b", label: "DeepSeek R1 70B — Razonamiento avanzado" },
   { value: "qwen-qwq-32b", label: "Qwen QwQ 32B — Razonamiento avanzado" },
-  { value: "llama-3.3-70b-specdec", label: "Llama 3.3 70B SpecDec — Alta calidad rapido" },
-  { value: "llama-3.2-90b-vision-preview", label: "Llama 3.2 90B Vision — Multimodal" },
-  { value: "meta-llama/llama-4-scout-17b-16e-instruct", label: "Llama 4 Scout 17B — Potente" },
-  { value: "meta-llama/llama-4-maverick-17b-128e-instruct", label: "Llama 4 Maverick 17B — Mas potente" },
+  // ── Groq Compound ───────────────────────────────────────────────────────
+  { value: "compound-beta", label: "Compound Beta — Busqueda web integrada" },
+  { value: "compound-beta-mini", label: "Compound Beta Mini — Rapido con busqueda" },
 ];
 
 export default function AiChannelsPage() {

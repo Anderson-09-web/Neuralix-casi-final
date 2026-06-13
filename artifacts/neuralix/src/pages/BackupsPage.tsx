@@ -181,8 +181,8 @@ export default function BackupsPage() {
                         </span>
                         <span className="text-xs text-muted-foreground">{formatBytes(backup.size)}</span>
                         <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">v{backup.version}</span>
-                        {(backup.data as any)?.discordSnapshot && (() => {
-                          const snap = (backup.data as any).discordSnapshot;
+                        {(backup as any).data?.discordSnapshot && (() => {
+                          const snap = (backup as any).data.discordSnapshot;
                           const roleCount = snap.roles?.length ?? 0;
                           const channelCount = snap.channels?.length ?? 0;
                           return (
@@ -201,7 +201,7 @@ export default function BackupsPage() {
                         <Download className="w-4 h-4" />
                       </Button>
                     )}
-                    {isUltra && (backup.data as any)?.discordSnapshot && (
+                    {isUltra && (backup as any).data?.discordSnapshot && (
                       <Button
                         size="sm"
                         variant="outline"
