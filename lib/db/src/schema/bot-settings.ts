@@ -9,6 +9,7 @@ export const botSettingsTable = pgTable("bot_settings", {
   clientSecret: text("client_secret"),
   sessionSecret: text("session_secret"),
   ownerDiscordIds: text("owner_discord_ids"),
+  customBaseUrl: text("custom_base_url"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
 

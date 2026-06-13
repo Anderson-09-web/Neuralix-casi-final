@@ -480,14 +480,40 @@ export default function AdminPage() {
   const [linksData, setLinksData] = useState<any>(null);
   const [linksLoading, setLinksLoading] = useState(false);
   const [linksCopied, setLinksCopied] = useState<string | null>(null);
+  const [customUrlInput, setCustomUrlInput] = useState("");
+  const [customUrlSaving, setCustomUrlSaving] = useState(false);
 
   const fetchLinks = useCallback(async () => {
     setLinksLoading(true);
     try {
       const res = await fetch("/api/admin/links", { credentials: "include" });
-      if (res.ok) setLinksData(await res.json());
+      if (res.ok) {
+        const data = await res.json();
+        setLinksData(data);
+        setCustomUrlInput(data.customBaseUrl || "");
+      }
     } catch {} finally { setLinksLoading(false); }
   }, []);
+
+  const saveCustomUrl = async () => {
+    setCustomUrlSaving(true);
+    try {
+      const res = await fetch("/api/admin/links", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ customBaseUrl: customUrlInput.trim() || null }),
+      });
+      if (res.ok) {
+        toast({ title: customUrlInput.trim() ? "URL personalizada guardada" : "URL personalizada eliminada" });
+        await fetchLinks();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        toast({ title: d.error || "Error al guardar", variant: "destructive" });
+      }
+    } catch { toast({ title: "Error de conexion", variant: "destructive" }); }
+    setCustomUrlSaving(false);
+  };
 
   useEffect(() => {
     if (tab === "links" && isOwner) fetchLinks();
@@ -1608,6 +1634,38 @@ export default function AdminPage() {
               <div className="text-center py-8 text-muted-foreground text-sm">No se pudieron cargar los links. <button onClick={fetchLinks} className="text-primary underline ml-1">Reintentar</button></div>
             ) : (
               <div className="space-y-4">
+                {/* Custom base URL override */}
+                <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold">URL base personalizada</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Sobrescribe el dominio auto-detectado. Util cuando cambias de host o tienes dominio propio. Ejemplo: <code className="bg-background px-1 rounded">https://tudominio.com</code>
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      className="flex-1 h-9 rounded-md border border-input bg-background px-3 py-1 text-sm font-mono shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                      placeholder="https://tudominio.com (dejar vacio para auto-detectar)"
+                      value={customUrlInput}
+                      onChange={(e) => setCustomUrlInput(e.target.value)}
+                    />
+                    <Button size="sm" onClick={saveCustomUrl} disabled={customUrlSaving} className="shrink-0">
+                      {customUrlSaving ? "Guardando..." : "Guardar"}
+                    </Button>
+                    {customUrlInput && (
+                      <Button size="sm" variant="outline" onClick={() => { setCustomUrlInput(""); }} className="shrink-0 text-muted-foreground">
+                        Limpiar
+                      </Button>
+                    )}
+                  </div>
+                  {linksData.customBaseUrl && (
+                    <p className="text-xs text-green-400 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
+                      URL personalizada activa: <span className="font-mono">{linksData.customBaseUrl}</span>
+                    </p>
+                  )}
+                </div>
+
                 {/* Dominio activo */}
                 <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary/40 border border-border">
                   <span className="text-xs text-muted-foreground font-medium w-24 flex-shrink-0">Dominio activo</span>
@@ -1615,11 +1673,12 @@ export default function AdminPage() {
                 </div>
 
                 {/* Credenciales */}
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[
                     { label: "CLIENT_ID", ok: linksData.clientIdConfigured },
                     { label: "CLIENT_SECRET", ok: linksData.clientSecretConfigured },
                     { label: "BOT_TOKEN", ok: linksData.botTokenConfigured },
+                    { label: "GROQ_API_KEY", ok: linksData.groqKeyConfigured },
                   ].map(({ label, ok }) => (
                     <div key={label} className={cn("flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium", ok ? "bg-green-500/10 border-green-500/20 text-green-400" : "bg-red-500/10 border-red-500/20 text-red-400")}>
                       <div className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", ok ? "bg-green-400" : "bg-red-400")} />

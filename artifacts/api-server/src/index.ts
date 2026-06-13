@@ -2,6 +2,10 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { startBot } from "./bot";
 import { setBotClient } from "./bot-state";
+import { loadCustomBaseUrl } from "./app-config";
+
+// Load admin-configured base URL before starting (non-fatal)
+loadCustomBaseUrl().catch(() => {});
 
 const botClient = startBot();
 setBotClient(botClient);

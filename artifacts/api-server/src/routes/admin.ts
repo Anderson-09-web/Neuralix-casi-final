@@ -301,6 +301,60 @@ router.post("/admin/blacklist/sweep", requireOwner, async (_req, res) => {
   }
 });
 
+// ─── Links / Platform URL ────────────────────────────────────────────────────
+router.get("/admin/links", requireOwner, async (_req, res) => {
+  const { getCustomBaseUrl } = await import("../app-config");
+  const { db: dbI, botSettingsTable } = await import("@workspace/db");
+  const [settings] = await dbI.select().from(botSettingsTable).limit(1);
+  const custom = getCustomBaseUrl();
+
+  function getAutoAppDomain(): string | null {
+    if (process.env.REPLIT_APP_URL) return process.env.REPLIT_APP_URL.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    const domains = process.env.REPLIT_DOMAINS?.split(",").map((d) => d.trim()).filter(Boolean);
+    if (domains?.length) return domains[0];
+    if (process.env.REPLIT_DEV_DOMAIN) return process.env.REPLIT_DEV_DOMAIN;
+    return null;
+  }
+  const domain = custom ? custom.replace(/^https?:\/\//, "").replace(/\/$/, "") : getAutoAppDomain();
+  const base = domain ? `https://${domain}` : null;
+  const clientId = process.env.DISCORD_CLIENT_ID || "";
+  const redirectUri = base ? `${base}/api/auth/discord/callback` : null;
+  const params = redirectUri ? new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, response_type: "code", scope: "identify email guilds" }).toString() : null;
+
+  res.json({
+    domain: domain || "(no detectado)",
+    customBaseUrl: settings?.customBaseUrl || null,
+    redirectUri,
+    oauthUrl: params ? `https://discord.com/api/oauth2/authorize?${params}` : null,
+    botInvite: clientId ? `https://discord.com/api/oauth2/authorize?client_id=${clientId}&permissions=8&scope=bot%20applications.commands` : null,
+    clientIdConfigured: !!process.env.DISCORD_CLIENT_ID,
+    clientSecretConfigured: !!process.env.DISCORD_CLIENT_SECRET,
+    botTokenConfigured: !!process.env.DISCORD_BOT_TOKEN,
+    groqKeyConfigured: !!process.env.GROQ_API_KEY,
+  });
+});
+
+router.put("/admin/links", requireOwner, async (req, res) => {
+  const actor = (req as any).user!;
+  const { customBaseUrl } = req.body as { customBaseUrl?: string };
+  const { db: dbI, botSettingsTable } = await import("@workspace/db");
+  const { setCustomBaseUrl } = await import("../app-config");
+  try {
+    const url = customBaseUrl?.trim() || null;
+    const [existing] = await dbI.select().from(botSettingsTable).limit(1);
+    if (existing) {
+      await dbI.update(botSettingsTable).set({ customBaseUrl: url });
+    } else {
+      await dbI.insert(botSettingsTable).values({ customBaseUrl: url });
+    }
+    setCustomBaseUrl(url);
+    await log(actor, "update_platform_url", url || "(cleared)", { url });
+    res.json({ ok: true, customBaseUrl: url });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "Error interno" });
+  }
+});
+
 // ─── Bulk license revoke ────────────────────────────────────────────────────
 router.post("/admin/licenses/bulk-revoke", requireOwner, async (req, res) => {
   const actor = req.user!;

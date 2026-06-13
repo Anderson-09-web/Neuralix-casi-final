@@ -204,7 +204,7 @@ router.post("/verify/:guildId", requireAuth, async (req, res) => {
         const roleRes = await axios.put(
           `${DISCORD_API}/guilds/${guildId}/members/${user.discordId}/roles/${cfg.roleId}`,
           {},
-          { headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" }, validateStatus: () => true },
+          { headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" }, validateStatus: () => true, timeout: 8000 },
         );
         roleAssigned = roleRes.status === 204 || roleRes.status === 200;
       } catch {}
@@ -232,7 +232,7 @@ router.post("/verify/:guildId", requireAuth, async (req, res) => {
             footer: { text: "Neuralix Verificacion" },
             timestamp: new Date().toISOString(),
           }],
-        }, { headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" }, validateStatus: () => true });
+        }, { headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" }, validateStatus: () => true, timeout: 5000 });
       } catch {}
     }
 

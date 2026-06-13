@@ -919,7 +919,11 @@ export function startBot(): Client | undefined {
               const url = new URL(link);
               const hn = url.hostname.toLowerCase();
               if (allowed.some((d: string) => hn.includes(d))) return false;
-              if (antiDiscordInvites && rawInvites.length > 0 && /discord\.(gg|com)/.test(hn)) { blockedReason = "Invitacion de Discord"; return true; }
+              // Discord invites: ONLY block when antiDiscordInvites is explicitly true
+              if (/discord\.(gg|com)/.test(hn)) {
+                if (antiDiscordInvites) { blockedReason = "Invitacion de Discord"; return true; }
+                return false; // allowed — antiDiscordInvites is off
+              }
               if (nsfwPatterns.some((p) => hn.includes(p))) { blockedReason = "Contenido NSFW"; return true; }
               if (maliciousPatterns.some((p) => link.toLowerCase().includes(p))) { blockedReason = "Enlace malicioso"; return true; }
               if (blocked.length > 0 && blocked.some((d: string) => hn.includes(d))) { blockedReason = "Dominio bloqueado"; return true; }
@@ -1210,7 +1214,11 @@ export function startBot(): Client | undefined {
                 const url = new URL(normalizedLink);
                 const hn = url.hostname.toLowerCase();
                 if (allowed.some((d) => hn.includes(d))) return false;
-                if (antiDiscordInvites && rawInvites.length > 0 && /discord\.(gg|com)/.test(hn)) { blockedReason = "Invitacion de Discord"; return true; }
+                // Discord invites: ONLY block when antiDiscordInvites is explicitly true
+                if (/discord\.(gg|com)/.test(hn)) {
+                  if (antiDiscordInvites) { blockedReason = "Invitacion de Discord"; return true; }
+                  return false; // allowed — antiDiscordInvites is off
+                }
                 if (nsfwPatterns.some((p) => hn.includes(p))) { blockedReason = "Contenido NSFW"; return true; }
                 if (maliciousPatterns.some((p) => link.toLowerCase().includes(p))) { blockedReason = "Enlace malicioso"; return true; }
                 if (blocked.length > 0 && blocked.some((d) => hn.includes(d))) { blockedReason = "Dominio bloqueado"; return true; }
