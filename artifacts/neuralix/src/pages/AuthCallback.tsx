@@ -22,6 +22,13 @@ export default function AuthCallback() {
     if (isSuccess && user) {
       redirected.current = true;
       queryClient.invalidateQueries();
+      // If came from verify portal, redirect back there
+      const verifyRedirect = sessionStorage.getItem("verify_redirect");
+      if (verifyRedirect) {
+        sessionStorage.removeItem("verify_redirect");
+        window.location.href = verifyRedirect;
+        return;
+      }
       setLocation("/servers");
       return;
     }

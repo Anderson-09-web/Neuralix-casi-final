@@ -15,6 +15,7 @@ const ALLOWED_FIELDS = new Set([
   "ticketNameFormat", "openMessage", "mentionSupport",
   "autoClose", "satisfactionSurvey", "satisfactionLogChannelId", "autoTranscript",
   "claimEnabled", "deleteEnabled", "useModules",
+  "queueEnabled", "maxConcurrentTickets",
 ]);
 
 function whitelistBody(body: Record<string, unknown>) {

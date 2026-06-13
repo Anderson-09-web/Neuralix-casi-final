@@ -15,6 +15,7 @@ function getAppDomain(): string | null {
   }
   const domains = process.env.REPLIT_DOMAINS?.split(",").map((d) => d.trim()).filter(Boolean);
   if (domains?.length) return domains[0];
+  if (process.env.REPLIT_DEV_DOMAIN) return process.env.REPLIT_DEV_DOMAIN;
   return null;
 }
 

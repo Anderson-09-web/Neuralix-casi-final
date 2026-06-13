@@ -155,7 +155,7 @@ router.post("/guilds/:guildId/tickets/panels/:panelId/send", requireAuth, async 
         return;
       }
       if (useSelectMenu || modules.length > 5) {
-        components = [{ type: 1, components: [{ type: 3, custom_id: "ticket_select_module", placeholder: "Selecciona el tipo de ticket...", min_values: 1, max_values: 1, options: modules.slice(0, 25).map((m) => ({ label: m.name, value: String(m.id), description: m.description ? m.description.substring(0, 100) : undefined, emoji: parseEmoji(m.emoji) })) }] }];
+        components = [{ type: 1, components: [{ type: 3, custom_id: `ticket_select_module_${panelId}`, placeholder: "Selecciona el tipo de ticket...", min_values: 1, max_values: 1, options: modules.slice(0, 25).map((m) => ({ label: m.name, value: String(m.id), description: m.description ? m.description.substring(0, 100) : undefined, emoji: parseEmoji(m.emoji) })) }] }];
       } else {
         components = [{ type: 1, components: modules.slice(0, 5).map((m) => ({ type: 2, style: buttonColors[m.buttonColor || "PRIMARY"] ?? 1, label: m.buttonLabel || m.name, emoji: parseEmoji(m.emoji), custom_id: `ticket_open_module_${m.id}` })) }];
       }
