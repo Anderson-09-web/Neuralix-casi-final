@@ -1,11 +1,160 @@
 import { useLocation } from "wouter";
 import { motion } from "framer-motion";
-import { Bot, Shield, Ticket, ShieldAlert, Star, Database, ArrowRight, CheckCircle, Zap, AlertTriangle } from "lucide-react";
+import { Bot, Shield, Ticket, ShieldAlert, Star, Database, ArrowRight, CheckCircle, Zap, AlertTriangle, X, Send, MessageSquare, ShieldOff } from "lucide-react";
 import { useGetMe, useGetDiscordAuthUrl, useGetAnnouncements, getGetMeQueryKey, getGetAnnouncementsQueryKey, getGetDiscordAuthUrlQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { useTheme } from "@/components/ThemeProvider";
 import { Sun, Moon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+const APPEAL_LS_KEY = "nrl_appeal";
+
+function AppealModal({ onClose }: { onClose: () => void }) {
+  const stored = (() => { try { const r = localStorage.getItem(APPEAL_LS_KEY); return r ? JSON.parse(r) : null; } catch { return null; } })();
+  const [step, setStep] = useState<"form" | "chat">(stored ? "chat" : "form");
+  const [discordId, setDiscordId] = useState("");
+  const [username, setUsername] = useState("");
+  const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [appeal, setAppeal] = useState<{ id: number; token: string } | null>(stored);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [chatMsg, setChatMsg] = useState("");
+  const [sending, setSending] = useState(false);
+  const [loadingMsgs, setLoadingMsgs] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const fetchMessages = async (id: number, token: string) => {
+    try {
+      const res = await fetch(`/api/support/appeals/${id}/messages?token=${token}`);
+      if (res.ok) { const data = await res.json(); setMessages(data); }
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (step === "chat" && appeal) {
+      setLoadingMsgs(true);
+      fetchMessages(appeal.id, appeal.token).finally(() => setLoadingMsgs(false));
+      const iv = setInterval(() => fetchMessages(appeal.id, appeal.token), 4000);
+      return () => clearInterval(iv);
+    }
+  }, [step, appeal]);
+
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+
+  const handleSubmit = async () => {
+    if (!discordId.trim() || !username.trim() || !reason.trim()) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/support/appeals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ discordId, username, reason }),
+      });
+      if (!res.ok) { const e = await res.json(); alert(e.error || "Error al enviar"); return; }
+      const data = await res.json();
+      const appealData = { id: data.id, token: data.token };
+      localStorage.setItem(APPEAL_LS_KEY, JSON.stringify(appealData));
+      setAppeal(appealData);
+      setStep("chat");
+    } catch { alert("Error de conexion"); }
+    finally { setSubmitting(false); }
+  };
+
+  const handleSend = async () => {
+    if (!chatMsg.trim() || !appeal || sending) return;
+    const content = chatMsg.trim();
+    setChatMsg("");
+    setSending(true);
+    try {
+      await fetch(`/api/support/appeals/${appeal.id}/messages?token=${appeal.token}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      });
+      await fetchMessages(appeal.id, appeal.token);
+    } catch {}
+    finally { setSending(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-full max-w-lg bg-card border border-card-border rounded-2xl shadow-2xl flex flex-col" style={{ maxHeight: "90vh" }}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+              <ShieldOff className="w-4 h-4 text-orange-400" />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm">Apelar Blacklist</h3>
+              {appeal && <p className="text-xs text-muted-foreground">Ticket #{appeal.id}</p>}
+            </div>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {step === "form" ? (
+          <div className="p-6 space-y-4 overflow-y-auto">
+            <p className="text-sm text-muted-foreground">Si crees que tu blacklist fue injusta, completa el formulario. Un administrador revisara tu caso.</p>
+            <div className="space-y-2">
+              <Label className="text-xs">Discord ID</Label>
+              <Input placeholder="Ej: 123456789012345678" value={discordId} onChange={(e) => setDiscordId(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs">Usuario de Discord</Label>
+              <Input placeholder="Ej: usuario#0000 o usuario" value={username} onChange={(e) => setUsername(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs">Motivo de apelacion</Label>
+              <Textarea placeholder="Explica por que crees que tu blacklist fue incorrecta y aporta evidencia si la tienes..." value={reason} onChange={(e) => setReason(e.target.value)} rows={4} />
+            </div>
+            <Button className="w-full" onClick={handleSubmit} disabled={submitting || !discordId.trim() || !username.trim() || !reason.trim()}>
+              {submitting ? "Enviando..." : "Enviar apelacion"}
+            </Button>
+            <p className="text-xs text-center text-muted-foreground">Tu apelacion sera revisada por el equipo de moderacion.</p>
+          </div>
+        ) : (
+          <div className="flex flex-col flex-1 min-h-0">
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {loadingMsgs && messages.length === 0 ? (
+                <div className="text-center text-sm text-muted-foreground py-8">Cargando mensajes...</div>
+              ) : (
+                messages.map((m) => (
+                  <div key={m.id} className={`flex ${m.isStaff ? "justify-start" : "justify-end"}`}>
+                    <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm ${m.isStaff ? "bg-secondary text-foreground rounded-tl-sm" : "bg-primary text-primary-foreground rounded-tr-sm"}`}>
+                      {m.isStaff && <p className="text-xs font-bold mb-1 text-primary">{m.username}</p>}
+                      <p className="leading-relaxed whitespace-pre-wrap">{m.content}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+            <div className="p-4 border-t border-border flex-shrink-0">
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Escribe un mensaje..."
+                  value={chatMsg}
+                  onChange={(e) => setChatMsg(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                  disabled={sending}
+                />
+                <Button size="icon" onClick={handleSend} disabled={!chatMsg.trim() || sending}>
+                  <Send className="w-4 h-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2 text-center">Tu apelacion esta siendo revisada. Guarda tu Ticket #{appeal?.id} para hacer seguimiento.</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 const features = [
   { icon: ShieldAlert, title: "AntiRaid Enterprise", desc: "20+ modulos de proteccion: AntiAlt, AntiBot, AntiSpam, AntiNuke y mucho mas.", color: "text-primary bg-primary/10" },
@@ -31,6 +180,7 @@ export default function LandingPage() {
   const { data: authUrl } = useGetDiscordAuthUrl({ query: { queryKey: getGetDiscordAuthUrlQueryKey() } });
   const { data: announcements } = useGetAnnouncements({ query: { queryKey: getGetAnnouncementsQueryKey() } });
   const [oauthError, setOauthError] = useState<string | null>(null);
+  const [showAppeal, setShowAppeal] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -191,9 +341,26 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Blacklist Appeal */}
+      <section className="py-16 px-6 border-t border-border">
+        <div className="max-w-2xl mx-auto text-center">
+          <div className="w-12 h-12 rounded-xl bg-orange-500/20 flex items-center justify-center mx-auto mb-5">
+            <ShieldOff className="w-6 h-6 text-orange-400" />
+          </div>
+          <h2 className="text-2xl font-bold mb-3">Apelar una Blacklist</h2>
+          <p className="text-muted-foreground mb-6 text-sm">Si fuiste agregado a la blacklist global de Neuralix y crees que fue un error, puedes abrir una apelacion. Nuestro equipo la revisara.</p>
+          <Button variant="outline" size="lg" onClick={() => setShowAppeal(true)} className="gap-2 border-orange-500/40 text-orange-400 hover:bg-orange-500/10 hover:border-orange-500/60">
+            <MessageSquare className="w-4 h-4" />
+            Apelar Blacklist
+          </Button>
+        </div>
+      </section>
+
       <footer className="border-t border-border py-8 px-6 text-center text-xs text-muted-foreground">
         2026 Neuralix Enterprise. Todos los derechos reservados.
       </footer>
+
+      {showAppeal && <AppealModal onClose={() => setShowAppeal(false)} />}
     </div>
   );
 }

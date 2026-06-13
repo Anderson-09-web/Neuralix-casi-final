@@ -309,6 +309,7 @@ export default function AdminPage() {
   const [supportView, setSupportView] = useState<"list" | "chat">("list");
   const [selectedTicket, setSelectedTicket] = useState<any>(null);
   const [ticketFilter, setTicketFilter] = useState<"all" | "open" | "closed">("open");
+  const [categoryFilter, setCategoryFilter] = useState<"all" | "support" | "blacklist_appeal">("all");
 
   /* Activity logs */
   const [activityLogs, setActivityLogs] = useState<any[]>([]);
@@ -647,9 +648,14 @@ export default function AdminPage() {
     setAdminPerms((prev) => prev.includes(perm) ? prev.filter((p) => p !== perm) : [...prev, perm]);
 
   const filteredTickets = Array.isArray(supportTickets)
-    ? supportTickets.filter((t: any) => ticketFilter === "all" || t.status === ticketFilter)
+    ? supportTickets.filter((t: any) => {
+        const statusOk = ticketFilter === "all" || t.status === ticketFilter;
+        const catOk = categoryFilter === "all" || (t.category || "support") === categoryFilter;
+        return statusOk && catOk;
+      })
     : [];
   const openCount = Array.isArray(supportTickets) ? supportTickets.filter((t: any) => t.status === "open").length : 0;
+  const appealCount = Array.isArray(supportTickets) ? supportTickets.filter((t: any) => (t.category || "support") === "blacklist_appeal" && t.status === "open").length : 0;
 
   if (!isOwner && !isSecondaryAdmin && me) {
     return (
@@ -1863,19 +1869,30 @@ export default function AdminPage() {
         <div>
           {supportView === "list" ? (
             <div className="space-y-4">
-              <div className="flex items-center justify-between flex-wrap gap-3">
-                <div className="flex gap-1 bg-secondary rounded-lg p-1">
-                  {(["open", "closed", "all"] as const).map((f) => (
-                    <button key={f} onClick={() => setTicketFilter(f)}
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div className="flex gap-1 bg-secondary rounded-lg p-1">
+                    {(["open", "closed", "all"] as const).map((f) => (
+                      <button key={f} onClick={() => setTicketFilter(f)}
+                        className={cn("px-3 py-1 rounded-md text-xs font-medium transition-all",
+                          ticketFilter === f ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+                        {f === "open" ? `Abiertos${openCount > 0 ? ` (${openCount})` : ""}` : f === "closed" ? "Cerrados" : "Todos"}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                    <RefreshCw className="w-3 h-3 animate-pulse" /> Actualizando cada 5s
+                  </p>
+                </div>
+                <div className="flex gap-1 bg-secondary rounded-lg p-1 w-fit">
+                  {(["all", "support", "blacklist_appeal"] as const).map((f) => (
+                    <button key={f} onClick={() => setCategoryFilter(f)}
                       className={cn("px-3 py-1 rounded-md text-xs font-medium transition-all",
-                        ticketFilter === f ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
-                      {f === "open" ? `Abiertos${openCount > 0 ? ` (${openCount})` : ""}` : f === "closed" ? "Cerrados" : "Todos"}
+                        categoryFilter === f ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+                      {f === "all" ? "Todas" : f === "support" ? "Soporte" : `Apelaciones${appealCount > 0 ? ` (${appealCount})` : ""}`}
                     </button>
                   ))}
                 </div>
-                <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                  <RefreshCw className="w-3 h-3 animate-pulse" /> Actualizando cada 5s
-                </p>
               </div>
               {filteredTickets.length === 0 ? (
                 <div className="text-center py-24 bg-card rounded-xl border border-card-border">
@@ -1892,7 +1909,12 @@ export default function AdminPage() {
                       <div className="flex items-center gap-4 min-w-0">
                         <div className={cn("w-2.5 h-2.5 rounded-full flex-shrink-0", ticket.status === "open" ? "bg-green-400" : "bg-muted-foreground")} />
                         <div className="min-w-0">
-                          <p className="font-semibold text-sm truncate">{ticket.subject}</p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-semibold text-sm truncate">{ticket.subject}</p>
+                            {(ticket.category || "support") === "blacklist_appeal" && (
+                              <span className="text-xs px-1.5 py-0.5 rounded font-medium bg-orange-500/20 text-orange-400 flex-shrink-0">Apelacion</span>
+                            )}
+                          </div>
                           <div className="flex items-center gap-2 mt-1 flex-wrap">
                             <span className="text-xs text-muted-foreground">@{ticket.username}</span>
                             <span className={cn("text-xs px-1.5 py-0.5 rounded font-medium", PRIORITY_COLORS[ticket.priority] || PRIORITY_COLORS.normal)}>{ticket.priority}</span>

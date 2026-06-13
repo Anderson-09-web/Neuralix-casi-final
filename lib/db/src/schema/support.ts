@@ -9,6 +9,8 @@ export const supportTicketsTable = pgTable("support_tickets", {
   subject: text("subject").notNull(),
   status: text("status").notNull().default("open"),
   priority: text("priority").notNull().default("normal"),
+  category: text("category").notNull().default("support"),
+  appealToken: text("appeal_token"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

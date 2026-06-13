@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { randomUUID } from "crypto";
 import { db, supportTicketsTable, supportMessagesTable } from "@workspace/db";
 import { eq, desc, and, ne } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
@@ -210,6 +211,79 @@ router.patch("/support/tickets/:id", requireAuth, async (req, res) => {
     .returning();
   if (!ticket) { res.status(404).json({ error: "Not found" }); return; }
   res.json(ticket);
+});
+
+// ─── Public Appeal Routes (no auth required) ─────────────────────────────────
+
+router.post("/support/appeals", async (req, res) => {
+  const { discordId, username, reason } = req.body;
+  if (!discordId?.trim() || !username?.trim() || !reason?.trim()) {
+    res.status(400).json({ error: "Discord ID, usuario y motivo son obligatorios" });
+    return;
+  }
+  const token = randomUUID();
+  const [ticket] = await db.insert(supportTicketsTable).values({
+    userId: `discord-${discordId.trim()}`,
+    username: username.trim(),
+    subject: `Apelacion de Blacklist - ${username.trim()}`,
+    priority: "urgent",
+    category: "blacklist_appeal",
+    appealToken: token,
+  }).returning();
+
+  await db.insert(supportMessagesTable).values({
+    ticketId: ticket.id,
+    userId: `discord-${discordId.trim()}`,
+    username: username.trim(),
+    avatar: null,
+    content: reason.trim(),
+    isStaff: false,
+  });
+
+  await db.insert(supportMessagesTable).values({
+    ticketId: ticket.id,
+    userId: "neuralix-ai",
+    username: "Neuralix AI",
+    avatar: null,
+    content: `Hemos recibido tu apelacion correctamente. Nuestro equipo de moderacion la revisara en breve. Si tienes evidencia adicional que aporte a tu caso, puedes enviarla en este chat. Discord ID registrado: \`${discordId.trim()}\``,
+    isStaff: true,
+  });
+
+  res.status(201).json({ id: ticket.id, token });
+});
+
+router.get("/support/appeals/:id/messages", async (req, res) => {
+  const id = Number(req.params.id as string);
+  const token = req.query.token as string;
+  if (!token) { res.status(401).json({ error: "Token requerido" }); return; }
+  const [ticket] = await db.select().from(supportTicketsTable)
+    .where(and(eq(supportTicketsTable.id, id), eq(supportTicketsTable.appealToken, token)));
+  if (!ticket) { res.status(404).json({ error: "Apelacion no encontrada" }); return; }
+  const messages = await db.select().from(supportMessagesTable)
+    .where(eq(supportMessagesTable.ticketId, id))
+    .orderBy(supportMessagesTable.createdAt);
+  res.json(messages);
+});
+
+router.post("/support/appeals/:id/messages", async (req, res) => {
+  const id = Number(req.params.id as string);
+  const token = req.query.token as string;
+  const { content } = req.body;
+  if (!token) { res.status(401).json({ error: "Token requerido" }); return; }
+  if (!content?.trim()) { res.status(400).json({ error: "El mensaje no puede estar vacio" }); return; }
+  const [ticket] = await db.select().from(supportTicketsTable)
+    .where(and(eq(supportTicketsTable.id, id), eq(supportTicketsTable.appealToken, token)));
+  if (!ticket) { res.status(404).json({ error: "Apelacion no encontrada" }); return; }
+  if (ticket.status === "closed") { res.status(400).json({ error: "Esta apelacion ha sido cerrada" }); return; }
+  const [msg] = await db.insert(supportMessagesTable).values({
+    ticketId: id,
+    userId: ticket.userId,
+    username: ticket.username,
+    avatar: null,
+    content: content.trim(),
+    isStaff: false,
+  }).returning();
+  res.status(201).json(msg);
 });
 
 export default router;
