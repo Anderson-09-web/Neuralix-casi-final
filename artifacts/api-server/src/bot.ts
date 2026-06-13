@@ -282,6 +282,31 @@ async function buildTicketComponents(ticketId: number, cfg: any): Promise<any[]>
 
 // ─── Global Blacklist Sweep ────────────────────────────────────────────────────
 
+const BLACKLIST_APPEAL_SERVER_ID = "1493023527887048724";
+const BLACKLIST_APPEAL_INVITE    = "https://discord.gg/neuralix-appeal";
+
+async function dmUserBlacklistNotice(userId: string, reason: string, botToken: string) {
+  try {
+    const dmRes = await axios.post(`${DISCORD_API}/users/@me/channels`, { recipient_id: userId }, {
+      headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" },
+      validateStatus: () => true,
+    });
+    if (!dmRes.data?.id) return;
+    await axios.post(`${DISCORD_API}/channels/${dmRes.data.id}/messages`, {
+      embeds: [{
+        title: "Has sido incluido en la Blacklist Global de Neuralix",
+        description: `Fuiste expulsado/baneado de todos los servidores protegidos por **Neuralix**.\n\n**Razon:** ${reason}\n\n**¿Crees que es un error?**\nPuedes apelar uniendote a nuestro servidor:\n${BLACKLIST_APPEAL_INVITE}\n\n**ID del servidor de apelaciones:** \`${BLACKLIST_APPEAL_SERVER_ID}\``,
+        color: 0xED4245,
+        footer: { text: "Neuralix Blacklist Global" },
+        timestamp: new Date().toISOString(),
+      }],
+    }, {
+      headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" },
+      validateStatus: () => true,
+    });
+  } catch {}
+}
+
 async function runBlacklistSweep(client: Client, botToken: string) {
   try {
     const blacklistEntries = await db.select().from(blacklistTable);
@@ -300,7 +325,7 @@ async function runBlacklistSweep(client: Client, botToken: string) {
           if (action === "kick") {
             await member.kick(`Blacklist Global: ${entry.reason}`);
           } else {
-            await member.ban({ reason: `Blacklist Global: ${entry.reason}` });
+            await member.ban({ reason: `Blacklist Global: ${entry.reason} | Apelaciones: ${BLACKLIST_APPEAL_INVITE}` });
           }
 
           const [logCfg] = await db.select().from(logsConfigsTable).where(eq(logsConfigsTable.guildId, guild.id));
@@ -308,7 +333,7 @@ async function runBlacklistSweep(client: Client, botToken: string) {
           if (logChannel) {
             await sendLog(logChannel, {
               title: `Blacklist Global — Usuario ${action === "kick" ? "Expulsado" : "Baneado"} (Sincronizacion)`,
-              description: `**Usuario:** \`${entry.username}\` (\`${entry.userId}\`)\n**Razon:** ${entry.reason}\n**Accion:** ${action}\n**Sistema:** Sincronizacion automatica`,
+              description: `**Usuario:** \`${entry.username}\` (\`${entry.userId}\`)\n**Razon:** ${entry.reason}\n**Accion:** ${action}\n**Servidor de apelaciones:** \`${BLACKLIST_APPEAL_SERVER_ID}\``,
               color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix Blacklist Global" },
             }, botToken);
           }
@@ -396,15 +421,18 @@ export function startBot(): Client | undefined {
       // ── Global Blacklist ─────────────────────────────────────────────────
       if (blacklistEntry && (!blacklistEntry.expiresAt || new Date() < new Date(blacklistEntry.expiresAt))) {
         try {
+          // DM the user before applying the action
+          await dmUserBlacklistNotice(userId, blacklistEntry.reason, botToken);
+
           if (blacklistAction === "kick") {
             await (member as GuildMember).kick(`Blacklist Global: ${blacklistEntry.reason}`);
           } else {
-            await (member as GuildMember).ban({ reason: `Blacklist Global: ${blacklistEntry.reason}` });
+            await (member as GuildMember).ban({ reason: `Blacklist Global: ${blacklistEntry.reason} | Apelaciones: ${BLACKLIST_APPEAL_INVITE}` });
           }
           if (secChannel || logChannel) {
             await sendLog((secChannel || logChannel)!, {
               title: `Blacklist Global — Usuario ${blacklistAction === "kick" ? "Expulsado" : "Baneado"}`,
-              description: `**Usuario:** \`${blacklistEntry.username}\` (\`${userId}\`)\n**Razon:** ${blacklistEntry.reason}\n**Accion:** ${blacklistAction}\n**Moderador original:** ${blacklistEntry.addedByUsername ?? "Sistema"}`,
+              description: `**Usuario:** \`${blacklistEntry.username}\` (\`${userId}\`)\n**Razon:** ${blacklistEntry.reason}\n**Accion:** ${blacklistAction}\n**Moderador original:** ${blacklistEntry.addedByUsername ?? "Sistema"}\n**Servidor de apelaciones:** \`${BLACKLIST_APPEAL_SERVER_ID}\``,
               color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix Blacklist Global" },
             }, botToken);
           }
@@ -620,7 +648,24 @@ export function startBot(): Client | undefined {
         const opts = { guildName, mention: `<@${userId}>`, username, tag: username, memberCount };
         const payload = buildWelcomePayload(goodbyeCfg, opts);
         if (!payload.content && !payload.embeds) payload.content = `**${username}** ha abandonado **${guildName}**.`;
-        await sendToChannel(goodbyeCfg.channelId, payload, botToken);
+
+        // Premium webhook customization for goodbye
+        const [goodbyeWebhookRow] = await db.select().from(guildWebhooksTable)
+          .where(and(eq(guildWebhooksTable.guildId, guildId), eq(guildWebhooksTable.channelId, goodbyeCfg.channelId)));
+        const hasCustom = guildCfg?.webhookBotName || guildCfg?.webhookBotAvatar;
+        const useGoodbyeWebhook = hasCustom && goodbyeWebhookRow?.webhookId && goodbyeWebhookRow?.webhookToken;
+
+        if (useGoodbyeWebhook) {
+          const wp = { ...payload, username: guildCfg!.webhookBotName || undefined, avatar_url: guildCfg!.webhookBotAvatar || undefined };
+          const r = await axios.post(`${DISCORD_API}/webhooks/${goodbyeWebhookRow!.webhookId}/${goodbyeWebhookRow!.webhookToken}`, wp, {
+            headers: { "Content-Type": "application/json" }, validateStatus: () => true,
+          });
+          if (r.status < 200 || r.status >= 300) {
+            await sendToChannel(goodbyeCfg.channelId, payload, botToken);
+          }
+        } else {
+          await sendToChannel(goodbyeCfg.channelId, payload, botToken);
+        }
       }
 
       if (logChannel && logCfg?.logMembers) {

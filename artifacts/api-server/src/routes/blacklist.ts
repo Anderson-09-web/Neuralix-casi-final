@@ -1,9 +1,15 @@
 import { Router } from "express";
-import { db, blacklistTable, adminActivityLogsTable } from "@workspace/db";
+import { db, blacklistTable, adminActivityLogsTable, guildConfigsTable, logsConfigsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAdminAccess } from "../lib/auth";
+import { getBotClient } from "../bot-state";
+import axios from "axios";
 
 const router = Router();
+
+const APPEAL_SERVER_ID = "1493023527887048724";
+const APPEAL_INVITE = `https://discord.gg/neuralix-appeal`;
+const DISCORD_API = "https://discord.com/api/v10";
 
 async function log(actor: any, action: string, target?: string, details?: Record<string, any>) {
   try {
@@ -15,8 +21,86 @@ async function log(actor: any, action: string, target?: string, details?: Record
   } catch {}
 }
 
+async function sendLog(channelId: string, embed: Record<string, unknown>, botToken: string) {
+  try {
+    await axios.post(`${DISCORD_API}/channels/${channelId}/messages`, { embeds: [embed] }, {
+      headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" },
+      validateStatus: () => true,
+    });
+  } catch {}
+}
+
+function getLogChannel(logCfg: any): string | null {
+  if (!logCfg?.enabled) return null;
+  return logCfg.securityChannelId || logCfg.channelId || null;
+}
+
+async function sweepUserFromAllGuilds(userId: string, reason: string): Promise<void> {
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  if (!botToken) return;
+  const client = getBotClient();
+  if (!client) return;
+
+  // Send DM to the user before sweeping
+  try {
+    const dmRes = await axios.post(`${DISCORD_API}/users/@me/channels`, { recipient_id: userId }, {
+      headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" },
+      validateStatus: () => true,
+    });
+    if (dmRes.data?.id) {
+      await axios.post(`${DISCORD_API}/channels/${dmRes.data.id}/messages`, {
+        embeds: [{
+          title: "Has sido incluido en la Blacklist Global de Neuralix",
+          description: `Fuiste baneado/expulsado de todos los servidores protegidos por **Neuralix**.\n\n**Razon:** ${reason}\n\n**¿Crees que es un error?**\nPuedes apelar uniendote a nuestro servidor de apelaciones:\n${APPEAL_INVITE}\n\n**ID Servidor de Apelaciones:** \`${APPEAL_SERVER_ID}\``,
+          color: 0xED4245,
+          footer: { text: "Neuralix Blacklist Global" },
+          timestamp: new Date().toISOString(),
+        }],
+      }, {
+        headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" },
+        validateStatus: () => true,
+      });
+    }
+  } catch {}
+
+  // Sweep from all guilds
+  for (const [, guild] of client.guilds.cache) {
+    try {
+      const [guildCfg] = await db.select().from(guildConfigsTable).where(eq(guildConfigsTable.guildId, guild.id));
+      const action = guildCfg?.blacklistAction || "ban";
+
+      const member = guild.members.cache.get(userId) || await guild.members.fetch(userId).catch(() => null);
+      if (!member) {
+        // If not in cache, try direct ban via API (works even if member not cached)
+        if (action === "ban") {
+          await axios.put(`${DISCORD_API}/guilds/${guild.id}/bans/${userId}`, { reason: `Blacklist Global: ${reason}` }, {
+            headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" },
+            validateStatus: () => true,
+          });
+        }
+        continue;
+      }
+
+      if (action === "kick") {
+        await member.kick(`Blacklist Global: ${reason}`);
+      } else {
+        await member.ban({ reason: `Blacklist Global: ${reason}` });
+      }
+
+      const [logCfg] = await db.select().from(logsConfigsTable).where(eq(logsConfigsTable.guildId, guild.id));
+      const logChannel = getLogChannel(logCfg);
+      if (logChannel) {
+        await sendLog(logChannel, {
+          title: `Blacklist Global — Usuario ${action === "kick" ? "Expulsado" : "Baneado"} (Inmediato)`,
+          description: `**Usuario:** \`${userId}\`\n**Razon:** ${reason}\n**Accion:** ${action}\n**Sistema:** Blacklist instantanea`,
+          color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix Blacklist Global" },
+        }, botToken);
+      }
+    } catch {}
+  }
+}
+
 // Endpoint publico para que el bot verifique usuarios al unirse al servidor
-// El bot llama: GET /api/blacklist/check/:discordId con Authorization: Bearer <token>
 router.get("/blacklist/check/:discordId", async (req, res) => {
   const discordId = req.params.discordId as string;
   if (!discordId) { res.status(400).json({ error: "discordId requerido" }); return; }
@@ -26,9 +110,7 @@ router.get("/blacklist/check/:discordId", async (req, res) => {
     return;
   }
 
-  // Check if the entry has expired
   if (entry.expiresAt && new Date() > new Date(entry.expiresAt)) {
-    // Auto-remove expired entry
     await db.delete(blacklistTable).where(eq(blacklistTable.userId, discordId));
     res.json({ blacklisted: false, expired: true });
     return;
@@ -45,7 +127,13 @@ router.get("/blacklist/check/:discordId", async (req, res) => {
     durationDays: entry.durationDays ?? null,
     expiresAt: entry.expiresAt ?? null,
     permanent: !entry.expiresAt,
+    appealServerId: APPEAL_SERVER_ID,
+    appealInvite: APPEAL_INVITE,
   });
+});
+
+router.get("/blacklist/appeal-server", async (_req, res) => {
+  res.json({ serverId: APPEAL_SERVER_ID, invite: APPEAL_INVITE });
 });
 
 router.get("/blacklist", requireAdminAccess("manage_blacklist"), async (_req, res) => {
@@ -57,7 +145,6 @@ router.post("/blacklist", requireAdminAccess("manage_blacklist"), async (req, re
   const { userId, username, avatarHash, reason, evidence, durationDays } = req.body;
   const actor = (req as any).user;
 
-  // Calculate expiresAt if durationDays is provided and > 0
   const parsedDuration = durationDays && Number(durationDays) > 0 ? Number(durationDays) : null;
   const expiresAt = parsedDuration
     ? new Date(Date.now() + parsedDuration * 24 * 60 * 60 * 1000)
@@ -75,6 +162,10 @@ router.post("/blacklist", requireAdminAccess("manage_blacklist"), async (req, re
       })
       .where(eq(blacklistTable.userId, userId as string)).returning();
     await log(actor, "update_blacklist", username, { userId, reason, durationDays: parsedDuration });
+
+    // Trigger immediate sweep for updated entry
+    sweepUserFromAllGuilds(userId as string, reason).catch(() => {});
+
     res.json(updated);
     return;
   }
@@ -88,6 +179,10 @@ router.post("/blacklist", requireAdminAccess("manage_blacklist"), async (req, re
     sanctionHistory: [{ action: "blacklist", reason, by: actor.username, at: new Date().toISOString() }],
   }).returning();
   await log(actor, "add_blacklist", username, { userId, reason, durationDays: parsedDuration });
+
+  // Trigger immediate sweep for new entry
+  sweepUserFromAllGuilds(userId as string, reason).catch(() => {});
+
   res.status(201).json(entry);
 });
 
@@ -115,4 +210,5 @@ router.delete("/blacklist/:userId", requireAdminAccess("manage_blacklist"), asyn
   res.status(204).send();
 });
 
+export { APPEAL_SERVER_ID, APPEAL_INVITE };
 export default router;

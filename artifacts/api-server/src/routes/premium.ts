@@ -40,8 +40,8 @@ const PLANS = [
       "SLA de disponibilidad garantizado",
       "Analitica avanzada con reportes",
       "Comandos ilimitados",
-      "Backup en tiempo real",
-      "Bot con nombre personalizado",
+      "Backup en tiempo real con restauracion de estructura Discord",
+      "Bot con nombre y avatar personalizados (en todos los modulos)",
       "Acceso anticipado a nuevas funciones",
     ],
   },
@@ -51,19 +51,29 @@ router.get("/guilds/:guildId/premium", requireAuth, async (req, res) => {
   const guildId = req.params.guildId as string;
   const [cfg] = await db.select().from(guildConfigsTable).where(eq(guildConfigsTable.guildId, guildId));
   const features = cfg?.premiumPlan ? PLANS.find((p) => p.id === cfg.premiumPlan)?.features || [] : [];
+
+  // Check if premium is expired
+  let active = cfg?.premiumActive || false;
+  if (active && cfg?.premiumExpiresAt && new Date(cfg.premiumExpiresAt) < new Date()) {
+    active = false;
+    // Auto-deactivate expired premium
+    await db.update(guildConfigsTable).set({ premiumActive: false }).where(eq(guildConfigsTable.guildId, guildId));
+  }
+
   res.json({
     guildId,
-    active: cfg?.premiumActive || false,
+    active,
     plan: cfg?.premiumPlan || null,
     expiresAt: cfg?.premiumExpiresAt?.toISOString() || null,
     features,
+    webhookBotName: cfg?.webhookBotName || null,
+    webhookBotAvatar: cfg?.webhookBotAvatar || null,
   });
 });
 
 router.get("/premium/plans", async (_req, res) => {
   res.json(PLANS);
 });
-
 
 router.post("/guilds/:guildId/premium/activate", requireAuth, async (req, res) => {
   const guildId = req.params.guildId as string;
@@ -116,6 +126,7 @@ router.get("/guilds/:guildId/premium/webhook-config", requireAuth, async (req, r
   res.json({
     webhookBotName: cfg?.webhookBotName || null,
     webhookBotAvatar: cfg?.webhookBotAvatar || null,
+    canCustomize: cfg?.premiumActive && cfg?.premiumPlan === "ultra",
   });
 });
 
@@ -123,7 +134,31 @@ router.put("/guilds/:guildId/premium/webhook-config", requireAuth, async (req, r
   const guildId = req.params.guildId as string;
   const { webhookBotName, webhookBotAvatar } = req.body as { webhookBotName?: string; webhookBotAvatar?: string };
 
+  // Only Ultra plan can customize webhook name/avatar
   const [cfg] = await db.select().from(guildConfigsTable).where(eq(guildConfigsTable.guildId, guildId));
+  const isUltra = cfg?.premiumActive && cfg?.premiumPlan === "ultra";
+  if (!isUltra) {
+    res.status(403).json({
+      error: "La personalizacion del bot (nombre y avatar) es exclusiva del plan Ultra. Actualiza tu plan para acceder a esta funcion.",
+      requiredPlan: "ultra",
+    });
+    return;
+  }
+
+  // Validate avatar URL if provided
+  if (webhookBotAvatar && webhookBotAvatar.trim()) {
+    try {
+      const url = new URL(webhookBotAvatar.trim());
+      if (!["http:", "https:"].includes(url.protocol)) {
+        res.status(400).json({ error: "La URL del avatar debe ser https:// o http://" });
+        return;
+      }
+    } catch {
+      res.status(400).json({ error: "URL de avatar invalida. Debe ser una URL publica de imagen (jpg, png, webp, gif)." });
+      return;
+    }
+  }
+
   if (cfg) {
     await db.update(guildConfigsTable).set({
       webhookBotName: webhookBotName?.trim() || null,
@@ -136,7 +171,28 @@ router.put("/guilds/:guildId/premium/webhook-config", requireAuth, async (req, r
       webhookBotAvatar: webhookBotAvatar?.trim() || null,
     });
   }
-  res.json({ ok: true });
+  res.json({ ok: true, message: "Personalizacion del bot actualizada correctamente." });
+});
+
+// Admin-only: generate license keys
+router.post("/admin/licenses/generate", requireOwner, async (req, res) => {
+  const { plan, count = 1, durationDays, guildId: targetGuildId } = req.body as { plan: string; count?: number; durationDays?: number; guildId?: string };
+  if (!plan || !PLANS.find((p) => p.id === plan)) {
+    res.status(400).json({ error: "Plan invalido. Opciones: plus, pro, ultra" }); return;
+  }
+  const n = Math.min(Number(count) || 1, 50);
+  const expiresAt = durationDays && Number(durationDays) > 0
+    ? new Date(Date.now() + Number(durationDays) * 24 * 60 * 60 * 1000)
+    : null;
+
+  const keys: string[] = [];
+  for (let i = 0; i < n; i++) {
+    const key = `NLX-${plan.toUpperCase()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+    await db.insert(licensesTable).values({ key, plan, active: true, expiresAt, guildId: targetGuildId || null });
+    keys.push(key);
+  }
+
+  res.status(201).json({ ok: true, keys, plan, expiresAt: expiresAt?.toISOString() || null });
 });
 
 export default router;

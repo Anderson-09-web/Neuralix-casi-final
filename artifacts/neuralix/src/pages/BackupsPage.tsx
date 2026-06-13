@@ -1,6 +1,6 @@
 import { useParams } from "wouter";
 import { useState } from "react";
-import { Database, Plus, RotateCcw, Clock, Calendar, Send, Star, Shield, Zap, Download, AlertTriangle, Trash2 } from "lucide-react";
+import { Database, Plus, RotateCcw, Clock, Calendar, Send, Star, Shield, Zap, Download, AlertTriangle, Trash2, Layers } from "lucide-react";
 import { useGetBackups, useCreateBackup, useRestoreBackup, useGetGuildPremium, getGetBackupsQueryKey, getGetGuildPremiumQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import Layout from "@/components/Layout";
@@ -55,6 +55,25 @@ export default function BackupsPage() {
       onSuccess: () => toast({ title: "Backup restaurado exitosamente" }),
       onError: () => toast({ title: "Error al restaurar", variant: "destructive" }),
     });
+  };
+
+  const [restoringDiscordId, setRestoringDiscordId] = useState<number | null>(null);
+  const handleRestoreDiscord = async (backupId: number) => {
+    if (!confirm("¿Restaurar la estructura de Discord (roles, categorias, canales) desde este backup?\n\nEsto CREARA nuevos roles y canales en el servidor. Los existentes NO seran eliminados.")) return;
+    setRestoringDiscordId(backupId);
+    try {
+      const res = await fetch(`/api/guilds/${guildId}/backups/${backupId}/restore-discord`, { method: "POST", credentials: "include" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        toast({ title: "Estructura de Discord restaurada", description: data.message || "Roles y canales creados correctamente." });
+      } else {
+        toast({ title: data.error || "Error al restaurar estructura", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Error de red al restaurar estructura", variant: "destructive" });
+    } finally {
+      setRestoringDiscordId(null);
+    }
   };
 
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -169,6 +188,22 @@ export default function BackupsPage() {
                     {isPlus && (
                       <Button size="sm" variant="ghost" onClick={() => handleExport(backup)} className="gap-1 text-muted-foreground hover:text-foreground" title="Exportar JSON">
                         <Download className="w-4 h-4" />
+                      </Button>
+                    )}
+                    {isUltra && (backup.data as any)?.discordSnapshot && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleRestoreDiscord(backup.id)}
+                        disabled={restoringDiscordId === backup.id}
+                        className="gap-2 border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/10"
+                        title="Restaurar estructura Discord (roles, categorias, canales)"
+                        data-testid={`btn-restore-discord-${backup.id}`}
+                      >
+                        {restoringDiscordId === backup.id
+                          ? <RotateCcw className="w-3.5 h-3.5 animate-spin" />
+                          : <Layers className="w-3.5 h-3.5" />}
+                        <span className="hidden sm:inline">Estructura</span>
                       </Button>
                     )}
                     <Button size="sm" variant="outline" onClick={() => handleRestore(backup.id)} disabled={restoreBackup.isPending} className="gap-2" data-testid={`btn-restore-${backup.id}`}>

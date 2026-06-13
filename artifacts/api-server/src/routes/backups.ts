@@ -7,6 +7,9 @@ import {
 import { eq, desc } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import { getBotClient } from "../bot-state";
+import axios from "axios";
+
+const DISCORD_API = "https://discord.com/api/v10";
 
 async function snapshotDiscordStructure(guildId: string): Promise<Record<string, unknown> | null> {
   try {
@@ -158,6 +161,110 @@ router.post("/guilds/:guildId/backups/:backupId/restore", requireAuth, async (re
     res.json({ ok: true, message: `Backup restaurado: ${restored.join(", ")}`, restored });
   } catch (err: any) {
     res.status(500).json({ error: err?.message || "Error al restaurar backup" });
+  }
+});
+
+// ─── Discord Structure Restore (roles + channels) ─────────────────────────────
+router.post("/guilds/:guildId/backups/:backupId/restore-discord", requireAuth, async (req, res) => {
+  const guildId = req.params.guildId as string;
+  const backupId = Number(req.params.backupId as string);
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  if (!botToken) { res.status(400).json({ ok: false, error: "DISCORD_BOT_TOKEN no configurado" }); return; }
+
+  try {
+    const [backup] = await db.select().from(backupsTable).where(eq(backupsTable.id, backupId));
+    if (!backup) { res.status(404).json({ error: "Backup no encontrado" }); return; }
+    if (backup.guildId !== guildId) { res.status(403).json({ error: "Sin acceso a este backup" }); return; }
+
+    const snapshot = (backup.data as any)?.discordSnapshot;
+    if (!snapshot) { res.status(400).json({ ok: false, error: "Este backup no contiene estructura de Discord (canales/roles). Crea un nuevo backup para incluirla." }); return; }
+
+    const headers = { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" };
+    const results: { type: string; name: string; status: string }[] = [];
+
+    // 1. Recrear roles (de menor a mayor posicion, omitir @everyone)
+    const roles: any[] = ((snapshot.roles as any[]) ?? [])
+      .filter((r: any) => r.name !== "@everyone")
+      .sort((a: any, b: any) => a.position - b.position);
+
+    const roleIdMap = new Map<string, string>(); // old id → new id
+
+    for (const role of roles) {
+      const payload = {
+        name: role.name,
+        color: role.color || 0,
+        hoist: role.hoist || false,
+        mentionable: role.mentionable || false,
+        permissions: role.permissions || "0",
+      };
+      const r = await axios.post(`${DISCORD_API}/guilds/${guildId}/roles`, payload, { headers, validateStatus: () => true });
+      if (r.status === 200 || r.status === 201) {
+        roleIdMap.set(role.id, r.data.id);
+        results.push({ type: "role", name: role.name, status: "ok" });
+      } else {
+        results.push({ type: "role", name: role.name, status: `error ${r.status}: ${r.data?.message}` });
+      }
+      // Respetar rate limit de Discord
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+
+    // 2. Recrear categorias
+    const categories: any[] = ((snapshot.categories as any[]) ?? [])
+      .sort((a: any, b: any) => a.position - b.position);
+
+    const categoryIdMap = new Map<string, string>(); // old id → new id
+
+    for (const cat of categories) {
+      const r = await axios.post(`${DISCORD_API}/guilds/${guildId}/channels`, {
+        name: cat.name,
+        type: 4,
+        position: cat.position,
+      }, { headers, validateStatus: () => true });
+      if (r.status === 200 || r.status === 201) {
+        categoryIdMap.set(cat.id, r.data.id);
+        results.push({ type: "category", name: cat.name, status: "ok" });
+      } else {
+        results.push({ type: "category", name: cat.name, status: `error ${r.status}: ${r.data?.message}` });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+
+    // 3. Recrear canales bajo sus categorias
+    const channels: any[] = ((snapshot.channels as any[]) ?? [])
+      .sort((a: any, b: any) => a.position - b.position);
+
+    for (const ch of channels) {
+      const newParentId = ch.parentId ? (categoryIdMap.get(ch.parentId) ?? null) : null;
+      const payload: Record<string, unknown> = {
+        name: ch.name,
+        type: ch.type,
+        position: ch.position,
+      };
+      if (newParentId) payload.parent_id = newParentId;
+      if (ch.topic) payload.topic = ch.topic;
+      if (ch.nsfw) payload.nsfw = ch.nsfw;
+      if (ch.bitrate && ch.type === 2) payload.bitrate = ch.bitrate;
+      if (ch.userLimit && ch.type === 2) payload.user_limit = ch.userLimit;
+
+      const r = await axios.post(`${DISCORD_API}/guilds/${guildId}/channels`, payload, { headers, validateStatus: () => true });
+      if (r.status === 200 || r.status === 201) {
+        results.push({ type: "channel", name: ch.name, status: "ok" });
+      } else {
+        results.push({ type: "channel", name: ch.name, status: `error ${r.status}: ${r.data?.message}` });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+
+    const ok = results.filter((r) => r.status === "ok").length;
+    const errors = results.filter((r) => r.status !== "ok").length;
+    res.json({
+      ok: true,
+      message: `Estructura restaurada: ${ok} elementos creados, ${errors} errores.`,
+      results,
+      summary: { roles: roleIdMap.size, categories: categoryIdMap.size, channels: ok - roleIdMap.size - categoryIdMap.size },
+    });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err?.message || "Error al restaurar estructura de Discord" });
   }
 });
 
