@@ -30,7 +30,7 @@ router.get("/guilds/:guildId/tickets/panels", requireAuth, async (req, res) => {
 router.post("/guilds/:guildId/tickets/panels", requireAuth, async (req, res) => {
   const guildId = req.params.guildId as string;
   try {
-    const { name, description, channelId, embedTitle, embedDescription, embedColor, embedImage, embedFooter, buttonLabel, buttonEmoji, buttonColor, useModules, sortOrder } = req.body;
+    const { name, description, channelId, embedTitle, embedDescription, embedColor, embedImage, embedFooter, buttonLabel, buttonEmoji, buttonColor, useModules, sortOrder, moduleIds } = req.body;
     if (!name) { res.status(400).json({ error: "El nombre es obligatorio" }); return; }
     const [created] = await db.insert(ticketPanelsTable).values({
       guildId, name,
@@ -47,6 +47,14 @@ router.post("/guilds/:guildId/tickets/panels", requireAuth, async (req, res) => 
       useModules: useModules === true,
       sortOrder: Number(sortOrder) || 0,
     }).returning();
+    // Assign selected modules to this panel
+    if (Array.isArray(moduleIds) && moduleIds.length > 0) {
+      const { inArray, isNull, or } = await import("drizzle-orm");
+      // Clear panelId for previously unassigned modules of this guild (if any had this panel somehow)
+      await db.update(ticketModulesTable).set({ panelId: null }).where(and(eq(ticketModulesTable.guildId, guildId), eq(ticketModulesTable.panelId, created.id)));
+      // Assign selected module IDs to this panel
+      await db.update(ticketModulesTable).set({ panelId: created.id }).where(and(eq(ticketModulesTable.guildId, guildId), inArray(ticketModulesTable.id, moduleIds)));
+    }
     res.json(created);
   } catch (err: any) {
     res.status(500).json({ error: err?.message || "Error al crear panel" });
@@ -58,7 +66,7 @@ router.put("/guilds/:guildId/tickets/panels/:panelId", requireAuth, async (req, 
   const panelId = Number(req.params.panelId as string);
   if (isNaN(panelId)) { res.status(400).json({ error: "ID invalido" }); return; }
   try {
-    const { name, description, channelId, embedTitle, embedDescription, embedColor, embedImage, embedFooter, buttonLabel, buttonEmoji, buttonColor, useModules, sortOrder } = req.body;
+    const { name, description, channelId, embedTitle, embedDescription, embedColor, embedImage, embedFooter, buttonLabel, buttonEmoji, buttonColor, useModules, sortOrder, moduleIds } = req.body;
     const [updated] = await db.update(ticketPanelsTable).set({
       name: name || undefined,
       description: description || null,
@@ -76,6 +84,16 @@ router.put("/guilds/:guildId/tickets/panels/:panelId", requireAuth, async (req, 
       updatedAt: new Date(),
     }).where(and(eq(ticketPanelsTable.id, panelId), eq(ticketPanelsTable.guildId, guildId))).returning();
     if (!updated) { res.status(404).json({ error: "Panel no encontrado" }); return; }
+    // Update module assignments
+    if (Array.isArray(moduleIds)) {
+      const { inArray } = await import("drizzle-orm");
+      // Clear all modules assigned to this panel first
+      await db.update(ticketModulesTable).set({ panelId: null }).where(and(eq(ticketModulesTable.guildId, guildId), eq(ticketModulesTable.panelId, panelId)));
+      // Assign selected modules to this panel
+      if (moduleIds.length > 0) {
+        await db.update(ticketModulesTable).set({ panelId }).where(and(eq(ticketModulesTable.guildId, guildId), inArray(ticketModulesTable.id, moduleIds)));
+      }
+    }
     res.json(updated);
   } catch (err: any) {
     res.status(500).json({ error: err?.message || "Error al actualizar panel" });

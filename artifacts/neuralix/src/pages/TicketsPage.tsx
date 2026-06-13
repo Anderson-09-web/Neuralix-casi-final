@@ -23,7 +23,7 @@ type Tab = typeof TABS[number]["id"];
 
 const BUTTON_COLORS = ["PRIMARY", "SECONDARY", "SUCCESS", "DANGER"] as const;
 const emptyModule = { name: "", description: "", emoji: "", welcomeMessage: "", welcomeEmbedEnabled: false, welcomeEmbedTitle: "", welcomeEmbedDescription: "", welcomeEmbedColor: "", supportRoleIds: "", categoryId: "", buttonLabel: "", buttonColor: "PRIMARY", sortOrder: "0" };
-const emptyPanel = { name: "", description: "", channelId: "", buttonLabel: "Abrir Ticket", buttonColor: "PRIMARY", buttonEmoji: "", embedTitle: "", embedDescription: "", embedColor: "#5865F2", embedFooter: "", embedImage: "", useModules: false, sortOrder: "0" };
+const emptyPanel = { name: "", description: "", channelId: "", buttonLabel: "Abrir Ticket", buttonColor: "PRIMARY", buttonEmoji: "", embedTitle: "", embedDescription: "", embedColor: "#5865F2", embedFooter: "", embedImage: "", useModules: false, sortOrder: "0", selectedModuleIds: [] as number[] };
 
 function NativeSelect({ value, onChange, children }: { value: string; onChange: (v: string) => void; children: React.ReactNode }) {
   return (
@@ -131,6 +131,7 @@ export default function TicketsPage() {
       embedImage: panelForm.embedImage,
       useModules: panelForm.useModules,
       sortOrder: Number(panelForm.sortOrder) || 0,
+      moduleIds: panelForm.useModules ? panelForm.selectedModuleIds : [],
     };
     if (!body.name) { toast({ title: "Nombre del panel requerido", variant: "destructive" }); return; }
     const url = editingPanelId ? `/api/guilds/${guildId}/tickets/panels/${editingPanelId}` : `/api/guilds/${guildId}/tickets/panels`;
@@ -143,6 +144,7 @@ export default function TicketsPage() {
       setEditingPanelId(null);
       setShowPanelForm(false);
       fetchPanels();
+      fetchModules();
     } else {
       toast({ title: data.error || "Error al guardar panel", variant: "destructive" });
     }
@@ -177,6 +179,8 @@ export default function TicketsPage() {
   };
 
   const startEditPanel = (p: any) => {
+    // Load which modules are currently assigned to this panel
+    const assignedModuleIds = modules.filter((m: any) => m.panelId === p.id).map((m: any) => m.id);
     setPanelForm({
       name: p.name || "", description: p.description || "",
       channelId: p.channelId || "", buttonLabel: p.buttonLabel || "Abrir Ticket",
@@ -184,6 +188,7 @@ export default function TicketsPage() {
       embedTitle: p.embedTitle || "", embedDescription: p.embedDescription || "",
       embedColor: p.embedColor || "#5865F2", embedFooter: p.embedFooter || "",
       embedImage: p.embedImage || "", useModules: !!p.useModules, sortOrder: String(p.sortOrder || 0),
+      selectedModuleIds: assignedModuleIds,
     });
     setEditingPanelId(p.id);
     setShowPanelForm(true);
@@ -355,22 +360,47 @@ export default function TicketsPage() {
                     </div>
                     {panelForm.useModules && (
                       <div className="md:col-span-2">
-                        <Label className="text-xs mb-2 block">Modulos disponibles para este panel</Label>
+                        <Label className="text-xs mb-2 block">Selecciona los modulos que aparecen en este panel</Label>
                         {modules.length === 0 ? (
                           <div className="p-3 bg-secondary/50 rounded-lg text-xs text-muted-foreground">
-                            Sin modulos creados. Crea modulos en la pestana "Modulos" primero.
+                            Sin modulos creados. Ve a la pestana "Modulos" y crea al menos uno.
                           </div>
                         ) : (
-                          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                            {modules.map((m: any) => (
-                              <div key={m.id} className="flex items-center gap-2 p-2.5 bg-secondary/40 rounded-lg border border-border text-xs">
-                                <span className="text-lg leading-none">{m.emoji || "🎫"}</span>
-                                <span className="font-medium truncate">{m.name}</span>
-                              </div>
-                            ))}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {modules.map((m: any) => {
+                              const isSelected = panelForm.selectedModuleIds.includes(m.id);
+                              return (
+                                <button
+                                  key={m.id}
+                                  type="button"
+                                  onClick={() => {
+                                    const ids = isSelected
+                                      ? panelForm.selectedModuleIds.filter((id) => id !== m.id)
+                                      : [...panelForm.selectedModuleIds, m.id];
+                                    setPF("selectedModuleIds")(ids);
+                                  }}
+                                  className={cn(
+                                    "flex items-center gap-2.5 p-3 rounded-lg border text-xs text-left transition-all",
+                                    isSelected
+                                      ? "bg-primary/10 border-primary/50 text-foreground"
+                                      : "bg-secondary/30 border-border text-muted-foreground hover:border-primary/30"
+                                  )}
+                                >
+                                  <div className={cn("w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center text-[10px]", isSelected ? "bg-primary border-primary text-primary-foreground" : "border-border")}>
+                                    {isSelected && "✓"}
+                                  </div>
+                                  <span className="text-base leading-none">{m.emoji || "🎫"}</span>
+                                  <span className="font-medium truncate">{m.name}</span>
+                                </button>
+                              );
+                            })}
                           </div>
                         )}
-                        <p className="text-xs text-muted-foreground mt-1.5">Todos los modulos habilitados apareceran como botones/selector en este panel al enviarlo.</p>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          {panelForm.selectedModuleIds.length === 0
+                            ? "Ninguno seleccionado — el panel usara todos los modulos del servidor"
+                            : `${panelForm.selectedModuleIds.length} modulo${panelForm.selectedModuleIds.length !== 1 ? "s" : ""} seleccionado${panelForm.selectedModuleIds.length !== 1 ? "s" : ""}`}
+                        </p>
                       </div>
                     )}
                   </div>

@@ -1011,6 +1011,50 @@ export function startBot(): Client | undefined {
           }
         }
       }
+
+      // ── AI Image Generation (Pro/Ultra) ────────────────────────────────────
+      // Trigger: /imagen <prompt> in any channel (Premium guilds only)
+      if (content && /^\/imagen\s+/i.test(content)) {
+        try {
+          const [gCfgImg] = await db.select().from(guildConfigsTable).where(eq(guildConfigsTable.guildId, guildId));
+          const isPremiumForImage = gCfgImg?.premiumActive && (gCfgImg.premiumPlan === "pro" || gCfgImg.premiumPlan === "ultra");
+          if (isPremiumForImage) {
+            const prompt = content.replace(/^\/imagen\s+/i, "").trim();
+            if (prompt.length < 3) return;
+            const cooldownKey2 = `img:${guildId}:${userId}`;
+            const lastImg = aiCooldowns.get(cooldownKey2) ?? 0;
+            if (Date.now() - lastImg < 10_000) {
+              await message.reply({ content: "Espera 10 segundos entre generaciones de imagen." }).catch(() => {});
+              return;
+            }
+            aiCooldowns.set(cooldownKey2, Date.now());
+            await message.channel.sendTyping().catch(() => {});
+            const encodedPrompt = encodeURIComponent(prompt);
+            const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&enhance=true&seed=${Date.now()}`;
+            // Verify image is reachable before sending
+            try {
+              const checkImg = await fetch(imageUrl, { method: "HEAD" });
+              if (checkImg.ok) {
+                await message.reply({
+                  embeds: [{
+                    title: "Imagen generada",
+                    description: `**Prompt:** ${prompt.substring(0, 200)}`,
+                    image: { url: imageUrl },
+                    color: 0x5865F2,
+                    footer: { text: "Neuralix AI Image · Solo disponible en planes Pro/Ultra" },
+                  }],
+                } as any).catch(() => {});
+              } else {
+                await message.reply({ content: "No se pudo generar la imagen. Intenta con otro prompt." }).catch(() => {});
+              }
+            } catch {
+              await message.reply({ content: "Error al generar la imagen." }).catch(() => {});
+            }
+          } else if (!gCfgImg?.premiumActive) {
+            await message.reply({ content: "La generacion de imagenes con IA requiere plan Pro o Ultra." }).catch(() => {});
+          }
+        } catch {}
+      }
     } catch (err) {
       logger.error({ err, guildId, userId }, "Error en messageCreate");
     }
@@ -1558,8 +1602,15 @@ export function startBot(): Client | undefined {
   });
 
   // ─── Ticket open helper ───────────────────────────────────────────────────
+  // Safe defer helper — prevents "already acknowledged" crashes
+  async function safeDefer(interaction: any) {
+    if (!interaction.deferred && !interaction.replied) {
+      try { await interaction.deferReply({ flags: 64 }); } catch {}
+    }
+  }
+
   async function handleTicketOpen(interaction: any, guildId: string, userId: string, username: string, moduleId: number | null, panelId?: number | null) {
-    await interaction.deferReply({ ephemeral: true });
+    await safeDefer(interaction);
     try {
       const [cfg] = await db.select().from(ticketConfigsTable).where(eq(ticketConfigsTable.guildId, guildId));
       if (!cfg?.enabled) { await interaction.editReply({ content: "El sistema de tickets no esta activo." }); return; }
@@ -1654,7 +1705,7 @@ export function startBot(): Client | undefined {
 
   // ─── Ticket close helper ──────────────────────────────────────────────────
   async function handleTicketClose(interaction: any, guildId: string, ticketId: number, userId: string, username: string) {
-    await interaction.deferReply({ ephemeral: true });
+    await safeDefer(interaction);
     try {
       const [ticket] = await db.select().from(ticketsTable).where(and(eq(ticketsTable.id, ticketId), eq(ticketsTable.guildId, guildId)));
       if (!ticket) { await interaction.editReply({ content: "Ticket no encontrado." }); return; }
@@ -1733,7 +1784,7 @@ export function startBot(): Client | undefined {
   }
 
   async function handleTicketClaim(interaction: any, guildId: string, ticketId: number, userId: string, username: string) {
-    await interaction.deferReply({ ephemeral: true });
+    await safeDefer(interaction);
     try {
       const [ticket] = await db.select().from(ticketsTable).where(and(eq(ticketsTable.id, ticketId), eq(ticketsTable.guildId, guildId)));
       if (!ticket) { await interaction.editReply({ content: "Ticket no encontrado." }); return; }
@@ -1745,7 +1796,7 @@ export function startBot(): Client | undefined {
   }
 
   async function handleTicketDelete(interaction: any, guildId: string, ticketId: number, userId: string, username: string) {
-    await interaction.deferReply({ ephemeral: true });
+    await safeDefer(interaction);
     try {
       const [ticket] = await db.select().from(ticketsTable).where(and(eq(ticketsTable.id, ticketId), eq(ticketsTable.guildId, guildId)));
       if (!ticket) { await interaction.editReply({ content: "Ticket no encontrado." }); return; }
@@ -1765,7 +1816,7 @@ export function startBot(): Client | undefined {
   }
 
   async function handleTicketReopen(interaction: any, guildId: string, ticketId: number, userId: string, username: string) {
-    await interaction.deferReply({ ephemeral: true });
+    await safeDefer(interaction);
     try {
       const [ticket] = await db.select().from(ticketsTable).where(and(eq(ticketsTable.id, ticketId), eq(ticketsTable.guildId, guildId)));
       if (!ticket) { await interaction.editReply({ content: "Ticket no encontrado." }); return; }
@@ -1795,7 +1846,7 @@ export function startBot(): Client | undefined {
       const roleId = Number(interaction.customId.replace("autorole_", ""));
       if (isNaN(roleId)) return;
       try {
-        await interaction.deferReply({ ephemeral: true });
+        await safeDefer(interaction);
         const [ar] = await db.select().from(autoRolesTable).where(and(eq(autoRolesTable.id, roleId), eq(autoRolesTable.guildId, guildId)));
         if (!ar || !ar.enabled) { await interaction.editReply({ content: "Este auto-rol no esta disponible." }); return; }
         const member = interaction.guild?.members.cache.get(userId) || await interaction.guild?.members.fetch(userId).catch(() => null);
@@ -1823,7 +1874,7 @@ export function startBot(): Client | undefined {
     // ── Auto-role select menu ─────────────────────────────────────────────
     if (interaction.isStringSelectMenu() && interaction.customId === "autorole_select") {
       try {
-        await interaction.deferReply({ ephemeral: true });
+        await safeDefer(interaction);
         const selectedId = Number(interaction.values[0]);
         if (isNaN(selectedId)) { await interaction.editReply({ content: "Opcion invalida." }); return; }
         const [ar] = await db.select().from(autoRolesTable).where(and(eq(autoRolesTable.id, selectedId), eq(autoRolesTable.guildId, guildId)));
@@ -1959,6 +2010,9 @@ export function startBot(): Client | undefined {
       }
     } catch {}
   });
+
+  // Prevent unhandled Discord API errors from crashing the process
+  client.on("error", (err) => logger.error({ err }, "Discord client error — handled"));
 
   client.login(botToken).catch((err) => {
     logger.error({ err }, "Error al conectar bot");

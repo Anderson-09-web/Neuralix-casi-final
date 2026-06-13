@@ -227,71 +227,60 @@ export default function PremiumPage() {
         </p>
       </section>
 
-      {/* Webhook customization — Pro + Ultra */}
-      {premium?.active && (
-        <motion.section
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className={`mt-6 p-5 rounded-xl bg-card border ${(premium.plan === "pro" || premium.plan === "ultra") ? "border-primary/20" : "border-border opacity-60"}`}
-          aria-label="Personalizacion del bot con webhook"
-        >
-          <div className="flex items-center gap-3 mb-4">
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${(premium.plan === "pro" || premium.plan === "ultra") ? "bg-primary/10" : "bg-muted"}`}>
-              <Webhook className={`w-4 h-4 ${(premium.plan === "pro" || premium.plan === "ultra") ? "text-primary" : "text-muted-foreground"}`} />
-            </div>
-            <div>
-              <h3 className="font-semibold text-sm flex items-center gap-2">
-                Personalizacion del bot
-                <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-primary/20 text-primary">Pro+</span>
-              </h3>
-              <p className="text-xs text-muted-foreground">El bot usara este nombre y avatar al responder en canales IA, bienvenidas, despedidas y notificaciones via webhook.</p>
-            </div>
+      {/* Webhook customization — always visible; editable only for Pro/Ultra */}
+      <motion.section
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className={`mt-6 p-5 rounded-xl bg-card border ${(premium?.plan === "pro" || premium?.plan === "ultra") ? "border-primary/20" : "border-border"}`}
+        aria-label="Personalizacion del bot con webhook"
+      >
+        <div className="flex items-center gap-3 mb-4">
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${(premium?.plan === "pro" || premium?.plan === "ultra") ? "bg-primary/10" : "bg-muted"}`}>
+            <Webhook className={`w-4 h-4 ${(premium?.plan === "pro" || premium?.plan === "ultra") ? "text-primary" : "text-muted-foreground"}`} />
           </div>
+          <div>
+            <h3 className="font-semibold text-sm flex items-center gap-2">
+              Personalizacion del bot
+              <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-primary/20 text-primary">Pro+</span>
+            </h3>
+            <p className="text-xs text-muted-foreground">El bot usara este nombre y avatar al responder en canales IA, bienvenidas, despedidas y notificaciones via webhook.</p>
+          </div>
+        </div>
 
-          {premium.plan !== "pro" && premium.plan !== "ultra" ? (
-            <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg text-center">
-              <Lock className="w-5 h-5 text-primary mx-auto mb-2" />
-              <p className="text-sm font-medium mb-1">Disponible en Pro y Ultra</p>
-              <p className="text-xs text-muted-foreground">Actualiza al plan Pro para personalizar el nombre y avatar del bot.</p>
+        {(premium?.plan === "pro" || premium?.plan === "ultra") ? (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div>
+                <Label className="text-xs mb-1.5 block">Nombre del bot personalizado</Label>
+                <Input value={webhookName} onChange={(e) => setWebhookName(e.target.value)} placeholder="Ej: Soporte Oficial" maxLength={80} />
+              </div>
+              <div>
+                <Label className="text-xs mb-1.5 block">URL del avatar personalizado</Label>
+                <Input value={webhookAvatar} onChange={(e) => setWebhookAvatar(e.target.value)} placeholder="https://i.imgur.com/tu-avatar.png" />
+              </div>
             </div>
-          ) : (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            {webhookAvatar && (
+              <div className="flex items-center gap-3 mb-4 p-3 bg-secondary/30 rounded-lg">
+                <img src={webhookAvatar} alt="Preview avatar" className="w-10 h-10 rounded-full object-cover border border-border" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
                 <div>
-                  <Label className="text-xs mb-1.5 block">Nombre del bot personalizado</Label>
-                  <Input
-                    value={webhookName}
-                    onChange={(e) => setWebhookName(e.target.value)}
-                    placeholder="Ej: Soporte Oficial"
-                    maxLength={80}
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs mb-1.5 block">URL del avatar personalizado</Label>
-                  <Input
-                    value={webhookAvatar}
-                    onChange={(e) => setWebhookAvatar(e.target.value)}
-                    placeholder="https://i.imgur.com/tu-avatar.png"
-                  />
+                  <p className="font-semibold text-sm">{webhookName || "Neuralix Bot"}</p>
+                  <p className="text-xs text-muted-foreground">Vista previa — asi aparecera el bot al responder</p>
                 </div>
               </div>
-              {webhookAvatar && (
-                <div className="flex items-center gap-3 mb-4 p-3 bg-secondary/30 rounded-lg">
-                  <img src={webhookAvatar} alt="Preview avatar" className="w-10 h-10 rounded-full object-cover border border-border" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-                  <div>
-                    <p className="font-semibold text-sm">{webhookName || "Neuralix Bot"}</p>
-                    <p className="text-xs text-muted-foreground">Vista previa — asi aparecera el bot al responder</p>
-                  </div>
-                </div>
-              )}
-              <p className="text-xs text-muted-foreground mb-3">Aplica a: canales IA, bienvenidas, despedidas y notificaciones via webhook. El avatar debe ser una URL publica de imagen.</p>
-              <Button size="sm" onClick={saveWebhookConfig} disabled={savingWebhook}>
-                {savingWebhook ? "Guardando..." : "Guardar personalizacion"}
-              </Button>
-            </>
-          )}
-        </motion.section>
-      )}
+            )}
+            <p className="text-xs text-muted-foreground mb-3">Aplica a: canales IA, bienvenidas, despedidas y notificaciones via webhook. El avatar debe ser una URL publica de imagen.</p>
+            <Button size="sm" onClick={saveWebhookConfig} disabled={savingWebhook}>
+              {savingWebhook ? "Guardando..." : "Guardar personalizacion"}
+            </Button>
+          </>
+        ) : (
+          <div className="p-4 bg-muted/30 border border-border rounded-lg text-center">
+            <Lock className="w-5 h-5 text-muted-foreground mx-auto mb-2" />
+            <p className="text-sm font-medium mb-1">Disponible en Pro y Ultra</p>
+            <p className="text-xs text-muted-foreground">Activa el plan Pro para personalizar el nombre y avatar que usa el bot al responder.</p>
+          </div>
+        )}
+      </motion.section>
 
       {/* Feature comparison table */}
       <section className="mt-8 p-4 md:p-5 rounded-xl bg-card border border-card-border" aria-label="Comparacion completa de planes">
