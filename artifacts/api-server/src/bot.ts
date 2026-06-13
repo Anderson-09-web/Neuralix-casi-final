@@ -967,7 +967,13 @@ export function startBot(): Client | undefined {
         spamTracker.set(key, msgs);
         if (msgs.length >= threshold) {
           spamTracker.set(key, []);
-          if (antiraid.deleteOnTrigger) { await message.delete().catch(() => {}); }
+          if (antiraid.deleteOnTrigger) {
+            try {
+              const fetched = await message.channel.messages.fetch({ limit: 50 });
+              const toDelete = fetched.filter((m) => m.author.id === userId && now - m.createdTimestamp < windowMs + 5000);
+              for (const [, m] of toDelete) { await m.delete().catch(() => {}); }
+            } catch { await message.delete().catch(() => {}); }
+          }
           const action = antiraid.antiSpamAction ?? "mute";
           // Fetch member explicitly if not cached
           const target = message.member ?? await message.guild.members.fetch(userId).catch(() => null);
