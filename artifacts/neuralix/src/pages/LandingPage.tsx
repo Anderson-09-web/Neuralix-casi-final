@@ -57,7 +57,15 @@ export default function LandingPage() {
             <AlertTriangle className="w-4 h-4 shrink-0" />
             <span>{oauthError}</span>
           </div>
-          <button onClick={() => setOauthError(null)} className="shrink-0 text-white/80 hover:text-white text-lg leading-none">✕</button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => { setOauthError(null); if (authUrl?.url) window.location.href = authUrl.url; }}
+              className="text-xs bg-white/20 hover:bg-white/30 px-3 py-1 rounded-md font-semibold transition-colors"
+            >
+              Reintentar
+            </button>
+            <button onClick={() => setOauthError(null)} className="text-white/80 hover:text-white text-lg leading-none">✕</button>
+          </div>
         </div>
       )}
       {/* Navbar */}

@@ -30,7 +30,16 @@ import CustomCommandsPage from "@/pages/CustomCommandsPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { retry: 1, staleTime: 30_000 },
+    queries: {
+      retry: (failureCount, error: any) => {
+        // Don't retry 401/403 — they're expected when not logged in
+        if (error?.response?.status === 401 || error?.response?.status === 403) return false;
+        return failureCount < 1;
+      },
+      staleTime: 10_000,
+      // Never keep failed auth queries in cache
+      gcTime: 5_000,
+    },
   },
 });
 
