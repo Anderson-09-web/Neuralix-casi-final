@@ -20,3 +20,4 @@ export * from "./antiraid-whitelist";
 export * from "./auto-roles";
 export * from "./webhooks";
 export * from "./ai-channels";
+export * from "./custom-commands";

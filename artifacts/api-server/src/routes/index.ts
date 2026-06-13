@@ -28,6 +28,7 @@ import ticketPanelsRouter from "./ticket-panels";
 import blacklistConfigRouter from "./blacklist-config";
 import aiChannelsRouter from "./ai-channels";
 import ticketModulesRouter from "./ticket-modules";
+import customCommandsRouter from "./custom-commands";
 
 const router: IRouter = Router();
 
@@ -60,6 +61,6 @@ router.use(ticketPanelsRouter);
 router.use(blacklistConfigRouter);
 router.use(aiChannelsRouter);
 router.use(ticketModulesRouter);
-
+router.use(customCommandsRouter);
 
 export default router;

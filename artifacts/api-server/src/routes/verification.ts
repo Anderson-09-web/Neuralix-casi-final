@@ -251,9 +251,10 @@ router.get("/verify-info/:guildId", async (req, res) => {
   const guildId = req.params.guildId as string;
   const botToken = process.env.DISCORD_BOT_TOKEN;
   try {
-    const [cfg] = await db.select().from(verificationConfigsTable).where(eq(verificationConfigsTable.guildId, guildId));
+    let [cfg] = await db.select().from(verificationConfigsTable).where(eq(verificationConfigsTable.guildId, guildId));
     if (!cfg) {
-      res.status(404).json({ error: "No hay configuracion de verificacion para este servidor" }); return;
+      const [created] = await db.insert(verificationConfigsTable).values({ guildId }).returning();
+      cfg = created;
     }
 
     let guildName = "Servidor de Discord";

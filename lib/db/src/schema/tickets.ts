@@ -37,6 +37,8 @@ export const ticketConfigsTable = pgTable("ticket_configs", {
   claimEnabled: boolean("claim_enabled").notNull().default(true),
   deleteEnabled: boolean("delete_enabled").notNull().default(true),
   useModules: boolean("use_modules").notNull().default(false),
+  queueEnabled: boolean("queue_enabled").notNull().default(false),
+  maxConcurrentTickets: integer("max_concurrent_tickets"),
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
@@ -93,3 +95,13 @@ export type Ticket = typeof ticketsTable.$inferSelect;
 export const insertTicketPanelSchema = createInsertSchema(ticketPanelsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertTicketPanel = z.infer<typeof insertTicketPanelSchema>;
 export type TicketPanel = typeof ticketPanelsTable.$inferSelect;
+
+export const ticketQueueTable = pgTable("ticket_queue", {
+  id: serial("id").primaryKey(),
+  guildId: text("guild_id").notNull(),
+  userId: text("user_id").notNull(),
+  username: text("username").notNull(),
+  moduleId: integer("module_id"),
+  panelId: integer("panel_id"),
+  queuedAt: timestamp("queued_at", { withTimezone: true }).notNull().defaultNow(),
+});

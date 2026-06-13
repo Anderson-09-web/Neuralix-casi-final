@@ -35,11 +35,17 @@ type AiChannel = {
 };
 
 const models = [
-  { value: "llama-3.1-8b-instant", label: "Llama 3.1 8B (Rapido)" },
-  { value: "llama-3.3-70b-versatile", label: "Llama 3.3 70B (Potente)" },
-  { value: "llama-3.1-70b-versatile", label: "Llama 3.1 70B" },
-  { value: "mixtral-8x7b-32768", label: "Mixtral 8x7B (Contexto largo)" },
-  { value: "gemma2-9b-it", label: "Gemma 2 9B" },
+  { value: "llama-3.1-8b-instant", label: "Llama 3.1 8B — Rapido" },
+  { value: "llama-3.3-70b-versatile", label: "Llama 3.3 70B — Versatil (recomendado)" },
+  { value: "llama-3.1-70b-versatile", label: "Llama 3.1 70B — Versatil" },
+  { value: "mixtral-8x7b-32768", label: "Mixtral 8x7B — Contexto largo" },
+  { value: "gemma2-9b-it", label: "Gemma 2 9B — Google" },
+  { value: "deepseek-r1-distill-llama-70b", label: "DeepSeek R1 70B — Razonamiento avanzado" },
+  { value: "qwen-qwq-32b", label: "Qwen QwQ 32B — Razonamiento avanzado" },
+  { value: "llama-3.3-70b-specdec", label: "Llama 3.3 70B SpecDec — Alta calidad rapido" },
+  { value: "llama-3.2-90b-vision-preview", label: "Llama 3.2 90B Vision — Multimodal" },
+  { value: "meta-llama/llama-4-scout-17b-16e-instruct", label: "Llama 4 Scout 17B — Potente" },
+  { value: "meta-llama/llama-4-maverick-17b-128e-instruct", label: "Llama 4 Maverick 17B — Mas potente" },
 ];
 
 export default function AiChannelsPage() {

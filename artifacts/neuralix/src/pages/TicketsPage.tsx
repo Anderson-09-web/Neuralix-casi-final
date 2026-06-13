@@ -713,6 +713,23 @@ export default function TicketsPage() {
                     <Input type="number" min={0} max={720} value={cfg.autoClose ?? 0} onChange={(e) => set("autoClose")(Number(e.target.value) || 0)} className="w-24" />
                   </div>
                 </div>
+
+                <div className="bg-card border border-card-border rounded-xl p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-semibold text-sm">Lista de espera (cola)</h4>
+                      <p className="text-xs text-muted-foreground mt-0.5">Si hay demasiados tickets abiertos, los nuevos usuarios esperan en cola y son atendidos automaticamente cuando se cierra un ticket.</p>
+                    </div>
+                    <Switch checked={cfg.queueEnabled ?? false} onCheckedChange={set("queueEnabled")} />
+                  </div>
+                  {cfg.queueEnabled && (
+                    <div>
+                      <Label className="text-sm mb-1.5 block">Max. tickets simultaneos (activa la cola)</Label>
+                      <Input type="number" min={1} max={100} value={cfg.maxConcurrentTickets ?? ""} onChange={(e) => set("maxConcurrentTickets")(Number(e.target.value) || null)} className="w-28" placeholder="ej: 5" />
+                      <p className="text-xs text-muted-foreground mt-1">Cuando se alcanza este limite, los nuevos tickets entran en la cola.</p>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="bg-card border border-card-border rounded-xl p-6 space-y-4">
