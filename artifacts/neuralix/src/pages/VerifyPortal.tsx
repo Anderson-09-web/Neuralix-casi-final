@@ -8,6 +8,7 @@ type GuildInfo = {
   guildId: string;
   guildName: string;
   guildIcon: string | null;
+  enabled: boolean;
   minAccountAge: number;
   antiVpn: boolean;
   antiAlt: boolean;
@@ -108,8 +109,23 @@ export default function VerifyPortal() {
               </div>
               <h1 className="text-xl font-black mb-2">Enlace invalido</h1>
               <p className="text-muted-foreground text-sm">
-                {!guildId ? "No se especifico un servidor valido en el enlace." : "La verificacion no esta habilitada en este servidor o el enlace es incorrecto."}
+                {!guildId ? "No se especifico un servidor valido en el enlace." : "No se encontro configuracion de verificacion para este servidor. Asegurate de haber configurado la verificacion en el dashboard."}
               </p>
+            </>
+          ) : guildInfo && !guildInfo.enabled ? (
+            /* Verification disabled */
+            <>
+              <div className="w-16 h-16 rounded-full bg-orange-500/10 border border-orange-500/30 flex items-center justify-center mx-auto mb-5">
+                <AlertTriangle className="w-8 h-8 text-orange-400" />
+              </div>
+              {guildInfo && (
+                <div className="flex items-center justify-center gap-2 mb-4">
+                  <GuildAvatar icon={guildInfo.guildIcon} name={guildInfo.guildName} />
+                  <span className="font-semibold text-sm">{guildInfo.guildName}</span>
+                </div>
+              )}
+              <h1 className="text-xl font-black mb-2">Verificacion deshabilitada</h1>
+              <p className="text-muted-foreground text-sm">El sistema de verificacion no esta activo en este servidor. Contacta a un administrador.</p>
             </>
           ) : (
             /* Main verify state */

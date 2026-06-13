@@ -295,17 +295,34 @@ async function generateTranscript(channelId: string, botToken: string, ticketId:
   } catch { return { text: "", html: "" }; }
 }
 
-async function buildTicketComponents(ticketId: number, cfg: any): Promise<any[]> {
+async function buildTicketComponents(ticketId: number, cfg: any, claimedBy?: string | null): Promise<any[]> {
   const row1Buttons: any[] = [
     { type: 2, style: 4, label: "Cerrar Ticket", emoji: { name: "🔒" }, custom_id: `ticket_close_${ticketId}` },
   ];
   if (cfg?.claimEnabled !== false) {
-    row1Buttons.push({ type: 2, style: 1, label: "Reclamar", emoji: { name: "✋" }, custom_id: `ticket_claim_${ticketId}` });
+    if (claimedBy) {
+      row1Buttons.push({ type: 2, style: 2, label: "Liberar Ticket", emoji: { name: "🔓" }, custom_id: `ticket_unclaim_${ticketId}` });
+    } else {
+      row1Buttons.push({ type: 2, style: 1, label: "Reclamar", emoji: { name: "✋" }, custom_id: `ticket_claim_${ticketId}` });
+    }
   }
   if (cfg?.deleteEnabled !== false) {
     row1Buttons.push({ type: 2, style: 4, label: "Eliminar", emoji: { name: "🗑️" }, custom_id: `ticket_delete_${ticketId}` });
   }
   return [{ type: 1, components: row1Buttons }];
+}
+
+function applyTicketVars(template: string, vars: { userId: string; username: string; channelId?: string; guildName?: string; ticketId?: number; moduleName?: string }): string {
+  return template
+    .replace(/{user}/g, `<@${vars.userId}>`)
+    .replace(/{mention}/g, `<@${vars.userId}>`)
+    .replace(/{username}/g, vars.username)
+    .replace(/{channel}/g, vars.channelId ? `<#${vars.channelId}>` : "")
+    .replace(/{guild}/g, vars.guildName || "")
+    .replace(/{server}/g, vars.guildName || "")
+    .replace(/{ticket_id}/g, vars.ticketId ? String(vars.ticketId) : "")
+    .replace(/{id}/g, vars.ticketId ? String(vars.ticketId) : "")
+    .replace(/{module}/g, vars.moduleName || "");
 }
 
 // ─── Global Blacklist Sweep ────────────────────────────────────────────────────
@@ -1811,12 +1828,14 @@ export function startBot(): Client | undefined {
         moduleName: mod?.name ?? null,
       }).returning();
 
-      const standardOpener = cfg.openMessage || `Hola <@${userId}>, tu ticket fue creado. Pronto te atendemos.`;
-      const openMsg = standardOpener.replace("{user}", `<@${userId}>`).replace("{username}", username);
+      const guildName = interaction.guild?.name || guildId;
+      const tvars = { userId, username, channelId: ticketChannel.id, guildName, ticketId: ticket.id, moduleName: mod?.name };
+      const standardOpener = cfg.openMessage || `Hola {user}, tu ticket fue creado. Pronto te atendemos.`;
+      const openMsg = applyTicketVars(standardOpener, tvars);
       const mentionParts: string[] = [];
       if (cfg.mentionSupport) { for (const rid of supportRoleIds) mentionParts.push(`<@&${rid}>`); }
       const openContent = `${mentionParts.join(" ")} ${openMsg}`.trim();
-      const components = await buildTicketComponents(ticket.id, cfg);
+      const components = await buildTicketComponents(ticket.id, cfg, null);
 
       // ORDER: 1) open message text (arriba de todo)
       if (openContent) {
@@ -1825,7 +1844,7 @@ export function startBot(): Client | undefined {
 
       // 2) Per-module welcome message (if configured, below open message)
       if (mod?.welcomeMessage) {
-        const modMsg = mod.welcomeMessage.replace("{user}", `<@${userId}>`).replace("{username}", username);
+        const modMsg = applyTicketVars(mod.welcomeMessage, tvars);
         await ticketChannel.send({ content: modMsg } as any).catch(() => {});
       }
 
@@ -1833,8 +1852,8 @@ export function startBot(): Client | undefined {
       if (mod?.welcomeEmbedEnabled && (mod.welcomeEmbedTitle || mod.welcomeEmbedDescription)) {
         await ticketChannel.send({
           embeds: [{
-            title: mod.welcomeEmbedTitle || null,
-            description: (mod.welcomeEmbedDescription || "").replace("{user}", `<@${userId}>`).replace("{username}", username),
+            title: mod.welcomeEmbedTitle ? applyTicketVars(mod.welcomeEmbedTitle, tvars) : null,
+            description: mod.welcomeEmbedDescription ? applyTicketVars(mod.welcomeEmbedDescription, tvars) : "",
             color: hexColor(mod.welcomeEmbedColor),
             footer: { text: `Ticket #${ticket.id} · ${mod.name}` },
           }],
@@ -1970,20 +1989,28 @@ export function startBot(): Client | undefined {
     try {
       const [ticket] = await db.select().from(ticketsTable).where(and(eq(ticketsTable.id, ticketId), eq(ticketsTable.guildId, guildId)));
       if (!ticket) { await interaction.editReply({ content: "Ticket no encontrado." }); return; }
-      if (ticket.claimedBy) { await interaction.editReply({ content: `Este ticket ya fue reclamado por <@${ticket.claimedBy}>.` }); return; }
+      if (ticket.claimedBy) { await interaction.editReply({ content: `Este ticket ya fue reclamado por <@${ticket.claimedBy}>. Solo ese agente puede liberarlo.` }); return; }
 
-      const [cfg] = await db.select().from(ticketConfigsTable).where(eq(ticketConfigsTable.guildId, guildId));
-      const supportRoleIds: string[] = cfg?.supportRoleIds?.length ? cfg.supportRoleIds : (cfg?.supportRoleId ? [cfg.supportRoleId] : []);
+      const [cfgReal] = await db.select().from(ticketConfigsTable).where(eq(ticketConfigsTable.guildId, guildId));
+
+      // Support roles: check both global cfg and module-level roles
+      let supportRoleIds: string[] = cfgReal?.supportRoleIds?.length ? cfgReal.supportRoleIds : (cfgReal?.supportRoleId ? [cfgReal.supportRoleId] : []);
+      if (ticket.moduleId) {
+        const [mod] = await db.select().from(ticketModulesTable).where(eq(ticketModulesTable.id, ticket.moduleId));
+        if (mod?.supportRoleIds?.length) supportRoleIds = [...new Set([...supportRoleIds, ...mod.supportRoleIds])];
+      }
+
       const member = interaction.guild?.members.cache.get(userId) || await interaction.guild?.members.fetch(userId).catch(() => null);
       const memberRoles: string[] = member?.roles?.cache?.map((r: any) => r.id) ?? [];
       const isSupport = supportRoleIds.some((rid: string) => memberRoles.includes(rid));
-      if (!isSupport && !member?.permissions?.has?.("ManageChannels")) {
-        await interaction.editReply({ content: "Solo el personal de soporte puede reclamar tickets." }); return;
+      const isAdmin = member?.permissions?.has?.("Administrator") || member?.permissions?.has?.("ManageChannels");
+      if (!isSupport && !isAdmin) {
+        await interaction.editReply({ content: "Solo el personal de soporte o administradores pueden reclamar tickets." }); return;
       }
 
       await db.update(ticketsTable).set({ claimedBy: userId, claimedByUsername: username }).where(eq(ticketsTable.id, ticketId));
 
-      // Restrict channel visibility: hide from other support roles, keep only claimer + ticket owner
+      // Restrict channel: remove visibility from other support roles, grant only claimer
       try {
         for (const roleId of supportRoleIds) {
           await interaction.channel?.permissionOverwrites.edit(roleId, { ViewChannel: false }).catch(() => {});
@@ -1993,9 +2020,57 @@ export function startBot(): Client | undefined {
         }).catch(() => {});
       } catch {}
 
-      await interaction.channel?.send({ embeds: [{ title: "Ticket Reclamado", description: `<@${userId}> esta atendiendo este ticket.\nSolo el agente y el usuario pueden ver este canal.`, color: 0x57F287, timestamp: new Date().toISOString(), footer: { text: "Neuralix Tickets" } }] } as any).catch(() => {});
-      await interaction.editReply({ content: "Has reclamado este ticket. Solo tu y el usuario pueden verlo." });
+      // Update button message: replace Claim with Unclaim
+      try {
+        const newComponents = await buildTicketComponents(ticketId, cfgReal, userId);
+        await interaction.message?.edit({ components: newComponents }).catch(() => {});
+      } catch {}
+
+      await interaction.channel?.send({ embeds: [{ title: "Ticket Reclamado", description: `<@${userId}> esta atendiendo este ticket.\nEl canal es privado: solo el agente y el usuario pueden verlo.\nPara liberar el ticket, haz clic en **Liberar Ticket**.`, color: 0x57F287, timestamp: new Date().toISOString(), footer: { text: "Neuralix Tickets" } }] } as any).catch(() => {});
+      await interaction.editReply({ content: "Has reclamado este ticket." });
     } catch { await interaction.editReply({ content: "Error al reclamar el ticket." }).catch(() => {}); }
+  }
+
+  async function handleTicketUnclaim(interaction: any, guildId: string, ticketId: number, userId: string) {
+    await safeDefer(interaction);
+    try {
+      const [ticket] = await db.select().from(ticketsTable).where(and(eq(ticketsTable.id, ticketId), eq(ticketsTable.guildId, guildId)));
+      if (!ticket) { await interaction.editReply({ content: "Ticket no encontrado." }); return; }
+      if (!ticket.claimedBy) { await interaction.editReply({ content: "Este ticket no esta reclamado." }); return; }
+
+      const [cfg] = await db.select().from(ticketConfigsTable).where(eq(ticketConfigsTable.guildId, guildId));
+      const member = interaction.guild?.members.cache.get(userId) || await interaction.guild?.members.fetch(userId).catch(() => null);
+      const isAdmin = member?.permissions?.has?.("Administrator") || member?.permissions?.has?.("ManageChannels");
+
+      if (ticket.claimedBy !== userId && !isAdmin) {
+        await interaction.editReply({ content: `Solo <@${ticket.claimedBy}> o un administrador puede liberar este ticket.` }); return;
+      }
+
+      const prevClaimer = ticket.claimedBy;
+      await db.update(ticketsTable).set({ claimedBy: null, claimedByUsername: null }).where(eq(ticketsTable.id, ticketId));
+
+      // Restore channel permissions for all support roles
+      let supportRoleIds: string[] = cfg?.supportRoleIds?.length ? cfg.supportRoleIds : (cfg?.supportRoleId ? [cfg.supportRoleId] : []);
+      if (ticket.moduleId) {
+        const [mod] = await db.select().from(ticketModulesTable).where(eq(ticketModulesTable.id, ticket.moduleId));
+        if (mod?.supportRoleIds?.length) supportRoleIds = [...new Set([...supportRoleIds, ...mod.supportRoleIds])];
+      }
+      try {
+        for (const roleId of supportRoleIds) {
+          await interaction.channel?.permissionOverwrites.edit(roleId, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true, ManageMessages: true }).catch(() => {});
+        }
+        if (prevClaimer) await interaction.channel?.permissionOverwrites.delete(prevClaimer).catch(() => {});
+      } catch {}
+
+      // Update button message: replace Unclaim with Claim
+      try {
+        const newComponents = await buildTicketComponents(ticketId, cfg, null);
+        await interaction.message?.edit({ components: newComponents }).catch(() => {});
+      } catch {}
+
+      await interaction.channel?.send({ embeds: [{ title: "Ticket Liberado", description: `<@${userId}> ha liberado el ticket. Cualquier agente puede reclamarlo ahora.`, color: 0xFEE75C, timestamp: new Date().toISOString(), footer: { text: "Neuralix Tickets" } }] } as any).catch(() => {});
+      await interaction.editReply({ content: "Has liberado el ticket. Cualquier agente puede reclamarlo." });
+    } catch { await interaction.editReply({ content: "Error al liberar el ticket." }).catch(() => {}); }
   }
 
   async function handleTicketDelete(interaction: any, guildId: string, ticketId: number, userId: string, username: string) {
@@ -2142,6 +2217,12 @@ export function startBot(): Client | undefined {
     if (customId.startsWith("ticket_claim_")) {
       const ticketId = Number(customId.replace("ticket_claim_", ""));
       if (!isNaN(ticketId)) await handleTicketClaim(interaction, guildId, ticketId, userId, username);
+      return;
+    }
+
+    if (customId.startsWith("ticket_unclaim_")) {
+      const ticketId = Number(customId.replace("ticket_unclaim_", ""));
+      if (!isNaN(ticketId)) await handleTicketUnclaim(interaction, guildId, ticketId, userId);
       return;
     }
 

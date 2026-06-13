@@ -252,8 +252,8 @@ router.get("/verify-info/:guildId", async (req, res) => {
   const botToken = process.env.DISCORD_BOT_TOKEN;
   try {
     const [cfg] = await db.select().from(verificationConfigsTable).where(eq(verificationConfigsTable.guildId, guildId));
-    if (!cfg || !cfg.enabled) {
-      res.status(404).json({ error: "Verificacion no habilitada en este servidor" }); return;
+    if (!cfg) {
+      res.status(404).json({ error: "No hay configuracion de verificacion para este servidor" }); return;
     }
 
     let guildName = "Servidor de Discord";
@@ -275,6 +275,7 @@ router.get("/verify-info/:guildId", async (req, res) => {
       guildId,
       guildName,
       guildIcon,
+      enabled: cfg.enabled ?? false,
       minAccountAge: cfg.minAccountAge,
       antiVpn: cfg.antiVpn,
       antiAlt: cfg.antiAlt,

@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import GuildChannelSelect from "@/components/GuildChannelSelect";
 import GuildRoleSelect from "@/components/GuildRoleSelect";
 import GuildRoleMultiSelect from "@/components/GuildRoleMultiSelect";
+import GuildEmojiPicker from "@/components/GuildEmojiPicker";
 
 const TABS = [
   { id: "paneles", label: "Paneles", icon: PanelIcon },
@@ -346,7 +347,7 @@ export default function TicketsPage() {
                         </div>
                         <div>
                           <Label className="text-xs mb-1.5 block">Emoji del boton</Label>
-                          <input className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring" value={panelForm.buttonEmoji} onChange={(e) => setPF("buttonEmoji")(e.target.value)} placeholder="🎫" />
+                          <GuildEmojiPicker guildId={guildId!} value={panelForm.buttonEmoji} onChange={setPF("buttonEmoji")} placeholder="🎫 o emoji del servidor" />
                         </div>
                         <div>
                           <Label className="text-xs mb-1.5 block">Color del boton</Label>
@@ -539,8 +540,8 @@ export default function TicketsPage() {
                       <Input value={moduleForm.name} onChange={(e) => setMF("name")(e.target.value)} placeholder="Soporte General" />
                     </div>
                     <div>
-                      <Label className="text-xs mb-1.5 block">Emoji</Label>
-                      <Input value={moduleForm.emoji} onChange={(e) => setMF("emoji")(e.target.value)} placeholder="🎫" />
+                      <Label className="text-xs mb-1.5 block">Emoji del modulo</Label>
+                      <GuildEmojiPicker guildId={guildId!} value={moduleForm.emoji} onChange={setMF("emoji")} placeholder="🎫 o emoji del servidor" />
                     </div>
                     <div>
                       <Label className="text-xs mb-1.5 block">Descripcion</Label>
@@ -555,8 +556,11 @@ export default function TicketsPage() {
                       <GuildRoleMultiSelect guildId={guildId!} value={moduleForm.supportRoleIds} onChange={setMF("supportRoleIds")} />
                     </div>
                     <div className="md:col-span-2">
-                      <Label className="text-xs mb-1.5 block">Mensaje de bienvenida del ticket</Label>
-                      <Textarea value={moduleForm.welcomeMessage} onChange={(e) => setMF("welcomeMessage")(e.target.value)} placeholder="Hola {user}, un agente de soporte te atendra en breve." rows={2} />
+                      <div className="flex items-center justify-between mb-1.5">
+                        <Label className="text-xs">Mensaje de bienvenida del ticket</Label>
+                        <VariablesModal variables={TICKET_VARIABLES} onInsert={(v) => setMF("welcomeMessage")((moduleForm.welcomeMessage || "") + v)} />
+                      </div>
+                      <Textarea value={moduleForm.welcomeMessage} onChange={(e) => setMF("welcomeMessage")(e.target.value)} placeholder="Hola {user}, un agente de soporte te atendra en breve. Ticket #{ticket_id}" rows={2} />
                     </div>
                     <div className="md:col-span-2 flex items-center justify-between py-1">
                       <div>

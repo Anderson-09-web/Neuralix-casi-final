@@ -315,4 +315,28 @@ router.get("/guilds/:guildId/roles", requireAuth, async (req, res) => {
   } catch { res.json([]); }
 });
 
+// ─── Guild emojis (for emoji picker in dashboard) ────────────────────────────
+router.get("/guilds/:guildId/emojis", requireAuth, async (req, res) => {
+  const guildId = req.params.guildId as string;
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  if (!botToken) { res.json([]); return; }
+  try {
+    const r = await axios.get(`${DISCORD_API}/guilds/${guildId}/emojis`, {
+      headers: { Authorization: `Bot ${botToken.trim()}` },
+      validateStatus: () => true,
+    });
+    if (r.status === 200 && Array.isArray(r.data)) {
+      res.json(r.data.map((e: any) => ({
+        id: e.id,
+        name: e.name,
+        animated: !!e.animated,
+        url: `https://cdn.discordapp.com/emojis/${e.id}.${e.animated ? "gif" : "webp"}?size=40`,
+        formatted: e.animated ? `<a:${e.name}:${e.id}>` : `<:${e.name}:${e.id}>`,
+      })));
+    } else {
+      res.json([]);
+    }
+  } catch { res.json([]); }
+});
+
 export default router;

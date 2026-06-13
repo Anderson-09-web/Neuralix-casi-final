@@ -33,14 +33,15 @@ export const GOODBYE_VARIABLES: Variable[] = [
 ];
 
 export const TICKET_VARIABLES: Variable[] = [
-  { key: "{user}", desc: "Menciona al creador del ticket", example: "@Usuario" },
-  { key: "{username}", desc: "Nombre del creador", example: "Usuario" },
-  { key: "{userid}", desc: "ID del creador", example: "123456789012345678" },
-  { key: "{ticketid}", desc: "Numero del ticket", example: "42" },
-  { key: "{server}", desc: "Nombre del servidor", example: "Mi Servidor" },
-  { key: "{date}", desc: "Fecha de apertura", example: "06/06/2026" },
-  { key: "{time}", desc: "Hora de apertura", example: "14:30" },
-  { key: "{role}", desc: "Rol de soporte configurado", example: "@Soporte" },
+  { key: "{user}", desc: "Menciona al creador del ticket (@mention)", example: "<@123>" },
+  { key: "{mention}", desc: "Alias de {user}, menciona al creador", example: "<@123>" },
+  { key: "{username}", desc: "Nombre de usuario del creador", example: "usuario123" },
+  { key: "{channel}", desc: "Canal del ticket (#canal)", example: "#ticket-usuario123" },
+  { key: "{guild}", desc: "Nombre del servidor", example: "Mi Servidor" },
+  { key: "{server}", desc: "Alias de {guild}, nombre del servidor", example: "Mi Servidor" },
+  { key: "{ticket_id}", desc: "Numero del ticket", example: "42" },
+  { key: "{id}", desc: "Alias de {ticket_id}", example: "42" },
+  { key: "{module}", desc: "Nombre del modulo seleccionado", example: "Soporte General" },
 ];
 
 export const VERIFICATION_VARIABLES: Variable[] = [
