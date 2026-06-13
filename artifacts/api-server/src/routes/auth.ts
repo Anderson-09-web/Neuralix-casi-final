@@ -157,8 +157,8 @@ router.get("/auth/discord/callback", async (req, res) => {
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
-    // Serve an HTML page that redirects via JS — avoids Replit proxy 502 on 302 redirect
-    res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Iniciando sesion...</title></head><body><script>window.location.replace(${JSON.stringify(frontend + "/auth/callback")});</script><noscript><a href="${frontend}/auth/callback">Continuar</a></noscript></body></html>`);
+    // Use a relative JS redirect — avoids Replit proxy 502 caused by absolute URL redirects
+    res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Iniciando sesion...</title></head><body><script>window.location.replace("/auth/callback");</script><noscript><a href="/auth/callback">Continuar</a></noscript></body></html>`);
   } catch (err: any) {
     req.log.error({ err }, "Discord OAuth error");
     res.redirect(`${frontend}/?error=oauth_failed`);
