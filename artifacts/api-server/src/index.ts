@@ -10,7 +10,7 @@ loadCustomBaseUrl().catch(() => {});
 const botClient = startBot();
 setBotClient(botClient);
 
-const rawPort = process.env["PORT"] ?? "8080";
+const rawPort = process.env["API_PORT"] ?? "8080";
 
 const port = Number(rawPort);
 
