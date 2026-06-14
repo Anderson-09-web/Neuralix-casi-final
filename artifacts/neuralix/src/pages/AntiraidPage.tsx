@@ -1,6 +1,6 @@
 import { useParams } from "wouter";
 import { useState, useEffect, useRef } from "react";
-import { ShieldAlert, RefreshCw, Shield, Users, Plus, Trash2, UserCheck, TrendingDown, Zap, AlertTriangle } from "lucide-react";
+import { ShieldAlert, RefreshCw, Shield, Users, Plus, Trash2, UserCheck, TrendingDown, Zap, AlertTriangle, Activity, Radio } from "lucide-react";
 import GuildRoleSelect from "@/components/GuildRoleSelect";
 import { useGetAntiraidConfig, useUpdateAntiraidConfig, useGetAntiraidStats, getGetAntiraidConfigQueryKey, getGetAntiraidStatsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -16,8 +16,23 @@ const TABS = [
   { id: "config", label: "Configuracion" },
   { id: "whitelist", label: "Whitelist" },
   { id: "stats", label: "Estadisticas" },
+  { id: "alerts", label: "Alertas en Vivo" },
 ] as const;
 type Tab = typeof TABS[number]["id"];
+
+type LiveAlert = { id: string; ts: number; module: string; description: string; action: string; username?: string; userId?: string; historical?: boolean };
+
+const MODULE_COLOR: Record<string, string> = {
+  AntiBot: "border-blue-500 bg-blue-500/10 text-blue-400",
+  AntiAlt: "border-yellow-500 bg-yellow-500/10 text-yellow-400",
+  AntiJoin: "border-red-500 bg-red-500/10 text-red-400",
+  AntiFlood: "border-orange-500 bg-orange-500/10 text-orange-400",
+  AntiSpam: "border-orange-500 bg-orange-500/10 text-orange-400",
+  AntiMassMention: "border-purple-500 bg-purple-500/10 text-purple-400",
+  AntiWebhook: "border-red-500 bg-red-500/10 text-red-400",
+  AntiNuke: "border-rose-500 bg-rose-500/10 text-rose-400",
+};
+const ACTION_LABEL: Record<string, string> = { ban: "BAN", kick: "KICK", timeout: "TIMEOUT", mute: "TIMEOUT", strip: "STRIP ROLES" };
 
 function NativeSelect({ value, onChange, children }: { value: string; onChange: (v: string) => void; children: React.ReactNode }) {
   return (
@@ -38,6 +53,29 @@ export default function AntiraidPage() {
   const { toast } = useToast();
   const [tab, setTab] = useState<Tab>("config");
   const [testing, setTesting] = useState(false);
+  const [liveAlerts, setLiveAlerts] = useState<LiveAlert[]>([]);
+  const [sseConnected, setSseConnected] = useState(false);
+  const alertsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!guildId || tab !== "alerts") return;
+    const evtSource = new EventSource(`/api/guilds/${guildId}/antiraid/alerts/stream`, { withCredentials: true });
+    evtSource.onopen = () => setSseConnected(true);
+    evtSource.onerror = () => setSseConnected(false);
+    evtSource.onmessage = (e) => {
+      try {
+        const alert: LiveAlert = JSON.parse(e.data);
+        setLiveAlerts((prev) => {
+          const next = [alert, ...prev.filter((a) => a.id !== alert.id)].slice(0, 100);
+          return next;
+        });
+        if (!alert.historical) {
+          toast({ title: `${alert.module} — Ataque detectado`, description: alert.description, variant: "destructive" });
+        }
+      } catch {}
+    };
+    return () => { evtSource.close(); setSseConnected(false); };
+  }, [guildId, tab]);
 
   const { data: config, isLoading } = useGetAntiraidConfig(guildId, { query: { queryKey: getGetAntiraidConfigQueryKey(guildId), enabled: !!guildId, refetchInterval: 10000, refetchIntervalInBackground: false } });
   const { data: stats } = useGetAntiraidStats(guildId, { query: { queryKey: getGetAntiraidStatsQueryKey(guildId), enabled: !!guildId && tab === "stats", refetchInterval: 5000, refetchIntervalInBackground: false } });
@@ -497,6 +535,53 @@ export default function AntiraidPage() {
                   <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => removeFromWhitelist(entry.id)}>
                     <Trash2 className="w-3.5 h-3.5" />
                   </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Alerts Tab ── */}
+      {tab === "alerts" && (
+        <div className="max-w-3xl">
+          <div className="flex items-center gap-3 mb-5">
+            <div className={cn("flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border", sseConnected ? "border-green-500/40 bg-green-500/10 text-green-400" : "border-muted bg-muted/30 text-muted-foreground")}>
+              <span className={cn("w-2 h-2 rounded-full", sseConnected ? "bg-green-400 animate-pulse" : "bg-muted-foreground")} />
+              {sseConnected ? "Conectado — Escuchando en tiempo real" : "Conectando..."}
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Radio className="w-3.5 h-3.5" />
+              {liveAlerts.length} eventos
+            </div>
+            {liveAlerts.length > 0 && (
+              <button onClick={() => setLiveAlerts([])} className="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors">
+                Limpiar
+              </button>
+            )}
+          </div>
+
+          {liveAlerts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
+              <Activity className="w-10 h-10 opacity-20" />
+              <p className="text-sm">Sin alertas recientes</p>
+              <p className="text-xs opacity-60">Las alertas aparecen aqui en tiempo real cuando AntiRaid detecta ataques</p>
+            </div>
+          ) : (
+            <div ref={alertsRef} className="flex flex-col gap-2">
+              {liveAlerts.map((alert) => (
+                <div key={alert.id} className={cn("border-l-2 rounded-lg p-4 flex items-start gap-4 transition-all", MODULE_COLOR[alert.module] ?? "border-muted bg-muted/20 text-muted-foreground", alert.historical ? "opacity-60" : "animate-in fade-in slide-in-from-top-1 duration-300")}>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-bold uppercase tracking-wider">{alert.module}</span>
+                      {alert.historical && <span className="text-[10px] opacity-50 font-normal">(historico)</span>}
+                    </div>
+                    <p className="text-sm text-foreground/90 truncate">{alert.description}</p>
+                    <p className="text-[11px] text-muted-foreground mt-1">{new Date(alert.ts).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</p>
+                  </div>
+                  <span className={cn("shrink-0 text-[10px] font-black px-2 py-0.5 rounded border", alert.action === "ban" ? "border-red-500/40 bg-red-500/20 text-red-400" : alert.action === "kick" ? "border-orange-500/40 bg-orange-500/20 text-orange-400" : "border-yellow-500/40 bg-yellow-500/20 text-yellow-400")}>
+                    {ACTION_LABEL[alert.action] ?? alert.action.toUpperCase()}
+                  </span>
                 </div>
               ))}
             </div>

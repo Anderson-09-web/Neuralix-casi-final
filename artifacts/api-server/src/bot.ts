@@ -12,6 +12,7 @@ import {
   type VoiceState,
 } from "discord.js";
 import axios from "axios";
+import { pushAlert } from "./lib/security-alerts";
 import {
   db,
   welcomeConfigsTable,
@@ -558,6 +559,7 @@ export function startBot(): Client | undefined {
                 if (secChannel && logCfg?.logSecurity) {
                   await sendLog(secChannel, { title: "AntiBot — Bot Bloqueado", description: `**Bot expulsado:** \`${username}\` (\`${userId}\`)`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid" } }, botToken);
                 }
+                pushAlert(guildId, { module: "AntiBot", description: `Bot bloqueado: ${username} (${userId})`, action: "kick", username, userId });
               } catch {}
               return;
             }
@@ -572,6 +574,7 @@ export function startBot(): Client | undefined {
                 if (secChannel && logCfg?.logSecurity) {
                   await sendLog(secChannel, { title: "AntiAlt — Cuenta Nueva", description: `**Expulsado:** \`${username}\` (\`${userId}\`)\n**Edad:** ${Math.floor(ageDays)} dias (min: ${antiraid.antiAltMinAge})`, color: 0xFEE75C, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid" } }, botToken);
                 }
+                pushAlert(guildId, { module: "AntiAlt", description: `Cuenta nueva bloqueada: ${username} (${Math.floor(ageDays)} dias)`, action: "kick", username, userId });
               } catch {}
               return;
             }
@@ -595,6 +598,7 @@ export function startBot(): Client | undefined {
               if (secChannel && logCfg?.logSecurity) {
                 await sendLog(secChannel, { title: "AntiJoin — Lockdown Activo", description: `**Usuario bloqueado:** \`${username}\` (<@${userId}>)\n**Accion:** ${action}${action === "ban" ? "\n**Blacklist:** Agregado automaticamente" : ""}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid" } }, botToken);
               }
+              pushAlert(guildId, { module: "AntiJoin", description: `Lockdown activo — usuario bloqueado: ${username}`, action, username, userId });
               return;
             }
 
@@ -996,6 +1000,7 @@ export function startBot(): Client | undefined {
               description: `**Usuario:** \`${username}\` (<@${userId}>)\n**Mensajes:** ${userMsgs.length} en ${antiraid.floodInterval}s\n**Accion:** ${action}${!target ? " (sin efecto: miembro no encontrado)" : ""}${action === "ban" ? "\n**Blacklist:** Agregado automaticamente" : ""}\n**Canal:** <#${message.channelId}>`,
               color: 0xFF6B35, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid" },
             }, botToken);
+            pushAlert(guildId, { module: "AntiFlood", description: `Flood masivo: ${username} (${userMsgs.length} msgs/${antiraid.floodInterval}s)`, action, username, userId });
           }
           return;
         }
@@ -1035,6 +1040,7 @@ export function startBot(): Client | undefined {
               description: `**Usuario:** \`${username}\` (<@${userId}>)\n**Accion:** ${action}${!target ? " (sin efecto: miembro no encontrado)" : ""}${action === "ban" ? "\n**Blacklist:** Agregado automaticamente" : ""}\n**Mensajes:** ${msgs.length} en ${antiraid.antiSpamInterval}s`,
               color: 0xFF6B35, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid" },
             }, botToken);
+            pushAlert(guildId, { module: "AntiSpam", description: `Spam detectado: ${username} (${msgs.length} msgs)`, action, username, userId });
           }
           return;
         }
@@ -1098,6 +1104,7 @@ export function startBot(): Client | undefined {
           await message.member?.timeout(5 * 60_000, "AntiRaid: Mass mention").catch(() => {});
           if (secChannel && logCfg?.logSecurity) {
             await sendLog(secChannel, { title: "AntiMassMention", description: `**Usuario:** \`${username}\` (<@${userId}>)\n**Menciones:** ${mc}\n**Canal:** <#${message.channelId}>`, color: 0xFF6B35, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid" } }, botToken);
+            pushAlert(guildId, { module: "AntiMassMention", description: `Mass-mention: ${username} (${mc} menciones)`, action: "timeout", username, userId });
           }
           return;
         }
@@ -1623,6 +1630,7 @@ export function startBot(): Client | undefined {
                       else await member.roles.set([], "AntiRaid: Webhook spam").catch(() => {});
                     }
                     if (secCh) await sendLog(secCh, { title: "AntiWebhook — Webhook Spam", description: `**Responsable:** ${executorStr}\n**Webhooks:** ${timestamps.length} en ${raidCfg.webhookSpamInterval}s\n**Accion:** ${raidCfg.nukeAction}`, color: 0xED4245, timestamp: ts, footer: { text: "Neuralix AntiRaid" } }, botToken);
+                    pushAlert(guildId, { module: "AntiWebhook", description: `Webhook spam: ${executorStr} (${timestamps.length} webhooks)`, action: raidCfg.nukeAction || "ban", username: executor.username, userId: executor.id });
                   } catch {}
                 }
               }
@@ -1744,6 +1752,7 @@ export function startBot(): Client | undefined {
                 else await member.roles.set([], "AntiNuke: Permisos revocados").catch(() => {});
               }
               if (secChannel) { await sendLog(secChannel, { title: "AntiNuke — Canales Masivos", description: `**Responsable:** <@${executorId}>\n**Accion:** ${antiraid.nukeAction}${antiraid.nukeAction === "ban" ? "\n**Blacklist:** Agregado automaticamente" : ""}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiNuke" } }, botToken); }
+              pushAlert(guildId, { module: "AntiNuke", description: `Destruccion masiva de canales detectada`, action: antiraid.nukeAction || "ban", userId: executorId });
             } catch {}
           }
         }
@@ -1789,6 +1798,7 @@ export function startBot(): Client | undefined {
                 else await member.roles.set([], "AntiNuke: Permisos revocados").catch(() => {});
               }
               if (secChannel) { await sendLog(secChannel, { title: "AntiNuke — Destruccion Masiva", description: `**Responsable:** <@${executorId}>\n**Accion:** ${antiraid.nukeAction}${antiraid.nukeAction === "ban" ? "\n**Blacklist:** Agregado automaticamente" : ""}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiNuke" } }, botToken); }
+              pushAlert(guildId, { module: "AntiNuke", description: `Nuke masivo detectado (bans/canales/roles)`, action: antiraid.nukeAction || "ban", userId: executorId });
             } catch {}
           }
         }
@@ -1832,6 +1842,7 @@ export function startBot(): Client | undefined {
               else await member.roles.set([], "AntiNuke").catch(() => {});
             }
             if (secChannel) { await sendLog(secChannel, { title: "AntiNuke — Roles Masivos", description: `**Responsable:** <@${executorId}>\n**Accion:** ${antiraid.nukeAction}${antiraid.nukeAction === "ban" ? "\n**Blacklist:** Agregado automaticamente" : ""}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiNuke" } }, botToken); }
+            pushAlert(guildId, { module: "AntiNuke", description: `Destruccion masiva de roles detectada`, action: antiraid.nukeAction || "ban", userId: executorId });
           }
         }
       }
@@ -1916,6 +1927,7 @@ export function startBot(): Client | undefined {
               else await member.roles.set([], "AntiNuke").catch(() => {});
             }
             if (secChannel) { await sendLog(secChannel, { title: "AntiNuke — Bans Masivos", description: `**Responsable:** <@${executorId}>\n**Accion:** ${antiraid.nukeAction}${antiraid.nukeAction === "ban" ? "\n**Blacklist:** Agregado automaticamente" : ""}`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiNuke" } }, botToken); }
+            pushAlert(guildId, { module: "AntiNuke", description: `Bans masivos detectados`, action: antiraid.nukeAction || "ban", userId: executorId });
           }
         }
       }
@@ -2503,6 +2515,7 @@ export function startBot(): Client | undefined {
                 const logCfg = (await db.select().from(logsConfigsTable).where(eq(logsConfigsTable.guildId, guildId)))[0];
                 const secCh = getLogChannel(logCfg as any, "security");
                 if (secCh) await sendLog(secCh, { title: "AntiRaid — Command Spam detectado", description: `**Usuario:** <@${userId}> (${username})\n**Comandos en 10s:** ${timestamps.length}\n**Accion:** ${action}\n**Nota:** Posible bot/conexion OAuth abusando slash commands`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid" } }, process.env.DISCORD_BOT_TOKEN!).catch(() => {});
+                pushAlert(guildId, { module: "AntiSpam", description: `Command spam (OAuth bot): ${username} (${timestamps.length} cmds/10s)`, action, username, userId });
               }
             }
           }

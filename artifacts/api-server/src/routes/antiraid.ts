@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, antiraidConfigsTable, antiraidStatsTable, antiraidWhitelistTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
+import { getRecentAlerts, registerSseClient, pushAlert } from "../lib/security-alerts";
 
 const router = Router();
 
@@ -210,6 +211,33 @@ router.post("/guilds/:guildId/antiraid/ultra", requireAuth, async (req, res) => 
   }
 });
 
+// ─── Real-time Alerts (SSE) ───────────────────────────────────────────────────
+
+router.get("/guilds/:guildId/antiraid/alerts", requireAuth, (req, res) => {
+  const guildId = req.params.guildId as string;
+  res.json(getRecentAlerts(guildId));
+});
+
+router.get("/guilds/:guildId/antiraid/alerts/stream", requireAuth, (req, res) => {
+  const guildId = req.params.guildId as string;
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  const recent = getRecentAlerts(guildId);
+  for (const alert of [...recent].reverse()) {
+    res.write(`data: ${JSON.stringify({ ...alert, historical: true })}\n\n`);
+  }
+
+  const hb = setInterval(() => { try { res.write(": ping\n\n"); } catch {} }, 25000);
+  const send = (chunk: string) => { try { res.write(chunk); } catch {} };
+  const unregister = registerSseClient(guildId, send);
+
+  req.on("close", () => { clearInterval(hb); unregister(); });
+});
+
 // ─── Test Alert ────────────────────────────────────────────────────────────────
 
 router.post("/guilds/:guildId/antiraid/test", requireAuth, async (req, res) => {
@@ -227,6 +255,7 @@ router.post("/guilds/:guildId/antiraid/test", requireAuth, async (req, res) => {
     };
     const discordRes = await axios.post(`https://discord.com/api/v10/channels/${channelId}/messages`, payload, { headers: { Authorization: `Bot ${botToken.trim()}`, "Content-Type": "application/json" }, validateStatus: () => true });
     if (discordRes.status === 200 || discordRes.status === 201) {
+      pushAlert(guildId, { module: "AntiJoin", description: "Simulacion de raid — AntiJoin activado (prueba)", action: "ban" });
       res.json({ ok: true, message: "Alerta de prueba enviada" });
     } else {
       res.status(400).json({ ok: false, error: discordRes.data?.message || `Discord status ${discordRes.status}` });
