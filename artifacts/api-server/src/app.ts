@@ -3,6 +3,8 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import cookieParser from "cookie-parser";
 import { rateLimit } from "express-rate-limit";
+import path from "path";
+import fs from "fs";
 import router from "./routes";
 import { logger } from "./lib/logger";
 
@@ -57,6 +59,27 @@ app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 
 app.use("/api", router);
+
+// ── Serve React frontend static build ─────────────────────────────────────────
+// Looks for the Vite build output relative to the API server's working directory
+const frontendDist = path.resolve(process.cwd(), "../neuralix/dist/public");
+
+if (fs.existsSync(frontendDist)) {
+  logger.info({ frontendDist }, "Serving frontend static files");
+  app.use(express.static(frontendDist, { maxAge: 0, etag: false }));
+  // SPA fallback — all non-API routes serve index.html (React Router handles them)
+  app.use((_req: Request, res: Response, next: NextFunction) => {
+    const indexPath = path.join(frontendDist, "index.html");
+    if (fs.existsSync(indexPath)) {
+      res.setHeader("Cache-Control", "no-store");
+      res.sendFile(indexPath);
+    } else {
+      next();
+    }
+  });
+} else {
+  logger.warn({ frontendDist }, "Frontend dist not found — run: pnpm --filter @workspace/neuralix run build");
+}
 
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   const status = err?.status || err?.statusCode || 500;
