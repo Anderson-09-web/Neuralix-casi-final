@@ -43,19 +43,38 @@ export default function AiAssistant({ guildId }: Props) {
   const analyze = useAnalyzeGuild();
   const aiChat = useAiChat();
 
-  const handleSend = () => {
-    if (!input.trim() || isFree) return;
-    const userMsg = input;
+  const [sending, setSending] = useState(false);
+
+  const handleSend = async () => {
+    if (!input.trim() || isFree || sending) return;
+    const userMsg = input.trim();
     setMessages((m) => [...m, { role: "user", content: userMsg }]);
     setInput("");
-    aiChat.mutate({ guildId, data: { message: userMsg, context: plan ? `plan:${plan}` : "plan:free" } }, {
-      onSuccess: (res: any) => {
-        setMessages((m) => [...m, { role: "ai", content: res.response, action: res.action }]);
-      },
-      onError: () => {
-        setMessages((m) => [...m, { role: "ai", content: "No pude procesar tu mensaje. Intentalo de nuevo." }]);
-      }
-    });
+    setSending(true);
+    // Add a typing indicator
+    setMessages((m) => [...m, { role: "ai", content: "__typing__" }]);
+    try {
+      await new Promise<void>((resolve, reject) => {
+        aiChat.mutate({ guildId, data: { message: userMsg, context: plan ? `plan:${plan}` : "plan:free" } }, {
+          onSuccess: (res: any) => {
+            setMessages((m) => {
+              const without = m.filter((msg) => msg.content !== "__typing__");
+              return [...without, { role: "ai", content: res.response, action: res.action }];
+            });
+            resolve();
+          },
+          onError: () => {
+            setMessages((m) => {
+              const without = m.filter((msg) => msg.content !== "__typing__");
+              return [...without, { role: "ai", content: "No pude procesar tu mensaje. Intentalo de nuevo." }];
+            });
+            resolve();
+          }
+        });
+      });
+    } finally {
+      setSending(false);
+    }
   };
 
   const handleAnalyze = () => {
@@ -178,20 +197,28 @@ export default function AiAssistant({ guildId }: Props) {
                         ? "bg-primary text-primary-foreground"
                         : "bg-secondary text-foreground"
                     }`}>
-                      {m.content}
-                      {m.action && (
-                        <div className="mt-1.5 text-xs font-semibold text-green-400 flex items-center gap-1 border-t border-green-500/20 pt-1">
-                          <CheckCircle className="w-3 h-3 flex-shrink-0" /> {m.action}
-                        </div>
+                      {m.content === "__typing__" ? (
+                        <span className="flex items-center gap-1 text-muted-foreground">
+                          <span className="inline-flex gap-0.5">
+                            <span className="w-1 h-1 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "0ms" }} />
+                            <span className="w-1 h-1 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "150ms" }} />
+                            <span className="w-1 h-1 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: "300ms" }} />
+                          </span>
+                          Pensando...
+                        </span>
+                      ) : (
+                        <>
+                          {m.content}
+                          {m.action && (
+                            <div className="mt-1.5 text-xs font-semibold text-green-400 flex items-center gap-1 border-t border-green-500/20 pt-1">
+                              <CheckCircle className="w-3 h-3 flex-shrink-0" /> {m.action}
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
                 ))}
-                {aiChat.isPending && (
-                  <div className="flex justify-start">
-                    <div className="bg-secondary px-3 py-2 rounded-lg text-xs text-muted-foreground">Pensando...</div>
-                  </div>
-                )}
               </div>
 
               {/* Ultra quick config buttons */}
@@ -220,13 +247,13 @@ export default function AiAssistant({ guildId }: Props) {
                   placeholder={!chatReady ? "Cargando..." : isUltra ? "Dime que configurar..." : "Pregunta algo..."}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && !(!input.trim() || aiChat.isPending || !chatReady) && handleSend()}
+                  onKeyDown={(e) => e.key === "Enter" && !(!input.trim() || sending || !chatReady) && handleSend()}
                   className="text-xs h-8"
-                  disabled={!chatReady}
+                  disabled={!chatReady || sending}
                   aria-label="Mensaje para el asistente IA"
                 />
                 <Button size="sm" className="h-8 w-8 p-0 flex-shrink-0" onClick={handleSend}
-                  disabled={!input.trim() || aiChat.isPending || !chatReady} aria-label="Enviar">
+                  disabled={!input.trim() || sending || !chatReady} aria-label="Enviar">
                   <Send className="w-3 h-3" />
                 </Button>
               </div>

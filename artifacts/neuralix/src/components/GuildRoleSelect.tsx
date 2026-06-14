@@ -47,6 +47,7 @@ type State = "loading" | "ok" | "empty" | "error";
 export default function GuildRoleSelect({ guildId, value, onChange, placeholder = "Seleccionar rol..." }: Props) {
   const [roles, setRoles] = useState<DiscordRole[]>([]);
   const [state, setState] = useState<State>("loading");
+  const [showManual, setShowManual] = useState(false);
 
   const load = useCallback(async (bust = false) => {
     if (!guildId) return;
@@ -84,14 +85,25 @@ export default function GuildRoleSelect({ guildId, value, onChange, placeholder 
 
   if (state === "error") {
     return (
-      <button
-        type="button"
-        onClick={() => load(true)}
-        className="h-9 w-full rounded-md border border-destructive/50 bg-background px-3 py-1 text-sm text-destructive flex items-center gap-2 hover:bg-destructive/5 transition-colors"
-      >
-        <RefreshCw className="w-3 h-3 flex-shrink-0" />
-        Error al cargar — Reintentar
-      </button>
+      <div className="space-y-1.5">
+        <button
+          type="button"
+          onClick={() => load(true)}
+          className="h-9 w-full rounded-md border border-destructive/50 bg-background px-3 py-1 text-sm text-destructive flex items-center gap-2 hover:bg-destructive/5 transition-colors"
+        >
+          <RefreshCw className="w-3 h-3 flex-shrink-0" />
+          Error al cargar — Reintentar
+        </button>
+        <div className="flex gap-1.5">
+          <input
+            type="text"
+            value={value || ""}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="O ingresa el ID del rol manualmente"
+            className="h-9 flex-1 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        </div>
+      </div>
     );
   }
 
@@ -117,23 +129,57 @@ export default function GuildRoleSelect({ guildId, value, onChange, placeholder 
     );
   }
 
+  // ok state: show dropdown + optional manual override
+  if (showManual) {
+    return (
+      <div className="space-y-1.5">
+        <div className="flex gap-1.5">
+          <input
+            type="text"
+            value={value || ""}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="ID del rol"
+            className="h-9 flex-1 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          <button
+            type="button"
+            onClick={() => setShowManual(false)}
+            className="h-9 px-2.5 rounded-md border border-input bg-background text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex-shrink-0"
+          >
+            Lista
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <select
-      value={value || ""}
-      onChange={(e) => onChange(e.target.value)}
-      className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring appearance-none pr-8 cursor-pointer"
-      style={{
-        backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")",
-        backgroundRepeat: "no-repeat",
-        backgroundPosition: "right 10px center",
-      }}
-    >
-      <option value="">{placeholder}</option>
-      {roles.map((r) => (
-        <option key={r.id} value={r.id}>
-          {r.name}
-        </option>
-      ))}
-    </select>
+    <div className="flex gap-1.5">
+      <select
+        value={value || ""}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-9 flex-1 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring appearance-none pr-8 cursor-pointer"
+        style={{
+          backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")",
+          backgroundRepeat: "no-repeat",
+          backgroundPosition: "right 10px center",
+        }}
+      >
+        <option value="">{placeholder}</option>
+        {roles.map((r) => (
+          <option key={r.id} value={r.id}>
+            {r.name}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        onClick={() => setShowManual(true)}
+        title="Ingresar ID manualmente"
+        className="h-9 px-2.5 rounded-md border border-input bg-background text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex-shrink-0"
+      >
+        ID
+      </button>
+    </div>
   );
 }

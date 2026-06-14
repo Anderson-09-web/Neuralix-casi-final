@@ -24,6 +24,25 @@ const ALLOWED_FIELDS = new Set([
   "antiFlood", "floodLimit", "floodInterval", "floodAction", "deleteOnTrigger",
 ]);
 
+// ULTRA config applied automatically when a guild accesses AntiRaid for the first time
+const ULTRA_DEFAULT_CONFIG = {
+  enabled: true,
+  antiJoin: true, antiJoinThreshold: 3, antiJoinInterval: 5, antiJoinAction: "ban",
+  antiAlt: true, antiAltMinAge: 30,
+  antiBot: true, antiBotWhitelist: [] as string[],
+  antiSpam: true, antiSpamLimit: 4, antiSpamInterval: 4, antiSpamAction: "ban",
+  antiLinks: true, antiLinksAction: "ban", antiDiscordInvites: true, allowedDomains: [] as string[], blockedDomains: [] as string[],
+  antiMassMention: true, massMentionLimit: 3,
+  antiVpn: false, antiVpnAction: "ban", antiProxy: false, antiTor: false, vpnCheckLevel: "standard",
+  antiWebhook: true, webhookSpamThreshold: 1, webhookSpamInterval: 60,
+  antiChannelCreate: true, antiChannelDelete: true, antiChannelUpdate: false,
+  antiRoleCreate: true, antiRoleDelete: true, antiRoleUpdate: false,
+  antiEmojiCreate: false, antiEmojiDelete: true,
+  antiBanMass: true, antiKickMass: true,
+  antiNuke: true, nukeThreshold: 3, nukeAction: "ban",
+  antiFlood: true, floodLimit: 4, floodInterval: 3, floodAction: "ban", deleteOnTrigger: true,
+};
+
 const DEFAULT_CONFIG = {
   enabled: false,
   antiJoin: false, antiJoinThreshold: 5, antiJoinInterval: 10, antiJoinAction: "ban",
@@ -64,7 +83,8 @@ router.get("/guilds/:guildId/antiraid", requireAuth, async (req, res) => {
   try {
     let [cfg] = await db.select().from(antiraidConfigsTable).where(eq(antiraidConfigsTable.guildId, guildId));
     if (!cfg) {
-      const [created] = await db.insert(antiraidConfigsTable).values({ guildId, ...DEFAULT_CONFIG }).returning();
+      // First time this guild accesses AntiRaid — apply ULTRA by default for maximum protection
+      const [created] = await db.insert(antiraidConfigsTable).values({ guildId, ...ULTRA_DEFAULT_CONFIG }).returning();
       cfg = created;
     }
     res.json(sanitize(cfg));

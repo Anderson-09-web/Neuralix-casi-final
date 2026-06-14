@@ -185,36 +185,55 @@ export default function AntiraidPage() {
       </div>
 
       {/* ── ANTIRAID ULTRA Banner ── */}
-      {tab === "config" && (
-        <div className="max-w-3xl mb-6 rounded-xl border border-red-500/30 bg-red-950/20 p-4 flex items-center justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <div className="w-9 h-9 rounded-lg bg-red-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <Zap className="w-5 h-5 text-red-400" />
+      {tab === "config" && cfg && (() => {
+        const isUltraActive = cfg.enabled && cfg.antiJoin && cfg.antiAlt && cfg.antiBot && cfg.antiSpam && cfg.antiNuke && cfg.antiFlood && cfg.antiWebhook;
+        return (
+          <div className={cn(
+            "max-w-3xl mb-6 rounded-xl border p-4 flex items-center justify-between gap-4",
+            isUltraActive
+              ? "border-green-500/40 bg-green-950/20"
+              : "border-red-500/30 bg-red-950/20"
+          )}>
+            <div className="flex items-start gap-3">
+              <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5", isUltraActive ? "bg-green-500/20" : "bg-red-500/20")}>
+                <Zap className={cn("w-5 h-5", isUltraActive ? "text-green-400" : "text-red-400")} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className={cn("font-bold text-sm", isUltraActive ? "text-green-300" : "text-red-300")}>ANTIRAID ULTRA</p>
+                  {isUltraActive && (
+                    <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400 font-semibold">ACTIVO</span>
+                  )}
+                </div>
+                <p className={cn("text-xs mt-0.5", isUltraActive ? "text-green-400/80" : "text-red-400/80")}>
+                  {isUltraActive
+                    ? "Servidor protegido con maxima seguridad. Todos los modulos activos. Solo el dueno del servidor puede desactivarlo."
+                    : "Activa todos los modulos al maximo. Proteccion total contra bots, raids, webhooks y ataques DDoS. Accion: ban inmediato."}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="font-bold text-sm text-red-300">ANTIRAID ULTRA</p>
-              <p className="text-xs text-red-400/80 mt-0.5">Activa todos los modulos al maximo. Proteccion total contra bots, raids, webhooks y ataques via conexiones OAuth. Accion: <span className="font-semibold">ban inmediato</span> en todo.</p>
-            </div>
-          </div>
-          <Button
-            size="sm"
-            onClick={handleUltra}
-            disabled={ultraLoading}
-            className={cn(
-              "flex-shrink-0 gap-1.5 font-bold transition-all",
-              ultraConfirm
-                ? "bg-red-600 hover:bg-red-700 text-white border-red-500 animate-pulse"
-                : "bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40"
+            {!isUltraActive && (
+              <Button
+                size="sm"
+                onClick={handleUltra}
+                disabled={ultraLoading}
+                className={cn(
+                  "flex-shrink-0 gap-1.5 font-bold transition-all",
+                  ultraConfirm
+                    ? "bg-red-600 hover:bg-red-700 text-white border-red-500 animate-pulse"
+                    : "bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40"
+                )}
+                variant="ghost"
+              >
+                {ultraLoading
+                  ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  : <AlertTriangle className="w-3.5 h-3.5" />}
+                {ultraConfirm ? "Confirmar — Activar ULTRA" : "Activar ULTRA"}
+              </Button>
             )}
-            variant="ghost"
-          >
-            {ultraLoading
-              ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              : <AlertTriangle className="w-3.5 h-3.5" />}
-            {ultraConfirm ? "Confirmar — Activar ULTRA" : "Activar ULTRA"}
-          </Button>
-        </div>
-      )}
+          </div>
+        );
+      })()}
 
       <div className="flex gap-1 bg-secondary rounded-lg p-1 w-fit mb-6">
         {TABS.map(({ id, label }) => (

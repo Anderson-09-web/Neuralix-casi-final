@@ -344,27 +344,55 @@ const GROQ_MODEL = "llama-3.3-70b-versatile";
 
 const SYSTEM_PROMPT = `Eres el asistente IA de Neuralix, una plataforma enterprise de gestion de bots de Discord. Respondes SIEMPRE en español, de forma concisa y profesional. Solo ayudas con temas relacionados a Neuralix y la configuracion de servidores Discord. Si el usuario pregunta algo fuera de scope (politica, hackeo, adulto, etc.) lo rechazas amablemente. Modulos disponibles: AntiRaid (AntiJoin, AntiAlt, AntiBot, AntiSpam, AntiFlood, AntiLinks, AntiWebhook, AntiNuke), Verificacion (AntiVPN, AntiProxy, AntiAlt), Tickets, Logs, Backups, Bienvenidas, Despedidas, Sorteos, Auto-Roles, Comandos Personalizados, Webhooks personalizados. Para soporte adicional: ${DISCORD_SUPPORT}`;
 
+const GROQ_MODELS_FALLBACK = [
+  "llama-3.3-70b-versatile",
+  "llama-3.1-8b-instant",
+];
+
 async function callGroq(userMessage: string, guildContext: string): Promise<string | null> {
   const groqKey = process.env.GROQ_API_KEY;
   if (!groqKey) return null;
-  try {
-    const { default: axios } = await import("axios");
-    const res = await axios.post(GROQ_API_URL, {
-      model: GROQ_MODEL,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT + (guildContext ? `\n\nContexto del servidor:\n${guildContext}` : "") },
-        { role: "user", content: userMessage },
-      ],
-      max_tokens: 512,
-      temperature: 0.4,
-    }, {
-      headers: { Authorization: `Bearer ${groqKey}`, "Content-Type": "application/json" },
-      timeout: 12000,
-    });
-    return res.data?.choices?.[0]?.message?.content?.trim() || null;
-  } catch {
-    return null;
+
+  const body = (model: string) => ({
+    model,
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT + (guildContext ? `\n\nContexto del servidor:\n${guildContext}` : "") },
+      { role: "user", content: userMessage },
+    ],
+    max_tokens: 512,
+    temperature: 0.4,
+  });
+
+  const headers = { Authorization: `Bearer ${groqKey}`, "Content-Type": "application/json" };
+
+  for (const model of GROQ_MODELS_FALLBACK) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const resp = await fetch(GROQ_API_URL, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body(model)),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (!resp.ok) {
+        const errData = await resp.json().catch(() => ({})) as any;
+        const isModelErr = resp.status === 400 || resp.status === 404 ||
+          /decommissioned|deprecated|not found|not exist|invalid model/i.test(errData?.error?.message || "");
+        if (isModelErr) continue; // try next model
+        return null;
+      }
+
+      const data = await resp.json() as any;
+      return data?.choices?.[0]?.message?.content?.trim() || null;
+    } catch {
+      // timeout or network error — try next model
+      continue;
+    }
   }
+  return null;
 }
 
 // ─── AI Chat ─────────────────────────────────────────────────────────────────

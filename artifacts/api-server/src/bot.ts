@@ -944,6 +944,50 @@ export function startBot(): Client | undefined {
 
   // ─── Message Create — AntiSpam, AntiFlood, AntiLinks, AntiMassMention, AutoMod ──
   client.on(Events.MessageCreate, async (message: Message) => {
+    // AntiWebhook: block external webhook messages (bots spamming via webhooks)
+    if (message.guild && message.webhookId) {
+      const guildId = message.guild.id;
+      try {
+        const [raidCfg] = await db.select().from(antiraidConfigsTable).where(eq(antiraidConfigsTable.guildId, guildId));
+        if (raidCfg?.enabled && raidCfg.antiWebhook) {
+          // Delete webhook message immediately
+          await message.delete().catch(() => {});
+          // Track webhook spam per channel
+          const key = `whkmsg:${guildId}:${message.channelId}`;
+          const now = Date.now();
+          const windowMs = 30_000;
+          const timestamps = (webhookSpamTracker.get(key) ?? []).filter((t) => now - t < windowMs);
+          timestamps.push(now);
+          webhookSpamTracker.set(key, timestamps);
+          if (timestamps.length >= 3) {
+            webhookSpamTracker.set(key, []);
+            // Try to find webhook by applicationId and delete it
+            try {
+              const hooks = await message.guild.fetchWebhooks().catch(() => null);
+              if (hooks) {
+                for (const [, hook] of hooks) {
+                  if (hook.channelId === message.channelId) {
+                    await hook.delete("AntiRaid: Webhook spam eliminado automaticamente").catch(() => {});
+                  }
+                }
+              }
+            } catch {}
+            const [logCfg] = await db.select().from(logsConfigsTable).where(eq(logsConfigsTable.guildId, guildId));
+            const secCh = getLogChannel(logCfg as any, "security");
+            if (secCh) {
+              await sendLog(secCh, {
+                title: "AntiWebhook — Spam de mensajes via webhook",
+                description: `**Canal:** <#${message.channelId}>\n**Webhooks eliminados:** Si\n**Mensajes borrados:** Si\n**Nota:** Spam de mensajes via webhook detectado y bloqueado`,
+                color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid" },
+              }, botToken);
+              pushAlert(guildId, { module: "AntiWebhook", description: `Webhook spam en <#${message.channelId}> — mensajes eliminados`, action: "delete" });
+            }
+          }
+        }
+      } catch {}
+      return; // Always block webhook messages when antiWebhook enabled
+    }
+
     if (!message.guild || message.author.bot) return;
     const guildId  = message.guild.id;
     const userId   = message.author.id;
@@ -1214,25 +1258,34 @@ export function startBot(): Client | undefined {
                   max_tokens: aiChannel.maxTokens || 500,
                   temperature: (aiChannel.temperature || 70) / 100,
                 });
-                let resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json", "Authorization": `Bearer ${aiGroqKey}` },
-                  body: groqBody(requestedModel),
-                });
-                // If model is deprecated/invalid, auto-retry with fallback
-                if (!resp.ok && requestedModel !== FALLBACK_MODEL) {
-                  const errBody = await resp.json().catch(() => ({})) as any;
-                  const isModelErr = resp.status === 400 || resp.status === 404 || (errBody?.error?.message && /decommissioned|deprecated|not found|not exist|invalid model/i.test(errBody.error.message));
-                  if (isModelErr) {
-                    logger.warn({ model: requestedModel }, "AI model unavailable, falling back to " + FALLBACK_MODEL);
-                    resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                const groqFetch = async (model: string) => {
+                  const ctrl = new AbortController();
+                  const tId = setTimeout(() => ctrl.abort(), 20000);
+                  try {
+                    const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
                       method: "POST",
                       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${aiGroqKey}` },
-                      body: groqBody(FALLBACK_MODEL),
+                      body: groqBody(model),
+                      signal: ctrl.signal,
                     });
+                    return r;
+                  } finally { clearTimeout(tId); }
+                };
+                let resp = await groqFetch(requestedModel).catch(() => null);
+                // If model is deprecated/invalid or timed out, auto-retry with fallback
+                if (!resp || (!resp.ok && requestedModel !== FALLBACK_MODEL)) {
+                  if (resp) {
+                    const errBody = await resp.json().catch(() => ({})) as any;
+                    const isModelErr = resp.status === 400 || resp.status === 404 || (errBody?.error?.message && /decommissioned|deprecated|not found|not exist|invalid model/i.test(errBody.error.message));
+                    if (!isModelErr) {
+                      await message.reply({ content: "El servicio de IA no esta disponible ahora mismo. Intenta de nuevo mas tarde." }).catch(() => {});
+                      return;
+                    }
                   }
+                  logger.warn({ model: requestedModel }, "AI model unavailable or timed out, falling back to " + FALLBACK_MODEL);
+                  resp = await groqFetch(FALLBACK_MODEL).catch(() => null);
                 }
-                if (!resp.ok) {
+                if (!resp || !resp.ok) {
                   await message.reply({ content: "El servicio de IA no esta disponible ahora mismo. Intenta de nuevo mas tarde." }).catch(() => {});
                 } else {
                 const data = await resp.json() as any;
