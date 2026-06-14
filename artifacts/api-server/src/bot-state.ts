@@ -41,10 +41,18 @@ export async function getBotStatus() {
     0,
   );
 
+  const botId = botClient.user?.id ?? null;
+  const botAvatarHash = botClient.user?.avatar ?? null;
+  const avatarUrl = botId && botAvatarHash
+    ? `https://cdn.discordapp.com/avatars/${botId}/${botAvatarHash}.png?size=128`
+    : null;
+
   return {
     online: true,
     ping: botClient.ws.ping,
     tag: botClient.user?.tag ?? null,
+    botId,
+    avatarUrl,
     guilds: botClient.guilds.cache.size,
     users: totalUsers,
     memoryMb: memMb,

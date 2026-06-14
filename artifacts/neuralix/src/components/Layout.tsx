@@ -6,7 +6,7 @@ import {
   HeadphonesIcon, LogOut, Menu, X, Bot, Bell, ChevronDown, Tag, Webhook, Gift, Sparkles, Terminal
 } from "lucide-react";
 import { useGetMe, useLogout, useGetGuild, getGetMeQueryKey, getGetGuildQueryKey } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useTheme } from "./ThemeProvider";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -38,6 +38,20 @@ interface LayoutProps {
   guildIcon?: string | null;
 }
 
+function useBotAvatar() {
+  return useQuery<{ avatarUrl: string | null; tag: string | null }>({
+    queryKey: ["bot-avatar"],
+    queryFn: async () => {
+      const r = await fetch("/api/status");
+      if (!r.ok) return { avatarUrl: null, tag: null };
+      const d = await r.json();
+      return { avatarUrl: d.avatarUrl ?? null, tag: d.tag ?? null };
+    },
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
 export default function Layout({ children, guildId, guildName, guildIcon }: LayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -46,6 +60,7 @@ export default function Layout({ children, guildId, guildName, guildIcon }: Layo
   const { data: user } = useGetMe({ query: { queryKey: getGetMeQueryKey() } });
   const logout = useLogout();
   const qc = useQueryClient();
+  const { data: botInfo } = useBotAvatar();
 
   const handleLogout = () => {
     logout.mutate(undefined, { onSuccess: () => { qc.clear(); window.location.href = "/"; } });
@@ -67,8 +82,12 @@ export default function Layout({ children, guildId, guildName, guildIcon }: Layo
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
       <div className={cn("flex items-center gap-3 px-4 py-5 border-b border-sidebar-border", collapsed && "justify-center px-2")}>
-        <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center flex-shrink-0 glow-primary">
-          <Bot className="w-5 h-5 text-primary-foreground" />
+        <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center flex-shrink-0 glow-primary overflow-hidden">
+          {botInfo?.avatarUrl ? (
+            <img src={botInfo.avatarUrl} alt="Bot" className="w-full h-full object-cover rounded-lg" />
+          ) : (
+            <Bot className="w-5 h-5 text-primary-foreground" />
+          )}
         </div>
         {!collapsed && (
           <div>
