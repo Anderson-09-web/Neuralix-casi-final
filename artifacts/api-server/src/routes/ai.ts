@@ -338,6 +338,35 @@ router.post("/guilds/:guildId/ai/analyze", requireAuth, async (req, res) => {
   }
 });
 
+// ─── Groq LLM helper ────────────────────────────────────────────────────────
+const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+const GROQ_MODEL = "llama-3.3-70b-versatile";
+
+const SYSTEM_PROMPT = `Eres el asistente IA de Neuralix, una plataforma enterprise de gestion de bots de Discord. Respondes SIEMPRE en español, de forma concisa y profesional. Solo ayudas con temas relacionados a Neuralix y la configuracion de servidores Discord. Si el usuario pregunta algo fuera de scope (politica, hackeo, adulto, etc.) lo rechazas amablemente. Modulos disponibles: AntiRaid (AntiJoin, AntiAlt, AntiBot, AntiSpam, AntiFlood, AntiLinks, AntiWebhook, AntiNuke), Verificacion (AntiVPN, AntiProxy, AntiAlt), Tickets, Logs, Backups, Bienvenidas, Despedidas, Sorteos, Auto-Roles, Comandos Personalizados, Webhooks personalizados. Para soporte adicional: ${DISCORD_SUPPORT}`;
+
+async function callGroq(userMessage: string, guildContext: string): Promise<string | null> {
+  const groqKey = process.env.GROQ_API_KEY;
+  if (!groqKey) return null;
+  try {
+    const { default: axios } = await import("axios");
+    const res = await axios.post(GROQ_API_URL, {
+      model: GROQ_MODEL,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT + (guildContext ? `\n\nContexto del servidor:\n${guildContext}` : "") },
+        { role: "user", content: userMessage },
+      ],
+      max_tokens: 512,
+      temperature: 0.4,
+    }, {
+      headers: { Authorization: `Bearer ${groqKey}`, "Content-Type": "application/json" },
+      timeout: 12000,
+    });
+    return res.data?.choices?.[0]?.message?.content?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── AI Chat ─────────────────────────────────────────────────────────────────
 router.post("/guilds/:guildId/ai/chat", requireAuth, async (req, res) => {
   const guildId = req.params.guildId as string;
@@ -371,6 +400,7 @@ router.post("/guilds/:guildId/ai/chat", requireAuth, async (req, res) => {
     const plusResponses = RESPONSES.plus;
     const proResponses = RESPONSES.pro;
 
+    // Ultra plan: try to apply config actions first
     if (effectivePlan === "ultra") {
       const isConfigureCmd = lower.includes("activa") || lower.includes("configura") || lower.includes("pon") || lower.includes("haz") || lower.includes("setup") || lower.includes("instala") || lower.includes("enable") || lower.includes("quiero");
       const configIntent = ["antiraid", "verification", "logs", "tickets"].includes(intent) ? intent : null;
@@ -381,25 +411,42 @@ router.post("/guilds/:guildId/ai/chat", requireAuth, async (req, res) => {
           if (result) {
             action = result.action;
             response = result.steps;
-          } else {
-            response = planResponses.default;
+            res.json({ response, action, plan: effectivePlan });
+            return;
           }
-        } catch {
-          response = `Hubo un error al aplicar la configuracion. Intenta configurar manualmente desde el panel correspondiente. Si el problema persiste, un administrador puede ayudarte en ${DISCORD_SUPPORT}`;
-        }
-      } else if (intent === "admin") {
-        response = ADMIN_FALLBACK;
-      } else if (intent !== "default") {
-        response = proResponses[intent] || plusResponses[intent] || planResponses[intent] || planResponses.default;
-      } else {
-        response = planResponses.default;
+        } catch { /* fallthrough to Groq */ }
       }
+    }
+
+    // Try Groq for all plans — build guild context for better responses
+    let guildContext = "";
+    try {
+      const [[antiraid], [verification], [tickets], [logs]] = await Promise.all([
+        db.select().from(antiraidConfigsTable).where(eq(antiraidConfigsTable.guildId, guildId)),
+        db.select().from(verificationConfigsTable).where(eq(verificationConfigsTable.guildId, guildId)),
+        db.select().from(ticketConfigsTable).where(eq(ticketConfigsTable.guildId, guildId)),
+        db.select().from(logsConfigsTable).where(eq(logsConfigsTable.guildId, guildId)),
+      ]);
+      guildContext = [
+        `Plan: ${effectivePlan}`,
+        `AntiRaid: ${antiraid?.enabled ? "activo" : "inactivo"}`,
+        `Verificacion: ${verification?.enabled ? "activa" : "inactiva"}`,
+        `Tickets: ${tickets?.enabled ? "activos" : "inactivos"}`,
+        `Logs: ${logs?.enabled ? "activos" : "inactivos"}`,
+      ].join(", ");
+    } catch { /* non-fatal */ }
+
+    const groqResponse = await callGroq(message, guildContext);
+    if (groqResponse) {
+      res.json({ response: groqResponse, action, plan: effectivePlan });
+      return;
+    }
+
+    // Fallback to static responses
+    if (intent === "admin") {
+      response = ADMIN_FALLBACK;
     } else {
-      if (intent === "admin") {
-        response = ADMIN_FALLBACK;
-      } else {
-        response = planResponses[intent] || plusResponses[intent] || RESPONSES.free[intent] || planResponses.default || ADMIN_FALLBACK;
-      }
+      response = planResponses[intent] || plusResponses[intent] || RESPONSES.free[intent] || planResponses.default || ADMIN_FALLBACK;
     }
 
     res.json({ response, action, plan: effectivePlan });

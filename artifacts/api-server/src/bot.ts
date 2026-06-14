@@ -53,6 +53,7 @@ const floodTracker  = new Map<string, Map<string, number[]>>();
 const nukeTracker   = new Map<string, { count: number; resetAt: number }>();
 const tempRoleTimers    = new Map<string, NodeJS.Timeout>();
 const webhookSpamTracker = new Map<string, number[]>();    // `${guildId}:${userId}` → timestamps
+const commandSpamTracker = new Map<string, number[]>();    // `${guildId}:${userId}` → timestamps (slash command spam via bot connections)
 const suspiciousTracker  = new Map<string, { actions: string[]; resetAt: number }>(); // same key
 const aiCooldowns        = new Map<string, number>();      // `ai:${guildId}:${channelId}:${userId}` → timestamp
 const aiConversations    = new Map<string, { role: "user" | "assistant"; content: string }[]>(); // `ai:${guildId}:${channelId}` → history
@@ -2478,6 +2479,36 @@ export function startBot(): Client | undefined {
 
     // ── Custom slash commands ─────────────────────────────────────────────
     if (interaction.isChatInputCommand()) {
+      // AntiRaid: detect rapid command spam (bots via OAuth connections executing commands en masse)
+      try {
+        const [raidCfg] = await db.select().from(antiraidConfigsTable).where(eq(antiraidConfigsTable.guildId, guildId));
+        if (raidCfg?.enabled && raidCfg.antiSpam) {
+          const cmdKey = `${guildId}:${userId}`;
+          const now = Date.now();
+          const windowMs = 10_000; // 10 second window
+          const limit = (raidCfg.antiSpamLimit ?? 5) + 2; // slightly more lenient than message spam
+          const timestamps = (commandSpamTracker.get(cmdKey) ?? []).filter((t) => now - t < windowMs);
+          timestamps.push(now);
+          commandSpamTracker.set(cmdKey, timestamps);
+          if (timestamps.length >= limit) {
+            commandSpamTracker.set(cmdKey, []);
+            const whitelisted = await isWhitelisted(guildId, userId);
+            if (!whitelisted) {
+              const member = guild.members.cache.get(userId) || await guild.members.fetch(userId).catch(() => null);
+              if (member && !member.permissions.has("Administrator")) {
+                const action = raidCfg.antiSpamAction || "mute";
+                if (action === "ban") await member.ban({ reason: "AntiRaid: Spam masivo de comandos slash" }).catch(() => {});
+                else if (action === "kick") await member.kick("AntiRaid: Spam masivo de comandos slash").catch(() => {});
+                else await member.timeout(10 * 60 * 1000, "AntiRaid: Spam masivo de comandos slash").catch(() => {});
+                const logCfg = (await db.select().from(logsConfigsTable).where(eq(logsConfigsTable.guildId, guildId)))[0];
+                const secCh = getLogChannel(logCfg as any, "security");
+                if (secCh) await sendLog(secCh, { title: "AntiRaid — Command Spam detectado", description: `**Usuario:** <@${userId}> (${username})\n**Comandos en 10s:** ${timestamps.length}\n**Accion:** ${action}\n**Nota:** Posible bot/conexion OAuth abusando slash commands`, color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid" } }, process.env.DISCORD_BOT_TOKEN!).catch(() => {});
+              }
+            }
+          }
+        }
+      } catch { /* non-fatal */ }
+
       try {
         const [cmd] = await db.select().from(customCommandsTable)
           .where(and(eq(customCommandsTable.guildId, guildId), eq(customCommandsTable.name, interaction.commandName), eq(customCommandsTable.enabled, true)));

@@ -160,6 +160,56 @@ router.delete("/guilds/:guildId/antiraid/whitelist/:id", requireAuth, async (req
   }
 });
 
+// ─── AntiRaid ULTRA ────────────────────────────────────────────────────────────
+// Activa TODOS los módulos al máximo con enfoque anti-bot
+
+router.post("/guilds/:guildId/antiraid/ultra", requireAuth, async (req, res) => {
+  const guildId = req.params.guildId as string;
+  const ULTRA_CONFIG = {
+    enabled: true,
+    // AntiJoin ultra-agresivo: 3 joins en 5 segundos → ban
+    antiJoin: true, antiJoinThreshold: 3, antiJoinInterval: 5, antiJoinAction: "ban",
+    // AntiAlt: cuentas de menos de 30 días bloqueadas
+    antiAlt: true, antiAltMinAge: 30,
+    // AntiBot: bloquea TODOS los bots no whitelisteados
+    antiBot: true, antiBotWhitelist: [] as string[],
+    // AntiSpam agresivo
+    antiSpam: true, antiSpamLimit: 4, antiSpamInterval: 4, antiSpamAction: "ban",
+    // AntiLinks con ban
+    antiLinks: true, antiLinksAction: "ban", antiDiscordInvites: true, allowedDomains: [] as string[], blockedDomains: [] as string[],
+    // AntiMassMention agresivo
+    antiMassMention: true, massMentionLimit: 3,
+    // AntiWebhook: 1 webhook = acción inmediata
+    antiWebhook: true, webhookSpamThreshold: 1, webhookSpamInterval: 60,
+    // AntiNuke completo: 3 acciones destructivas → ban
+    antiNuke: true, nukeThreshold: 3, nukeAction: "ban",
+    antiChannelCreate: true, antiChannelDelete: true, antiChannelUpdate: false,
+    antiRoleCreate: true, antiRoleDelete: true, antiRoleUpdate: false,
+    antiEmojiDelete: true, antiBanMass: true, antiKickMass: true,
+    // AntiFlood agresivo
+    antiFlood: true, floodLimit: 4, floodInterval: 3, floodAction: "ban", deleteOnTrigger: true,
+  };
+  try {
+    const [existing] = await db.select().from(antiraidConfigsTable).where(eq(antiraidConfigsTable.guildId, guildId));
+    let cfg;
+    if (existing) {
+      const [updated] = await db.update(antiraidConfigsTable)
+        .set(ULTRA_CONFIG as any)
+        .where(eq(antiraidConfigsTable.guildId, guildId))
+        .returning();
+      cfg = updated;
+    } else {
+      const [created] = await db.insert(antiraidConfigsTable)
+        .values({ guildId, ...ULTRA_CONFIG })
+        .returning();
+      cfg = created;
+    }
+    res.json({ ok: true, config: cfg, message: "ANTIRAID ULTRA activado. Todos los módulos en máxima protección." });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "Error al activar AntiRaid ULTRA" });
+  }
+});
+
 // ─── Test Alert ────────────────────────────────────────────────────────────────
 
 router.post("/guilds/:guildId/antiraid/test", requireAuth, async (req, res) => {

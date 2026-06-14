@@ -1,6 +1,6 @@
 import { useParams } from "wouter";
 import { useState, useEffect, useRef } from "react";
-import { ShieldAlert, RefreshCw, Shield, Users, Plus, Trash2, UserCheck, TrendingDown } from "lucide-react";
+import { ShieldAlert, RefreshCw, Shield, Users, Plus, Trash2, UserCheck, TrendingDown, Zap, AlertTriangle } from "lucide-react";
 import GuildRoleSelect from "@/components/GuildRoleSelect";
 import { useGetAntiraidConfig, useUpdateAntiraidConfig, useGetAntiraidStats, getGetAntiraidConfigQueryKey, getGetAntiraidStatsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -74,6 +74,9 @@ export default function AntiraidPage() {
     });
   };
 
+  const [ultraLoading, setUltraLoading] = useState(false);
+  const [ultraConfirm, setUltraConfirm] = useState(false);
+
   const handleTest = async () => {
     setTesting(true);
     const res = await fetch(`/api/guilds/${guildId}/antiraid/test`, { method: "POST", credentials: "include" });
@@ -81,6 +84,24 @@ export default function AntiraidPage() {
     if (res.ok && data?.ok !== false) toast({ title: "Alerta de prueba enviada al canal de logs" });
     else toast({ title: data?.error || "Error al enviar prueba", variant: "destructive" });
     setTesting(false);
+  };
+
+  const handleUltra = async () => {
+    if (!ultraConfirm) { setUltraConfirm(true); setTimeout(() => setUltraConfirm(false), 5000); return; }
+    setUltraLoading(true);
+    setUltraConfirm(false);
+    try {
+      const res = await fetch(`/api/guilds/${guildId}/antiraid/ultra`, { method: "POST", credentials: "include" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        toast({ title: "ANTIRAID ULTRA activado", description: "Todos los modulos en maxima proteccion anti-bot" });
+        qc.invalidateQueries({ queryKey: getGetAntiraidConfigQueryKey(guildId) });
+        isMounted.current = false;
+      } else {
+        toast({ title: data?.error || "Error al activar ULTRA", variant: "destructive" });
+      }
+    } catch { toast({ title: "Error de conexion", variant: "destructive" }); }
+    setUltraLoading(false);
   };
 
   const addToWhitelist = async () => {
@@ -109,7 +130,7 @@ export default function AntiraidPage() {
 
   return (
     <Layout guildId={guildId}>
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-black mb-1">AntiRaid</h1>
           <p className="text-muted-foreground text-sm">Proteccion avanzada contra raids, spam, bots y nuke con whitelist y auto-accion.</p>
@@ -124,6 +145,38 @@ export default function AntiraidPage() {
           </div>
         )}
       </div>
+
+      {/* ── ANTIRAID ULTRA Banner ── */}
+      {tab === "config" && (
+        <div className="max-w-3xl mb-6 rounded-xl border border-red-500/30 bg-red-950/20 p-4 flex items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-red-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Zap className="w-5 h-5 text-red-400" />
+            </div>
+            <div>
+              <p className="font-bold text-sm text-red-300">ANTIRAID ULTRA</p>
+              <p className="text-xs text-red-400/80 mt-0.5">Activa todos los modulos al maximo. Proteccion total contra bots, raids, webhooks y ataques via conexiones OAuth. Accion: <span className="font-semibold">ban inmediato</span> en todo.</p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            onClick={handleUltra}
+            disabled={ultraLoading}
+            className={cn(
+              "flex-shrink-0 gap-1.5 font-bold transition-all",
+              ultraConfirm
+                ? "bg-red-600 hover:bg-red-700 text-white border-red-500 animate-pulse"
+                : "bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40"
+            )}
+            variant="ghost"
+          >
+            {ultraLoading
+              ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              : <AlertTriangle className="w-3.5 h-3.5" />}
+            {ultraConfirm ? "Confirmar — Activar ULTRA" : "Activar ULTRA"}
+          </Button>
+        </div>
+      )}
 
       <div className="flex gap-1 bg-secondary rounded-lg p-1 w-fit mb-6">
         {TABS.map(({ id, label }) => (
