@@ -2,10 +2,33 @@ import express, { type Express, type Request, type Response, type NextFunction }
 import cors from "cors";
 import pinoHttp from "pino-http";
 import cookieParser from "cookie-parser";
+import { rateLimit } from "express-rate-limit";
 import router from "./routes";
 import { logger } from "./lib/logger";
 
 const app: Express = express();
+
+// ── Global rate limiter (protects API from DDoS / brute-force) ─────────────────
+const globalLimiter = rateLimit({
+  windowMs: 60_000,        // 1 minute window
+  max: 300,                // max 300 requests per IP per minute
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Demasiadas solicitudes. Intenta de nuevo en un minuto." },
+  skip: (req) => req.path === "/api/status", // don't rate-limit health checks
+});
+
+// ── Strict limiter for auth endpoints (prevents OAuth token brute-force) ───────
+const authLimiter = rateLimit({
+  windowMs: 15 * 60_000,  // 15 minutes
+  max: 30,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Demasiados intentos de autenticacion. Intenta de nuevo en 15 minutos." },
+});
+
+app.use("/api/auth", authLimiter);
+app.use(globalLimiter);
 
 app.use(
   pinoHttp({

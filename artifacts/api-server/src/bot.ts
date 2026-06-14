@@ -47,18 +47,47 @@ import { generateWelcomeCard } from "./welcome-card";
 const DISCORD_API = "https://discord.com/api/v10";
 
 // ─── In-memory trackers ───────────────────────────────────────────────────────
-const joinTracker   = new Map<string, { userId: string; username: string; ts: number }[]>();
+const joinTracker   = new Map<string, { userId: string; username: string; ts: number; accountAge?: number }[]>();
 const raidLockdown  = new Map<string, number>(); // guildId → lockdown expiry timestamp
 const spamTracker   = new Map<string, number[]>();
 const floodTracker  = new Map<string, Map<string, number[]>>();
 const nukeTracker   = new Map<string, { count: number; resetAt: number }>();
-const tempRoleTimers    = new Map<string, NodeJS.Timeout>();
+const tempRoleTimers     = new Map<string, NodeJS.Timeout>();
 const webhookSpamTracker = new Map<string, number[]>();    // `${guildId}:${userId}` → timestamps
 const commandSpamTracker = new Map<string, number[]>();    // `${guildId}:${userId}` → timestamps (slash command spam via bot connections)
+const inviteSpamTracker  = new Map<string, number[]>();    // `${guildId}:${userId}` → timestamps (invite spam)
+const newAccountJoinTracker = new Map<string, number[]>(); // `${guildId}` → timestamps of new-account joins (< 7 days old)
 const suspiciousTracker  = new Map<string, { actions: string[]; resetAt: number }>(); // same key
 const aiCooldowns        = new Map<string, number>();      // `ai:${guildId}:${channelId}:${userId}` → timestamp
 const aiConversations    = new Map<string, { role: "user" | "assistant"; content: string }[]>(); // `ai:${guildId}:${channelId}` → history
 const blacklistDmSent    = new Map<string, number>();      // userId → timestamp of last DM sent (rate-limit to avoid spam)
+
+// ── Set Discord guild verification level via REST ──────────────────────────────
+async function setVerificationLevel(guildId: string, level: 0 | 1 | 2 | 3 | 4, botToken: string): Promise<void> {
+  // 0=none, 1=low, 2=medium, 3=high(phone), 4=very_high(10min membership)
+  try {
+    await fetch(`https://discord.com/api/v10/guilds/${guildId}`, {
+      method: "PATCH",
+      headers: { "Authorization": `Bot ${botToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ verification_level: level }),
+    });
+  } catch {}
+}
+
+// ── Set guild community slowmode on all text channels (mass-spam mitigation) ──
+async function setSlowmodeOnAllChannels(guild: any, seconds: number, botToken: string): Promise<void> {
+  try {
+    const channels = guild.channels.cache.filter((c: any) => c.type === 0 || c.type === 5); // text + announcement
+    const tasks = channels.map((ch: any) =>
+      fetch(`https://discord.com/api/v10/channels/${ch.id}`, {
+        method: "PATCH",
+        headers: { "Authorization": `Bot ${botToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ rate_limit_per_user: seconds }),
+      }).catch(() => {})
+    );
+    await Promise.allSettled(tasks);
+  } catch {}
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -585,6 +614,7 @@ export function startBot(): Client | undefined {
             const windowMs  = (antiraid.antiJoinInterval ?? 10) * 1000;
             const threshold = antiraid.antiJoinThreshold ?? 5;
             const action    = antiraid.antiJoinAction ?? "ban";
+            const accountAgeDays = member.user?.createdTimestamp ? (now - member.user.createdTimestamp) / 86_400_000 : null;
 
             // ── Lockdown mode: ban/kick everyone while active ─────────────
             const lockdownExpiry = raidLockdown.get(guildId);
@@ -602,45 +632,82 @@ export function startBot(): Client | undefined {
               return;
             }
 
-            // ── Track this join with userId ───────────────────────────────
+            // ── Track this join (include account age for velocity analysis) ─
             const recentJoins = (joinTracker.get(guildId) ?? []).filter(j => now - j.ts < windowMs);
-            recentJoins.push({ userId, username, ts: now });
+            recentJoins.push({ userId, username, ts: now, accountAge: accountAgeDays ?? undefined });
             joinTracker.set(guildId, recentJoins);
 
+            // ── New-account velocity: track joins from accounts < 30 days old ─
+            if (accountAgeDays !== null && accountAgeDays < 30) {
+              const newAccWindow = 30_000; // 30-second window
+              const newAccKey = guildId;
+              const recentNew = (newAccountJoinTracker.get(newAccKey) ?? []).filter(t => now - t < newAccWindow);
+              recentNew.push(now);
+              newAccountJoinTracker.set(newAccKey, recentNew);
+              // 8+ new accounts in 30s = coordinated bot raid even if below main threshold
+              if (recentNew.length >= 8 && recentJoins.length < threshold) {
+                newAccountJoinTracker.set(newAccKey, []);
+                raidLockdown.set(guildId, now + 60_000); // 60s lockdown
+                setTimeout(() => raidLockdown.delete(guildId), 60_000);
+                // Escalate Discord verification level to HIGHEST
+                setVerificationLevel(guildId, 4, botToken);
+                if (secChannel && logCfg?.logSecurity) {
+                  await sendLog(secChannel, {
+                    title: "AntiRaid — Velocidad de Cuentas Nuevas",
+                    description: `**${recentNew.length} cuentas nuevas (<30 dias)** en 30s\n**Lockdown:** 60s activo\n**Verificacion de Discord:** Escalada al maximo\n**Accion preventiva:** Activa`,
+                    color: 0xFF6B00, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid — Deteccion Avanzada" },
+                  }, botToken);
+                }
+                pushAlert(guildId, { module: "AntiJoin", description: `${recentNew.length} cuentas nuevas en 30s — posible bot raid`, action: "lockdown", username: "Sistema", userId: "0" });
+              }
+            }
+
             if (recentJoins.length >= threshold) {
-              // RAID DETECTED — ban ALL joiners in the window retroactively
+              // RAID DETECTED — ban ALL joiners in the window SIMULTANEOUSLY (parallel, not sequential)
               joinTracker.set(guildId, []);
-              // Activate lockdown for 3× the window duration
               raidLockdown.set(guildId, now + windowMs * 3);
               setTimeout(() => raidLockdown.delete(guildId), windowMs * 3);
 
-              const banReason = `AntiRaid AntiJoin: Raid detectado — ${recentJoins.length} joins en ${antiraid.antiJoinInterval}s`;
-              let bannedCount = 0;
-              const bannedNames: string[] = [];
+              // Immediately escalate Discord verification level to max
+              setVerificationLevel(guildId, 4, botToken);
+              // Enable slowmode on all channels to stop spam
+              setSlowmodeOnAllChannels(member.guild, 30, botToken);
 
-              for (const joiner of recentJoins) {
-                try {
-                  const joinerMember = member.guild.members.cache.get(joiner.userId)
-                    ?? await member.guild.members.fetch(joiner.userId).catch(() => null);
-                  if (joinerMember) {
-                    if (action === "ban") {
-                      await (joinerMember as GuildMember).ban({ reason: banReason }).catch(() => {});
-                      await autoBlacklist(joiner.userId, joiner.username, banReason);
-                    } else if (action === "kick") await (joinerMember as GuildMember).kick(banReason).catch(() => {});
-                    bannedCount++;
-                    bannedNames.push(`\`${joiner.username}\``);
+              const banReason = `AntiRaid AntiJoin: Raid detectado — ${recentJoins.length} joins en ${antiraid.antiJoinInterval}s`;
+
+              // Fetch all members in parallel, then ban/kick in parallel
+              const fetchTasks = recentJoins.map(async (joiner) => {
+                const joinerMember = member.guild.members.cache.get(joiner.userId)
+                  ?? await member.guild.members.fetch(joiner.userId).catch(() => null);
+                return { joiner, joinerMember };
+              });
+              const fetched = await Promise.allSettled(fetchTasks);
+
+              const banTasks = fetched
+                .filter((r): r is PromiseFulfilledResult<{ joiner: typeof recentJoins[0]; joinerMember: GuildMember | null }> => r.status === "fulfilled" && !!r.value.joinerMember)
+                .map(async ({ value: { joiner, joinerMember } }) => {
+                  if (action === "ban") {
+                    await (joinerMember as GuildMember).ban({ reason: banReason }).catch(() => {});
+                    await autoBlacklist(joiner.userId, joiner.username, banReason);
+                  } else if (action === "kick") {
+                    await (joinerMember as GuildMember).kick(banReason).catch(() => {});
                   }
-                } catch {}
-              }
+                  return joiner.username;
+                });
+
+              const banResults = await Promise.allSettled(banTasks);
+              const bannedNames = banResults.filter(r => r.status === "fulfilled").map(r => `\`${(r as any).value}\``);
+              const bannedCount = bannedNames.length;
 
               await bumpStats(guildId, "blockedJoin");
               if (secChannel && logCfg?.logSecurity) {
                 await sendLog(secChannel, {
-                  title: "AntiJoin — RAID DETECTADO",
-                  description: `**Joins:** ${recentJoins.length} en ${antiraid.antiJoinInterval}s\n**Accion:** ${action} (${bannedCount} usuarios)\n**Lockdown:** Activo por ${antiraid.antiJoinInterval * 3}s${action === "ban" ? "\n**Blacklist:** Todos agregados automaticamente" : ""}\n**Usuarios:** ${bannedNames.slice(0, 10).join(", ")}${bannedNames.length > 10 ? ` y ${bannedNames.length - 10} mas...` : ""}`,
-                  color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid" },
+                  title: "AntiJoin — RAID DETECTADO (Respuesta Inmediata)",
+                  description: `**Joins:** ${recentJoins.length} en ${antiraid.antiJoinInterval}s\n**Accion:** ${action} (${bannedCount} usuarios)\n**Lockdown:** ${antiraid.antiJoinInterval * 3}s${action === "ban" ? "\n**Blacklist:** Todos agregados automaticamente" : ""}\n**Verificacion Discord:** Escalada al maximo\n**Slowmode:** 30s en todos los canales\n**Usuarios:** ${bannedNames.slice(0, 10).join(", ")}${bannedNames.length > 10 ? ` y ${bannedNames.length - 10} mas...` : ""}`,
+                  color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix AntiRaid — Respuesta Ultra-Rapida" },
                 }, botToken);
               }
+              pushAlert(guildId, { module: "AntiJoin", description: `RAID — ${recentJoins.length} joins | ${bannedCount} acciones | lockdown activo`, action, username, userId });
               return;
             }
           }
@@ -1738,6 +1805,28 @@ export function startBot(): Client | undefined {
             const target = entry.target as any;
             await sendLog(ch, { title: "Invitacion Creada", description: `**Codigo:** ${target?.code || "Desconocido"}\n**Creador:** ${executorStr}\n**Usos max:** ${target?.maxUses || "Ilimitado"}\n**Expira:** ${target?.maxAge ? `${target.maxAge / 3600}h` : "Nunca"}`, color: 0x57F287, timestamp: ts, footer: { text: "Neuralix Logs" } }, botToken);
             await logToDb(guildId, { userId: executor?.id, username: executor?.username, action: "invite_create", category: "member", details: `discord.gg/${target?.code}` });
+          }
+
+          // ── Invite spam detection: ≥5 invites by same user in 60s ───────
+          if (antiraid?.enabled && antiraid.antiSpam && executor?.id) {
+            const inviteKey = `${guildId}:${executor.id}`;
+            const inviteWindow = 60_000;
+            const nowMs = Date.now();
+            const inviteTimes = (inviteSpamTracker.get(inviteKey) ?? []).filter(t => nowMs - t < inviteWindow);
+            inviteTimes.push(nowMs);
+            inviteSpamTracker.set(inviteKey, inviteTimes);
+            if (inviteTimes.length >= 5) {
+              inviteSpamTracker.set(inviteKey, []);
+              const secCh = getLogChannel(logCfg, "security");
+              if (secCh && logCfg?.logSecurity) {
+                await sendLog(secCh, {
+                  title: "AntiRaid — Spam de Invitaciones",
+                  description: `**Usuario:** ${executorStr}\n**Invitaciones creadas:** ${inviteTimes.length} en 60s\n**Accion:** Alerta de seguridad\n**Recomendacion:** Verificar si el usuario esta distribuyendo invites masivamente`,
+                  color: 0xFF6B00, timestamp: ts, footer: { text: "Neuralix AntiRaid — Deteccion de Invite Spam" },
+                }, botToken);
+              }
+              pushAlert(guildId, { module: "AntiSpam", description: `Invite spam detectado: ${executor.username} creó ${inviteTimes.length} invites en 60s`, action: "alert", username: executor.username ?? "Desconocido", userId: executor.id });
+            }
           }
           break;
         }
