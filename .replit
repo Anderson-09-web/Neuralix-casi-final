@@ -76,6 +76,8 @@ externalPort = 3000
 OWNER_DISCORD_IDS = "1237892993013387307"
 PORT = "5000"
 BASE_PATH = "/"
+
+[userenv.production]
 APP_URL = "neuralixallow.vercel.app"
 
 [nix]

@@ -1,7 +1,19 @@
 /**
  * Runtime app configuration — stores platform-level settings loaded from DB
  * at startup and updated by the admin panel without requiring a restart.
+ *
+ * URL DETECTION PRIORITY (highest → lowest):
+ *   1. APP_URL env var (manual override — only needed for custom domains)
+ *   2. Admin-configured custom URL saved in DB
+ *   3. REPLIT_DOMAINS — production *.replit.app URL (set by Replit automatically on deploy)
+ *   4. REPLIT_APP_URL — legacy Replit production URL env
+ *   5. REPLIT_DEV_DOMAIN — development workspace URL (changes every session, only used in dev)
+ *
+ * In production (deployed on Replit): REPLIT_DOMAINS is always present and
+ * contains the stable *.replit.app URL — no manual configuration needed.
  */
+
+import { logger } from "./lib/logger";
 
 let _customBaseUrl: string | null = null;
 let _supportServerInvite: string = "discord.gg/wukr8apdQq";
@@ -12,33 +24,74 @@ export function getCustomBaseUrl(): string | null {
   return _customBaseUrl;
 }
 
+function stripProtocol(url: string): string {
+  return url.replace(/^https?:\/\//, "").replace(/\/$/, "");
+}
+
+/** Returns true for stable *.replit.app production domains */
+function isProductionDomain(domain: string): boolean {
+  return domain.endsWith(".replit.app") && !domain.includes("worf.replit.dev");
+}
+
 /**
  * Single source of truth for the application's public domain.
- * Priority: APP_URL env → custom DB URL (loaded at startup) → Replit deploy URL
- *           → Replit domains list → Replit dev domain → null
- *
  * Returns the bare hostname (no protocol, no trailing slash), e.g.
- *   "myapp.replit.app"  or  "example.com"
+ *   "myapp.replit.app"  or  "neuralixallow.vercel.app"
  */
 export function getAppDomain(): string | null {
-  // 1. Explicit APP_URL env overrides everything
+  // 1. Explicit APP_URL env — manual override for custom domains / Vercel setups
   if (process.env.APP_URL) {
-    return process.env.APP_URL.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    return stripProtocol(process.env.APP_URL);
   }
+
   // 2. Admin-configured custom base URL (populated from DB at startup)
   if (_customBaseUrl) {
-    return _customBaseUrl.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    return stripProtocol(_customBaseUrl);
   }
-  // 3. Replit deployment URL
+
+  // 3. Replit production domains list — STABLE *.replit.app URL, set automatically on deploy
+  //    Prefer production domains over dev domains when multiple are present
+  const replitDomains = process.env.REPLIT_DOMAINS
+    ?.split(",")
+    .map((d) => d.trim())
+    .filter(Boolean) ?? [];
+
+  const prodDomain = replitDomains.find(isProductionDomain);
+  if (prodDomain) return prodDomain;
+
+  // 4. Legacy Replit production URL env
   if (process.env.REPLIT_APP_URL) {
-    return process.env.REPLIT_APP_URL.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    return stripProtocol(process.env.REPLIT_APP_URL);
   }
-  // 4. First domain from the Replit domains list
-  const domains = process.env.REPLIT_DOMAINS?.split(",").map((d) => d.trim()).filter(Boolean);
-  if (domains?.length) return domains[0];
-  // 5. Replit dev domain
+
+  // 5. Any remaining domain from REPLIT_DOMAINS (could be dev domain)
+  if (replitDomains.length) return replitDomains[0];
+
+  // 6. Replit dev domain — only available in development workspace
   if (process.env.REPLIT_DEV_DOMAIN) return process.env.REPLIT_DEV_DOMAIN;
+
   return null;
+}
+
+/** Log the detected app domain at startup so it's visible in logs */
+export function logAppDomain(): void {
+  const domain = getAppDomain();
+  const source = (() => {
+    if (process.env.APP_URL) return "APP_URL env var";
+    if (_customBaseUrl) return "DB custom URL";
+    const domains = process.env.REPLIT_DOMAINS?.split(",").map((d) => d.trim()).filter(Boolean) ?? [];
+    if (domains.find(isProductionDomain)) return "REPLIT_DOMAINS (production *.replit.app)";
+    if (process.env.REPLIT_APP_URL) return "REPLIT_APP_URL";
+    if (domains.length) return "REPLIT_DOMAINS (dev)";
+    if (process.env.REPLIT_DEV_DOMAIN) return "REPLIT_DEV_DOMAIN";
+    return "none";
+  })();
+
+  if (domain) {
+    logger.info({ domain: `https://${domain}`, source }, "App domain detected — OAuth callback URL configured");
+  } else {
+    logger.warn("No app domain detected — Discord OAuth will not work. Set APP_URL env var or deploy on Replit.");
+  }
 }
 
 export function setCustomBaseUrl(url: string | null) {

@@ -2,10 +2,13 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { startBot } from "./bot";
 import { setBotClient } from "./bot-state";
-import { loadCustomBaseUrl } from "./app-config";
+import { loadCustomBaseUrl, logAppDomain } from "./app-config";
 
 // Load admin-configured base URL before starting (non-fatal)
 loadCustomBaseUrl().catch(() => {});
+
+// Log which URL will be used for Discord OAuth callbacks
+logAppDomain();
 
 const botClient = startBot();
 setBotClient(botClient);
