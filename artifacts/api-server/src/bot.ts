@@ -222,11 +222,11 @@ function getLogChannel(logCfg: any, category: "members" | "messages" | "roles" |
   return overrides[category] || logCfg.channelId || null;
 }
 
-async function bumpStats(guildId: string, field: "blockedBot" | "blockedAlt" | "blockedSpam" | "blockedVpn") {
+async function bumpStats(guildId: string, field: "blockedBot" | "blockedAlt" | "blockedSpam" | "blockedVpn" | "blockedJoin") {
   try {
     const colMap: Record<string, string> = {
       blockedBot: "blocked_bot", blockedAlt: "blocked_alt",
-      blockedSpam: "blocked_spam", blockedVpn: "blocked_vpn",
+      blockedSpam: "blocked_spam", blockedVpn: "blocked_vpn", blockedJoin: "blocked_spam",
     };
     await db.update(antiraidStatsTable)
       .set({ [field]: sql`${sql.raw(colMap[field])} + 1`, totalDetections: sql`total_detections + 1`, detectedToday: sql`detected_today + 1` })
@@ -1745,12 +1745,12 @@ export function startBot(): Client | undefined {
                     if (member) {
                       if (raidCfg.nukeAction === "ban") {
                         await member.ban({ reason: "AntiRaid: Webhook spam" }).catch(() => {});
-                        await autoBlacklist(executor.id, executor.username, "AntiRaid AntiWebhook: Spam masivo de webhooks");
+                        await autoBlacklist(executor.id, executor.username ?? "Unknown", "AntiRaid AntiWebhook: Spam masivo de webhooks");
                       } else if (raidCfg.nukeAction === "kick") await member.kick("AntiRaid: Webhook spam").catch(() => {});
                       else await member.roles.set([], "AntiRaid: Webhook spam").catch(() => {});
                     }
                     if (secCh) await sendLog(secCh, { title: "AntiWebhook — Webhook Spam", description: `**Responsable:** ${executorStr}\n**Webhooks:** ${timestamps.length} en ${raidCfg.webhookSpamInterval}s\n**Accion:** ${raidCfg.nukeAction}`, color: 0xED4245, timestamp: ts, footer: { text: "Neuralix AntiRaid" } }, botToken);
-                    pushAlert(guildId, { module: "AntiWebhook", description: `Webhook spam: ${executorStr} (${timestamps.length} webhooks)`, action: raidCfg.nukeAction || "ban", username: executor.username, userId: executor.id });
+                    pushAlert(guildId, { module: "AntiWebhook", description: `Webhook spam: ${executorStr} (${timestamps.length} webhooks)`, action: raidCfg.nukeAction ?? "ban", username: executor.username ?? undefined, userId: executor.id });
                   } catch {}
                 }
               }
@@ -1808,11 +1808,12 @@ export function startBot(): Client | undefined {
           }
 
           // ── Invite spam detection: ≥5 invites by same user in 60s ───────
-          if (antiraid?.enabled && antiraid.antiSpam && executor?.id) {
+          const [invRaidCfg] = await db.select().from(antiraidConfigsTable).where(eq(antiraidConfigsTable.guildId, guildId));
+          if (invRaidCfg?.enabled && invRaidCfg.antiSpam && executor?.id) {
             const inviteKey = `${guildId}:${executor.id}`;
             const inviteWindow = 60_000;
             const nowMs = Date.now();
-            const inviteTimes = (inviteSpamTracker.get(inviteKey) ?? []).filter(t => nowMs - t < inviteWindow);
+            const inviteTimes = (inviteSpamTracker.get(inviteKey) ?? []).filter((t: number) => nowMs - t < inviteWindow);
             inviteTimes.push(nowMs);
             inviteSpamTracker.set(inviteKey, inviteTimes);
             if (inviteTimes.length >= 5) {
@@ -2648,7 +2649,7 @@ export function startBot(): Client | undefined {
             commandSpamTracker.set(cmdKey, []);
             const whitelisted = await isWhitelisted(guildId, userId);
             if (!whitelisted) {
-              const member = guild.members.cache.get(userId) || await guild.members.fetch(userId).catch(() => null);
+              const member = interaction.guild?.members.cache.get(userId) || await interaction.guild?.members.fetch(userId).catch(() => null);
               if (member && !member.permissions.has("Administrator")) {
                 const action = raidCfg.antiSpamAction || "mute";
                 if (action === "ban") await member.ban({ reason: "AntiRaid: Spam masivo de comandos slash" }).catch(() => {});

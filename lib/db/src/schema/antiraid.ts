@@ -66,6 +66,19 @@ export const antiraidConfigsTable = pgTable("antiraid_configs", {
   // Lockdown: emergency server lock
   lockdownEnabled: boolean("lockdown_enabled").notNull().default(false),
   lockdownRoleId: text("lockdown_role_id"),
+  // AntiCaps: bloquea mensajes con demasiadas mayusculas
+  antiCaps: boolean("anti_caps").notNull().default(false),
+  antiCapsMinLength: integer("anti_caps_min_length").notNull().default(10),
+  antiCapsPercent: integer("anti_caps_percent").notNull().default(70),
+  antiCapsAction: text("anti_caps_action").notNull().default("delete"),
+  // WordFilter: filtra palabras prohibidas
+  wordFilter: boolean("word_filter").notNull().default(false),
+  wordFilterList: text("word_filter_list").array().notNull().default([]),
+  wordFilterAction: text("word_filter_action").notNull().default("delete"),
+  wordFilterWildcard: boolean("word_filter_wildcard").notNull().default(false),
+  // AntiScam: detecta enlaces y patrones de estafa conocidos
+  antiScam: boolean("anti_scam").notNull().default(false),
+  antiScamAction: text("anti_scam_action").notNull().default("ban"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

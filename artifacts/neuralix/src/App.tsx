@@ -14,6 +14,7 @@ import VerificationPage from "@/pages/VerificationPage";
 import VerifyPortal from "@/pages/VerifyPortal";
 import TicketsPage from "@/pages/TicketsPage";
 import AntiraidPage from "@/pages/AntiraidPage";
+import AutomodPage from "@/pages/AutomodPage";
 import LogsPage from "@/pages/LogsPage";
 import PremiumPage from "@/pages/PremiumPage";
 import BackupsPage from "@/pages/BackupsPage";
@@ -54,6 +55,7 @@ function Router() {
       <Route path="/servers/:guildId/verification" component={VerificationPage} />
       <Route path="/servers/:guildId/tickets" component={TicketsPage} />
       <Route path="/servers/:guildId/antiraid" component={AntiraidPage} />
+      <Route path="/servers/:guildId/automod" component={AutomodPage} />
       <Route path="/servers/:guildId/logs" component={LogsPage} />
       <Route path="/servers/:guildId/premium" component={PremiumPage} />
       <Route path="/servers/:guildId/backups" component={BackupsPage} />

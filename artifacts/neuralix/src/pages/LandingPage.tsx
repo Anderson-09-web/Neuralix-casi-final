@@ -54,6 +54,7 @@ function AppealModal({ onClose }: { onClose: () => void }) {
       const iv = setInterval(() => fetchMessages(appeal.id, appeal.token), 4000);
       return () => clearInterval(iv);
     }
+    return undefined;
   }, [step, appeal]);
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);

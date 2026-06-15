@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useState } from "react";
 import {
-  Shield, LayoutDashboard, Users, Ticket, ShieldAlert, FileText,
+  Shield, LayoutDashboard, Users, Ticket, ShieldCheck, FileText,
   Star, Database, Settings, ChevronLeft, ChevronRight, Sun, Moon,
   HeadphonesIcon, LogOut, Menu, X, Bot, Bell, ChevronDown, Tag, Webhook, Gift, Sparkles, Terminal
 } from "lucide-react";
@@ -20,7 +20,7 @@ const navItems = (guildId: string) => [
   { href: `/servers/${guildId}/goodbye`, icon: Users, label: "Despedidas" },
   { href: `/servers/${guildId}/verification`, icon: Shield, label: "Verificacion" },
   { href: `/servers/${guildId}/tickets`, icon: Ticket, label: "Tickets" },
-  { href: `/servers/${guildId}/antiraid`, icon: ShieldAlert, label: "AntiRaid" },
+  { href: `/servers/${guildId}/automod`, icon: ShieldCheck, label: "AutoMod" },
   { href: `/servers/${guildId}/auto-roles`, icon: Tag, label: "Auto-Roles" },
   { href: `/servers/${guildId}/webhooks`, icon: Webhook, label: "Webhooks" },
   { href: `/servers/${guildId}/giveaways`, icon: Gift, label: "Sorteos" },
