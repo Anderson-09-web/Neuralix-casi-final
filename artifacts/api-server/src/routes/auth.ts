@@ -10,18 +10,22 @@ const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID!;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET!;
 
 function getAppDomain(): string | null {
-  // 1. Admin-configured custom base URL takes top priority
+  // 1. Explicit APP_URL overrides everything (use this for Vercel/custom deployments)
+  if (process.env.APP_URL) {
+    return process.env.APP_URL.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  }
+  // 2. Admin-configured custom base URL
   const { getCustomBaseUrl } = require("../app-config");
   const custom = getCustomBaseUrl();
   if (custom) return custom.replace(/^https?:\/\//, "").replace(/\/$/, "");
-  // 2. Replit deployment URL
+  // 3. Replit deployment URL
   if (process.env.REPLIT_APP_URL) {
     return process.env.REPLIT_APP_URL.replace(/^https?:\/\//, "").replace(/\/$/, "");
   }
-  // 3. Replit domains list
+  // 4. Replit domains list
   const domains = process.env.REPLIT_DOMAINS?.split(",").map((d) => d.trim()).filter(Boolean);
   if (domains?.length) return domains[0];
-  // 4. Dev domain
+  // 5. Dev domain
   if (process.env.REPLIT_DEV_DOMAIN) return process.env.REPLIT_DEV_DOMAIN;
   return null;
 }

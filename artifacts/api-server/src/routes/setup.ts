@@ -4,6 +4,7 @@ import { requireAuth } from "../lib/auth";
 const router = Router();
 
 function getAppDomain(): string | null {
+  if (process.env.APP_URL) return process.env.APP_URL.replace(/^https?:\/\//, "").replace(/\/$/, "");
   if (process.env.REPLIT_APP_URL) return process.env.REPLIT_APP_URL.replace(/^https?:\/\//, "").replace(/\/$/, "");
   const domains = process.env.REPLIT_DOMAINS?.split(",").map((d) => d.trim()).filter(Boolean);
   if (domains?.length) return domains[0];

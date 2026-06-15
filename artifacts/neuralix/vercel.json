@@ -5,7 +5,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "REEMPLAZA_CON_TU_URL_API/api/:path*"
+      "destination": "https://ed7c1e8f-eb2e-4056-85ad-20744e0b30df-00-p208vv2kmftw.worf.replit.dev:8080/api/:path*"
     },
     {
       "source": "/(.*)",
