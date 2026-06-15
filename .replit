@@ -76,7 +76,7 @@ externalPort = 3000
 OWNER_DISCORD_IDS = "1237892993013387307"
 PORT = "5000"
 BASE_PATH = "/"
-APP_URL = "https://663de9c6-125a-4fbf-b3c0-986713cb1427-00-1ugvr2ze31ql9.worf.replit.dev"
+APP_URL = "neuralixallow.vercel.app"
 
 [nix]
 channel = "stable-25_05"

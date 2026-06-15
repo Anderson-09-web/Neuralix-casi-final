@@ -7,7 +7,11 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://REEMPLAZA_CON_TU_URL_REPLIT/api/:path*"
+      "destination": "https://663de9c6-125a-4fbf-b3c0-986713cb1427-00-1ugvr2ze31ql9.worf.replit.dev/api/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ],
   "headers": [
