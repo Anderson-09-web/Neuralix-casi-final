@@ -1,0 +1,8 @@
+artifacts/api-server
+lib/db
+scripts
+attached_assets
+.agents
+.local
+*.log
+node_modules

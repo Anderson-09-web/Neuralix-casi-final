@@ -55,8 +55,16 @@ export default defineConfig({
         target: "http://localhost:8080",
         changeOrigin: true,
         secure: false,
-        proxyTimeout: 10000,
-        timeout: 10000,
+        proxyTimeout: 30000,
+        timeout: 30000,
+        configure: (proxy) => {
+          proxy.on("error", (_err, _req, res) => {
+            if (res && !res.headersSent && typeof (res as any).writeHead === "function") {
+              (res as any).writeHead(503, { "Content-Type": "application/json" });
+              (res as any).end(JSON.stringify({ error: "API server iniciando, reintenta en unos segundos" }));
+            }
+          });
+        },
       },
     },
   },
