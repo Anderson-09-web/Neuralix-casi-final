@@ -13,7 +13,6 @@ import { VariablesModal, WELCOME_VARIABLES } from "@/components/VariablesModal";
 import { Eye, RefreshCw } from "lucide-react";
 import GuildChannelSelect from "@/components/GuildChannelSelect";
 
-/** Replace template variables with example values for live preview */
 function renderPreview(template: string, guildName = "Mi Servidor", memberCount = 100): string {
   const now = new Date();
   return template
@@ -47,10 +46,9 @@ export default function WelcomePage() {
   const [showPreview, setShowPreview] = useState(false);
   const isMounted = useRef(false);
 
-  // Sync remote config on first load only (don't overwrite unsaved local edits)
   useEffect(() => {
     if (config && !isMounted.current) {
-      setCfg(config);
+      setCfg({ messageEnabled: true, ...config });
       isMounted.current = true;
     }
   }, [config]);
@@ -96,7 +94,7 @@ export default function WelcomePage() {
     });
   };
 
-  const previewContent = cfg.message ? renderPreview(cfg.message) : null;
+  const previewContent = cfg.messageEnabled && cfg.message ? renderPreview(cfg.message) : null;
   const previewEmbedTitle = cfg.embedEnabled && cfg.embedTitle ? renderPreview(cfg.embedTitle) : null;
   const previewEmbedDesc = cfg.embedEnabled && cfg.embedDescription ? renderPreview(cfg.embedDescription) : null;
 
@@ -122,7 +120,6 @@ export default function WelcomePage() {
         </div>
       </div>
 
-      {/* Live preview panel */}
       {showPreview && (
         <div className="mb-6 rounded-xl border border-primary/20 bg-primary/5 p-5">
           <p className="text-xs font-semibold text-primary mb-3 uppercase tracking-wide">Vista previa en vivo</p>
@@ -134,17 +131,16 @@ export default function WelcomePage() {
               className="rounded-lg border-l-4 bg-card p-4 space-y-1"
               style={{ borderColor: cfg.embedColor || "#5865F2" }}
             >
+              {cfg.embedAuthor && <p className="text-xs text-muted-foreground/70 font-medium">{cfg.embedAuthor}</p>}
               {previewEmbedTitle && <p className="font-bold text-sm">{previewEmbedTitle}</p>}
               {previewEmbedDesc && <p className="text-sm text-muted-foreground whitespace-pre-wrap">{previewEmbedDesc}</p>}
               {cfg.embedFooter && <p className="text-xs text-muted-foreground/60 pt-1">{cfg.embedFooter}</p>}
             </div>
           )}
           {!previewContent && !cfg.embedEnabled && (
-            <p className="text-xs text-muted-foreground italic">Escribe un mensaje arriba para ver la vista previa.</p>
+            <p className="text-xs text-muted-foreground italic">Activa el mensaje libre o el embed para ver la vista previa.</p>
           )}
-          <p className="text-xs text-muted-foreground/50 mt-3">
-            Variables reemplazadas con valores de ejemplo. Actualiza cada 5 seg automaticamente.
-          </p>
+          <p className="text-xs text-muted-foreground/50 mt-3">Variables reemplazadas con valores de ejemplo.</p>
         </div>
       )}
 
@@ -152,7 +148,10 @@ export default function WelcomePage() {
         {/* General */}
         <div className="bg-card border border-card-border rounded-xl p-6 space-y-5">
           <div className="flex items-center justify-between">
-            <Label>Activar bienvenidas</Label>
+            <div>
+              <Label>Activar bienvenidas</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">Habilita el sistema completo de bienvenidas</p>
+            </div>
             <Switch checked={cfg.enabled} onCheckedChange={set("enabled")} data-testid="toggle-welcome-enabled" />
           </div>
           <div>
@@ -165,32 +164,56 @@ export default function WelcomePage() {
               types={[0, 5]}
             />
           </div>
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <Label className="text-sm">Mensaje de bienvenida</Label>
-              <VariablesModal variables={WELCOME_VARIABLES} onInsert={(v) => setCfg((c: any) => ({ ...c, message: (c.message || "") + v }))} />
+        </div>
+
+        {/* Mensaje libre */}
+        <div className="bg-card border border-card-border rounded-xl p-6 space-y-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold text-sm">Mensaje libre</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">Texto plano que se envia al canal de bienvenida</p>
             </div>
-            <Textarea
-              placeholder="Bienvenido {user} a {server}! Ya somos {membercount} miembros."
-              value={cfg.message || ""}
-              onChange={(e) => set("message")(e.target.value)}
-              rows={4}
-              data-testid="textarea-welcome-message"
+            <Switch
+              checked={cfg.messageEnabled ?? true}
+              onCheckedChange={set("messageEnabled")}
+              data-testid="toggle-message-enabled"
             />
-            <p className="text-xs text-muted-foreground mt-1">
-              Variables disponibles: <code className="text-primary/80">{"{user}"}</code> <code className="text-primary/80">{"{username}"}</code> <code className="text-primary/80">{"{server}"}</code> <code className="text-primary/80">{"{membercount}"}</code> <code className="text-primary/80">{"{ordinal}"}</code> <code className="text-primary/80">{"{date}"}</code> <code className="text-primary/80">{"{time}"}</code> <code className="text-primary/80">{"{accountage}"}</code>
-            </p>
           </div>
+          {(cfg.messageEnabled ?? true) && (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <Label className="text-sm">Contenido del mensaje</Label>
+                <VariablesModal variables={WELCOME_VARIABLES} onInsert={(v) => setCfg((c: any) => ({ ...c, message: (c.message || "") + v }))} />
+              </div>
+              <Textarea
+                placeholder="Bienvenido {user} a {server}! Ya somos {membercount} miembros."
+                value={cfg.message || ""}
+                onChange={(e) => set("message")(e.target.value)}
+                rows={4}
+                data-testid="textarea-welcome-message"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Variables: <code className="text-primary/80">{"{user}"}</code> <code className="text-primary/80">{"{username}"}</code> <code className="text-primary/80">{"{server}"}</code> <code className="text-primary/80">{"{membercount}"}</code> <code className="text-primary/80">{"{ordinal}"}</code> <code className="text-primary/80">{"{date}"}</code> <code className="text-primary/80">{"{time}"}</code> <code className="text-primary/80">{"{accountage}"}</code>
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Embed */}
         <div className="bg-card border border-card-border rounded-xl p-6 space-y-5">
           <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-sm">Embed</h3>
+            <div>
+              <h3 className="font-semibold text-sm">Embed</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">Mensaje enriquecido con titulo, descripcion y color</p>
+            </div>
             <Switch checked={cfg.embedEnabled} onCheckedChange={set("embedEnabled")} data-testid="toggle-embed" />
           </div>
           {cfg.embedEnabled && (
             <>
+              <div>
+                <Label className="text-sm mb-1.5 block">Autor</Label>
+                <Input placeholder="Nombre del autor (opcional)" value={cfg.embedAuthor || ""} onChange={(e) => set("embedAuthor")(e.target.value)} />
+              </div>
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <Label className="text-sm">Titulo del embed</Label>
@@ -226,11 +249,7 @@ export default function WelcomePage() {
               <div>
                 <Label className="text-sm mb-1.5 block">Thumbnail (URL)</Label>
                 <Input placeholder="https://..." value={cfg.embedThumbnail || ""} onChange={(e) => set("embedThumbnail")(e.target.value)} />
-                <p className="text-xs text-muted-foreground mt-1">Imagen pequena en la esquina superior derecha del embed.</p>
-              </div>
-              <div>
-                <Label className="text-sm mb-1.5 block">Autor del embed</Label>
-                <Input placeholder="Nombre del autor" value={cfg.embedAuthor || ""} onChange={(e) => set("embedAuthor")(e.target.value)} />
+                <p className="text-xs text-muted-foreground mt-1">Imagen pequena en la esquina superior derecha.</p>
               </div>
               <div className="flex items-center justify-between">
                 <div>
@@ -246,7 +265,10 @@ export default function WelcomePage() {
         {/* DM */}
         <div className="bg-card border border-card-border rounded-xl p-6 space-y-5">
           <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-sm">Mensaje privado (DM)</h3>
+            <div>
+              <h3 className="font-semibold text-sm">Mensaje privado (DM)</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">Envia un mensaje directo al nuevo miembro</p>
+            </div>
             <Switch checked={cfg.dmEnabled} onCheckedChange={set("dmEnabled")} data-testid="toggle-dm" />
           </div>
           {cfg.dmEnabled && (
@@ -262,14 +284,17 @@ export default function WelcomePage() {
 
         {/* AutoRoles */}
         <div className="bg-card border border-card-border rounded-xl p-6 space-y-4">
-          <h3 className="font-semibold text-sm">AutoRoles</h3>
-          <p className="text-xs text-muted-foreground">IDs de roles separados por coma que se asignaran automaticamente al unirse.</p>
+          <div>
+            <h3 className="font-semibold text-sm">AutoRoles</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">Roles que se asignaran automaticamente al unirse</p>
+          </div>
           <Input
             placeholder="111222333444555666, 444555666777888999"
             value={Array.isArray(cfg.autoRoleIds) ? cfg.autoRoleIds.join(", ") : (cfg.autoRoleIds || "")}
             onChange={(e) => set("autoRoleIds")(e.target.value.split(",").map((s: string) => s.trim()).filter(Boolean))}
             data-testid="input-autoroles"
           />
+          <p className="text-xs text-muted-foreground">IDs de roles separados por coma.</p>
         </div>
 
         {/* Welcome Card */}
@@ -284,6 +309,14 @@ export default function WelcomePage() {
 
           {cfg.cardEnabled && (
             <>
+              <div>
+                <Label className="text-sm mb-1.5 block">Texto de bienvenida en la tarjeta</Label>
+                <Input
+                  placeholder="Bienvenido al servidor"
+                  value={cfg.cardWelcomeText || ""}
+                  onChange={(e) => set("cardWelcomeText")(e.target.value)}
+                />
+              </div>
               <div>
                 <Label className="text-sm mb-1.5 block">Imagen de fondo (URL)</Label>
                 <Input
@@ -323,31 +356,20 @@ export default function WelcomePage() {
                   </div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-sm mb-1.5 block">Color del borde del avatar (hex)</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="#6366f1"
-                      value={cfg.cardAvatarBorderColor || ""}
-                      onChange={(e) => set("cardAvatarBorderColor")(e.target.value)}
-                    />
-                    <div className="w-10 h-10 rounded-full border-2 border-border flex-shrink-0"
-                      style={{ borderColor: cfg.cardAvatarBorderColor || "#6366f1" }}
-                    />
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-sm mb-1.5 block">Texto de bienvenida personalizado</Label>
+              <div>
+                <Label className="text-sm mb-1.5 block">Color del borde del avatar (hex)</Label>
+                <div className="flex gap-2">
                   <Input
-                    placeholder="Bienvenido al servidor"
-                    value={cfg.cardWelcomeText || ""}
-                    onChange={(e) => set("cardWelcomeText")(e.target.value)}
+                    placeholder="#6366f1"
+                    value={cfg.cardAvatarBorderColor || ""}
+                    onChange={(e) => set("cardAvatarBorderColor")(e.target.value)}
+                  />
+                  <div className="w-10 h-10 rounded-full border-4 border-border flex-shrink-0"
+                    style={{ borderColor: cfg.cardAvatarBorderColor || "#6366f1" }}
                   />
                 </div>
               </div>
 
-              {/* Live card preview */}
               <div>
                 <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Vista previa de la tarjeta</p>
                 <div

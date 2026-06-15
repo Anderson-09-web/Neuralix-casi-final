@@ -22,6 +22,10 @@ author = "agent"
 task = "workflow.run"
 args = "Start application"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Backend API"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -33,6 +37,18 @@ outputType = "webview"
 task = "shell.exec"
 args = "pkill -f 'vite.*vite.config.ts' 2>/dev/null; sleep 1; pnpm --filter @workspace/neuralix run dev"
 waitForPort = 5000
+
+[[workflows.workflow]]
+name = "Backend API"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "sleep 3 && fuser -k 8080/tcp 2>/dev/null; sleep 1; pnpm --filter @workspace/api-server run dev"
+waitForPort = 8080
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [agent]
 stack = "BEST_EFFORT_FALLBACK"
@@ -49,6 +65,10 @@ externalPort = 80
 [[ports]]
 localPort = 23133
 externalPort = 3000
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
 
 [userenv]
 

@@ -8,16 +8,21 @@ const router = Router();
 const DISCORD_API = "https://discord.com/api/v10";
 
 const WELCOME_ALLOWED = new Set([
-  "enabled", "channelId", "message",
+  "enabled", "channelId",
+  "messageEnabled", "message",
   "embedEnabled", "embedColor", "embedTitle", "embedDescription", "embedFooter", "embedImage",
+  "embedThumbnail", "embedAuthor", "embedTimestamp",
   "imageEnabled", "dmEnabled", "dmMessage", "autoRoleIds",
   "cardEnabled", "cardBackground", "cardBackgroundUrl", "cardTextColor",
+  "cardAvatarBorderColor", "cardWelcomeText",
 ]);
 
 const GOODBYE_ALLOWED = new Set([
-  "enabled", "channelId", "message",
+  "enabled", "channelId",
+  "messageEnabled", "message",
   "embedEnabled", "embedColor", "embedTitle", "embedDescription", "embedFooter", "embedImage", "imageEnabled",
   "cardEnabled", "cardBackground", "cardBackgroundUrl", "cardTextColor",
+  "cardAvatarBorderColor", "cardGoodbyeText",
 ]);
 
 function whitelistBody(body: Record<string, unknown>, allowed: Set<string>) {
@@ -87,7 +92,8 @@ function buildDiscordPayload(cfg: typeof welcomeConfigsTable.$inferSelect, opts:
 }) {
   const payload: Record<string, unknown> = {};
 
-  if (cfg.message) {
+  const messageEnabled = (cfg as any).messageEnabled !== false;
+  if (messageEnabled && cfg.message) {
     payload.content = processTemplate(cfg.message, opts);
   }
 
