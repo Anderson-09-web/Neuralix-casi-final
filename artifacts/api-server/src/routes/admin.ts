@@ -3,6 +3,7 @@ import { db, usersTable, guildConfigsTable, ticketsTable, licensesTable, blackli
 import { eq, and, count, desc, sql } from "drizzle-orm";
 import { requireOwner, requireAdminAccess } from "../lib/auth";
 import type { AdminPermission } from "@workspace/db";
+import { getAppDomain } from "../app-config";
 
 const router = Router();
 
@@ -316,19 +317,11 @@ router.post("/admin/blacklist/sweep", requireOwner, async (_req, res) => {
 
 // ─── Links / Platform URL ────────────────────────────────────────────────────
 router.get("/admin/links", requireOwner, async (_req, res) => {
-  const { getCustomBaseUrl, getSupportServerInvite, getAppealServerId, getAppealServerInvite } = await import("../app-config");
+  const { getSupportServerInvite, getAppealServerId, getAppealServerInvite } = await import("../app-config");
   const { db: dbI, botSettingsTable } = await import("@workspace/db");
   const [settings] = await dbI.select().from(botSettingsTable).limit(1);
-  const custom = getCustomBaseUrl();
 
-  function getAutoAppDomain(): string | null {
-    if (process.env.REPLIT_APP_URL) return process.env.REPLIT_APP_URL.replace(/^https?:\/\//, "").replace(/\/$/, "");
-    const domains = process.env.REPLIT_DOMAINS?.split(",").map((d) => d.trim()).filter(Boolean);
-    if (domains?.length) return domains[0];
-    if (process.env.REPLIT_DEV_DOMAIN) return process.env.REPLIT_DEV_DOMAIN;
-    return null;
-  }
-  const domain = custom ? custom.replace(/^https?:\/\//, "").replace(/\/$/, "") : getAutoAppDomain();
+  const domain = getAppDomain();
   const base = domain ? `https://${domain}` : null;
   const clientId = process.env.DISCORD_CLIENT_ID || "";
   const redirectUri = base ? `${base}/api/auth/discord/callback` : null;

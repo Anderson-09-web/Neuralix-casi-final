@@ -1,45 +1,7 @@
 import { Router } from "express";
-import { requireAuth } from "../lib/auth";
+import { getAppDomain } from "../app-config";
 
 const router = Router();
-
-function getAppDomain(): string | null {
-  if (process.env.APP_URL) return process.env.APP_URL.replace(/^https?:\/\//, "").replace(/\/$/, "");
-  if (process.env.REPLIT_APP_URL) return process.env.REPLIT_APP_URL.replace(/^https?:\/\//, "").replace(/\/$/, "");
-  const domains = process.env.REPLIT_DOMAINS?.split(",").map((d) => d.trim()).filter(Boolean);
-  if (domains?.length) return domains[0];
-  return null;
-}
-
-function buildLinks() {
-  const domain = getAppDomain();
-  const clientId = process.env.DISCORD_CLIENT_ID || "";
-  const redirectUri = domain
-    ? `https://${domain}/api/auth/discord/callback`
-    : `http://localhost:8080/api/auth/discord/callback`;
-  const oauthUrl = clientId
-    ? `https://discord.com/api/oauth2/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=identify%20email%20guilds`
-    : "";
-  const botInvite = clientId
-    ? `https://discord.com/api/oauth2/authorize?client_id=${clientId}&permissions=8&scope=bot%20applications.commands`
-    : "";
-  return {
-    domain: domain ? `https://${domain}` : "http://localhost:8080",
-    redirectUri,
-    oauthUrl,
-    botInvite,
-    clientIdConfigured: !!process.env.DISCORD_CLIENT_ID,
-    clientSecretConfigured: !!process.env.DISCORD_CLIENT_SECRET,
-    botTokenConfigured: !!process.env.DISCORD_BOT_TOKEN,
-  };
-}
-
-// ─── JSON endpoint for admin panel ───────────────────────────────────────────
-router.get("/admin/links", requireAuth, (req, res) => {
-  const user = (req as any).user;
-  if (!user?.isOwner) { res.status(403).json({ error: "Forbidden" }); return; }
-  res.json(buildLinks());
-});
 
 router.get("/setup", (_req, res) => {
   const domain = getAppDomain();

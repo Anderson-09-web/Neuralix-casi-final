@@ -12,6 +12,35 @@ export function getCustomBaseUrl(): string | null {
   return _customBaseUrl;
 }
 
+/**
+ * Single source of truth for the application's public domain.
+ * Priority: APP_URL env → custom DB URL (loaded at startup) → Replit deploy URL
+ *           → Replit domains list → Replit dev domain → null
+ *
+ * Returns the bare hostname (no protocol, no trailing slash), e.g.
+ *   "myapp.replit.app"  or  "example.com"
+ */
+export function getAppDomain(): string | null {
+  // 1. Explicit APP_URL env overrides everything
+  if (process.env.APP_URL) {
+    return process.env.APP_URL.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  }
+  // 2. Admin-configured custom base URL (populated from DB at startup)
+  if (_customBaseUrl) {
+    return _customBaseUrl.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  }
+  // 3. Replit deployment URL
+  if (process.env.REPLIT_APP_URL) {
+    return process.env.REPLIT_APP_URL.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  }
+  // 4. First domain from the Replit domains list
+  const domains = process.env.REPLIT_DOMAINS?.split(",").map((d) => d.trim()).filter(Boolean);
+  if (domains?.length) return domains[0];
+  // 5. Replit dev domain
+  if (process.env.REPLIT_DEV_DOMAIN) return process.env.REPLIT_DEV_DOMAIN;
+  return null;
+}
+
 export function setCustomBaseUrl(url: string | null) {
   _customBaseUrl = url ? url.replace(/\/$/, "") : null;
 }

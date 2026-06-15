@@ -3,6 +3,7 @@ import axios from "axios";
 import { db, verificationConfigsTable, verifiedUsersTable, guildConfigsTable, guildWebhooksTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
+import { getAppDomain } from "../app-config";
 
 const router = Router();
 
@@ -23,13 +24,6 @@ function whitelistBody(body: Record<string, unknown>) {
     if (ALLOWED_FIELDS.has(k)) safe[k] = v;
   }
   return safe;
-}
-
-function getAppDomain(): string | null {
-  if (process.env.REPLIT_APP_URL) return process.env.REPLIT_APP_URL.replace(/\/$/, "");
-  const domains = process.env.REPLIT_DOMAINS?.split(",").map((d) => d.trim()).filter(Boolean);
-  if (domains?.length) return `https://${domains[0]}`;
-  return null;
 }
 
 // ─── Verification config ──────────────────────────────────────────────────────
@@ -87,8 +81,9 @@ router.post("/guilds/:guildId/verification/send-panel", requireAuth, async (req,
     const channelId = req.body.channelId || cfg.panelChannelId;
     if (!channelId) { res.status(400).json({ ok: false, error: "Selecciona un canal donde enviar el panel" }); return; }
 
-    const appDomain = getAppDomain() || "https://tu-dominio.com";
-    const verifyUrl = cfg.customVerifyUrl || `${appDomain}/verify?guild=${guildId}`;
+    const rawDomain = getAppDomain();
+    const appBase = rawDomain ? `https://${rawDomain}` : "https://tu-dominio.com";
+    const verifyUrl = cfg.customVerifyUrl || `${appBase}/verify?guild=${guildId}`;
 
     const hexToInt = (hex: string) => parseInt((hex || "#5865F2").replace("#", ""), 16);
 

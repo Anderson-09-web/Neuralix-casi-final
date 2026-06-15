@@ -3,32 +3,12 @@ import axios from "axios";
 import { db, usersTable, secondaryAdminsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { signToken, requireAuth } from "../lib/auth";
+import { getAppDomain } from "../app-config";
 
 const router = Router();
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID!;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET!;
-
-function getAppDomain(): string | null {
-  // 1. Explicit APP_URL overrides everything (use this for Vercel/custom deployments)
-  if (process.env.APP_URL) {
-    return process.env.APP_URL.replace(/^https?:\/\//, "").replace(/\/$/, "");
-  }
-  // 2. Admin-configured custom base URL
-  const { getCustomBaseUrl } = require("../app-config");
-  const custom = getCustomBaseUrl();
-  if (custom) return custom.replace(/^https?:\/\//, "").replace(/\/$/, "");
-  // 3. Replit deployment URL
-  if (process.env.REPLIT_APP_URL) {
-    return process.env.REPLIT_APP_URL.replace(/^https?:\/\//, "").replace(/\/$/, "");
-  }
-  // 4. Replit domains list
-  const domains = process.env.REPLIT_DOMAINS?.split(",").map((d) => d.trim()).filter(Boolean);
-  if (domains?.length) return domains[0];
-  // 5. Dev domain
-  if (process.env.REPLIT_DEV_DOMAIN) return process.env.REPLIT_DEV_DOMAIN;
-  return null;
-}
 
 function getRedirectUri(): string {
   const domain = getAppDomain();
