@@ -483,6 +483,10 @@ export default function AdminPage() {
   const [linksCopied, setLinksCopied] = useState<string | null>(null);
   const [customUrlInput, setCustomUrlInput] = useState("");
   const [customUrlSaving, setCustomUrlSaving] = useState(false);
+  const [supportInviteInput, setSupportInviteInput] = useState("");
+  const [appealServerIdInput, setAppealServerIdInput] = useState("");
+  const [appealInviteInput, setAppealInviteInput] = useState("");
+  const [linksSaving, setLinksSaving] = useState(false);
 
   const fetchLinks = useCallback(async () => {
     setLinksLoading(true);
@@ -492,6 +496,9 @@ export default function AdminPage() {
         const data = await res.json();
         setLinksData(data);
         setCustomUrlInput(data.customBaseUrl || "");
+        setSupportInviteInput(data.supportServerInvite || "");
+        setAppealServerIdInput(data.appealServerId || "");
+        setAppealInviteInput(data.appealServerInvite || "");
       }
     } catch {} finally { setLinksLoading(false); }
   }, []);
@@ -514,6 +521,30 @@ export default function AdminPage() {
       }
     } catch { toast({ title: "Error de conexion", variant: "destructive" }); }
     setCustomUrlSaving(false);
+  };
+
+  const savePlatformLinks = async () => {
+    setLinksSaving(true);
+    try {
+      const res = await fetch("/api/admin/links", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          supportServerInvite: supportInviteInput.trim() || null,
+          appealServerId: appealServerIdInput.trim() || null,
+          appealServerInvite: appealInviteInput.trim() || null,
+        }),
+      });
+      if (res.ok) {
+        toast({ title: "Links de plataforma guardados" });
+        await fetchLinks();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        toast({ title: d.error || "Error al guardar", variant: "destructive" });
+      }
+    } catch { toast({ title: "Error de conexion", variant: "destructive" }); }
+    setLinksSaving(false);
   };
 
   useEffect(() => {
@@ -1670,6 +1701,48 @@ export default function AdminPage() {
                       URL personalizada activa: <span className="font-mono">{linksData.customBaseUrl}</span>
                     </p>
                   )}
+                </div>
+
+                {/* Links de plataforma (soporte / apelaciones) */}
+                <div className="rounded-xl border border-border bg-secondary/20 p-4 space-y-3">
+                  <div>
+                    <p className="text-sm font-semibold">Links de plataforma</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Invite del servidor de soporte, ID y link del servidor de apelaciones. Se usan en mensajes del bot y en la UI.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">Invite servidor de soporte (ej: discord.gg/xxxx)</label>
+                      <input
+                        className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm font-mono shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                        placeholder="discord.gg/wukr8apdQq"
+                        value={supportInviteInput}
+                        onChange={(e) => setSupportInviteInput(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">ID servidor de apelaciones</label>
+                      <input
+                        className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm font-mono shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                        placeholder="1493023527887048724"
+                        value={appealServerIdInput}
+                        onChange={(e) => setAppealServerIdInput(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">Invite servidor de apelaciones (URL completa)</label>
+                      <input
+                        className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm font-mono shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                        placeholder="https://discord.gg/wukr8apdQq"
+                        value={appealInviteInput}
+                        onChange={(e) => setAppealInviteInput(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <Button size="sm" onClick={savePlatformLinks} disabled={linksSaving}>
+                    {linksSaving ? "Guardando..." : "Guardar links"}
+                  </Button>
                 </div>
 
                 {/* Dominio activo */}

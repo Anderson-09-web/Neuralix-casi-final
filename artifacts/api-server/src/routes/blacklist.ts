@@ -7,8 +7,8 @@ import axios from "axios";
 
 const router = Router();
 
-const APPEAL_SERVER_ID = "1493023527887048724";
-const APPEAL_INVITE = `https://discord.gg/wukr8apdQq`;
+function APPEAL_SERVER_ID() { const { getAppealServerId } = require("../app-config"); return getAppealServerId(); }
+function APPEAL_INVITE()    { const { getAppealServerInvite } = require("../app-config"); return getAppealServerInvite(); }
 const DISCORD_API = "https://discord.com/api/v10";
 
 async function log(actor: any, action: string, target?: string, details?: Record<string, any>) {
@@ -61,7 +61,7 @@ async function sweepUserFromAllGuilds(userId: string, reason: string, evidence?:
     if (dmRes.data?.id) {
       const embed: Record<string, any> = {
         title: "Has sido incluido en la Blacklist Global de Neuralix",
-        description: `Fuiste baneado/expulsado de todos los servidores protegidos por **Neuralix**.\n\n**Razon:** ${reason}${evidenceText}\n\n**¿Crees que es un error?**\nPuedes apelar uniendote a nuestro servidor de apelaciones:\n${APPEAL_INVITE}\n\n**ID Servidor de Apelaciones:** \`${APPEAL_SERVER_ID}\``,
+        description: `Fuiste baneado/expulsado de todos los servidores protegidos por **Neuralix**.\n\n**Razon:** ${reason}${evidenceText}\n\n**¿Crees que es un error?**\nPuedes apelar uniendote a nuestro servidor de apelaciones:\n${APPEAL_INVITE()}\n\n**ID Servidor de Apelaciones:** \`${APPEAL_SERVER_ID()}\``,
         color: 0xED4245,
         footer: { text: "Neuralix Blacklist Global" },
         timestamp: new Date().toISOString(),
@@ -164,8 +164,8 @@ router.get("/blacklist/check/:discordId", async (req, res) => {
     durationDays: entry.durationDays ?? null,
     expiresAt: entry.expiresAt ?? null,
     permanent: !entry.expiresAt,
-    appealServerId: APPEAL_SERVER_ID,
-    appealInvite: APPEAL_INVITE,
+    appealServerId: APPEAL_SERVER_ID(),
+    appealInvite: APPEAL_INVITE(),
     // Live Discord user info
     discordUsername: discordUser?.global_name || discordUser?.username || entry.username,
     discordGlobalName: discordUser?.global_name || null,
@@ -178,7 +178,7 @@ router.get("/blacklist/check/:discordId", async (req, res) => {
 });
 
 router.get("/blacklist/appeal-server", async (_req, res) => {
-  res.json({ serverId: APPEAL_SERVER_ID, invite: APPEAL_INVITE });
+  res.json({ serverId: APPEAL_SERVER_ID(), invite: APPEAL_INVITE() });
 });
 
 router.get("/blacklist", requireAdminAccess("manage_blacklist"), async (_req, res) => {
@@ -255,5 +255,4 @@ router.delete("/blacklist/:userId", requireAdminAccess("manage_blacklist"), asyn
   res.status(204).send();
 });
 
-export { APPEAL_SERVER_ID, APPEAL_INVITE };
 export default router;

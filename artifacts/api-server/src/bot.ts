@@ -383,8 +383,8 @@ function applyTicketVars(template: string, vars: { userId: string; username: str
 
 // ─── Global Blacklist Sweep ────────────────────────────────────────────────────
 
-const BLACKLIST_APPEAL_SERVER_ID = "1493023527887048724";
-const BLACKLIST_APPEAL_INVITE    = "https://discord.gg/wukr8apdQq";
+function BLACKLIST_APPEAL_SERVER_ID() { const { getAppealServerId } = require("./app-config"); return getAppealServerId(); }
+function BLACKLIST_APPEAL_INVITE()    { const { getAppealServerInvite } = require("./app-config"); return getAppealServerInvite(); }
 
 function isBlacklistImageUrl(url: string): boolean {
   return /^https?:\/\/.+\.(png|jpg|jpeg|gif|webp)(\?.*)?$/i.test(url);
@@ -406,7 +406,7 @@ async function dmUserBlacklistNotice(userId: string, reason: string, botToken: s
 
     const embed: Record<string, any> = {
       title: "Has sido incluido en la Blacklist Global de Neuralix",
-      description: `Fuiste expulsado/baneado de todos los servidores protegidos por **Neuralix**.\n\n**Razon:** ${reason}${evidenceText}\n\n**¿Crees que es un error?**\nPuedes apelar uniendote a nuestro servidor:\n${BLACKLIST_APPEAL_INVITE}\n\n**ID del servidor de apelaciones:** \`${BLACKLIST_APPEAL_SERVER_ID}\``,
+      description: `Fuiste expulsado/baneado de todos los servidores protegidos por **Neuralix**.\n\n**Razon:** ${reason}${evidenceText}\n\n**¿Crees que es un error?**\nPuedes apelar uniendote a nuestro servidor:\n${BLACKLIST_APPEAL_INVITE()}\n\n**ID del servidor de apelaciones:** \`${BLACKLIST_APPEAL_SERVER_ID()}\``,
       color: 0xED4245,
       footer: { text: "Neuralix Blacklist Global" },
       timestamp: new Date().toISOString(),
@@ -438,7 +438,7 @@ async function runBlacklistSweep(client: Client, botToken: string) {
           if (action === "kick") {
             await member.kick(`Blacklist Global: ${entry.reason}`);
           } else {
-            await member.ban({ reason: `Blacklist Global: ${entry.reason} | Apelaciones: ${BLACKLIST_APPEAL_INVITE}` });
+            await member.ban({ reason: `Blacklist Global: ${entry.reason} | Apelaciones: ${BLACKLIST_APPEAL_INVITE()}` });
           }
 
           const [logCfg] = await db.select().from(logsConfigsTable).where(eq(logsConfigsTable.guildId, guild.id));
@@ -446,7 +446,7 @@ async function runBlacklistSweep(client: Client, botToken: string) {
           if (logChannel) {
             await sendLog(logChannel, {
               title: `Blacklist Global — Usuario ${action === "kick" ? "Expulsado" : "Baneado"} (Sincronizacion)`,
-              description: `**Usuario:** \`${entry.username}\` (\`${entry.userId}\`)\n**Razon:** ${entry.reason}\n**Accion:** ${action}\n**Servidor de apelaciones:** \`${BLACKLIST_APPEAL_SERVER_ID}\``,
+              description: `**Usuario:** \`${entry.username}\` (\`${entry.userId}\`)\n**Razon:** ${entry.reason}\n**Accion:** ${action}\n**Servidor de apelaciones:** \`${BLACKLIST_APPEAL_SERVER_ID()}\``,
               color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix Blacklist Global" },
             }, botToken);
           }
@@ -562,12 +562,12 @@ export function startBot(): Client | undefined {
           if (blacklistAction === "kick") {
             await (member as GuildMember).kick(`Blacklist Global: ${blacklistEntry.reason}`);
           } else {
-            await (member as GuildMember).ban({ reason: `Blacklist Global: ${blacklistEntry.reason} | Apelaciones: ${BLACKLIST_APPEAL_INVITE}` });
+            await (member as GuildMember).ban({ reason: `Blacklist Global: ${blacklistEntry.reason} | Apelaciones: ${BLACKLIST_APPEAL_INVITE()}` });
           }
           if (secChannel || logChannel) {
             await sendLog((secChannel || logChannel)!, {
               title: `Blacklist Global — Usuario ${blacklistAction === "kick" ? "Expulsado" : "Baneado"}`,
-              description: `**Usuario:** \`${blacklistEntry.username}\` (\`${userId}\`)\n**Razon:** ${blacklistEntry.reason}\n**Accion:** ${blacklistAction}\n**Moderador original:** ${blacklistEntry.addedByUsername ?? "Sistema"}\n**Servidor de apelaciones:** \`${BLACKLIST_APPEAL_SERVER_ID}\``,
+              description: `**Usuario:** \`${blacklistEntry.username}\` (\`${userId}\`)\n**Razon:** ${blacklistEntry.reason}\n**Accion:** ${blacklistAction}\n**Moderador original:** ${blacklistEntry.addedByUsername ?? "Sistema"}\n**Servidor de apelaciones:** \`${BLACKLIST_APPEAL_SERVER_ID()}\``,
               color: 0xED4245, timestamp: new Date().toISOString(), footer: { text: "Neuralix Blacklist Global" },
             }, botToken);
           }

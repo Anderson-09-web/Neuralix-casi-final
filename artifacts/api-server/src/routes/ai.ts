@@ -5,14 +5,14 @@ import { requireAuth } from "../lib/auth";
 
 const router = Router();
 
-const DISCORD_SUPPORT = "discord.gg/wukr8apdQq";
-const ADMIN_FALLBACK = `Para esto necesitas ayuda de un administrador. Puedes contactar soporte en ${DISCORD_SUPPORT} o abrir un ticket desde el panel de soporte del dashboard.`;
+function DISCORD_SUPPORT() { const { getSupportServerInvite } = require("../app-config"); return getSupportServerInvite(); }
+function ADMIN_FALLBACK() { return `Para esto necesitas ayuda de un administrador. Puedes contactar soporte en ${DISCORD_SUPPORT()} o abrir un ticket desde el panel de soporte del dashboard.`; }
 
 // ─── Respuestas por plan ─────────────────────────────────────────────────────
-const RESPONSES: Record<string, Record<string, string>> = {
+function getResponses(): Record<string, Record<string, string>> { const sup = DISCORD_SUPPORT(); return {
   free: {
-    soporte: `Para soporte tecnico crea un ticket desde la seccion "Soporte" del dashboard o unete a ${DISCORD_SUPPORT}`,
-    premium: `Neuralix Premium incluye IA avanzada, backups ilimitados y proteccion AntiNuke. Activa tu licencia en la seccion Premium o contactanos en ${DISCORD_SUPPORT}`,
+    soporte: `Para soporte tecnico crea un ticket desde la seccion "Soporte" del dashboard o unete a ${sup}`,
+    premium: `Neuralix Premium incluye IA avanzada, backups ilimitados y proteccion AntiNuke. Activa tu licencia en la seccion Premium o contactanos en ${sup}`,
     ticket: `Abre un ticket desde la seccion "Soporte" del menu lateral. Escribe tu asunto y el equipo te respondera.`,
     dashboard: "El dashboard te permite gestionar todos los sistemas de tu servidor. Inicia sesion con Discord y selecciona tu servidor.",
     antiraid: `Para configurar AntiRaid:
@@ -76,10 +76,10 @@ Plan Free: 1 backup maximo.`,
 5. Activa "AntiFlood" para mensajes demasiado rapidos
 6. Haz clic en "Guardar"`,
     default: `Soy el asistente de Neuralix. Puedo ayudarte a configurar: AntiRaid, Verificacion, Tickets, Logs, Backups, Bienvenidas, Sorteos, Automod.
-Si necesitas ayuda mas avanzada, un administrador puede asistirte en ${DISCORD_SUPPORT}`,
+Si necesitas ayuda mas avanzada, un administrador puede asistirte en ${sup}`,
     restrict: `Esta funcion requiere plan Plus o superior. Puedo explicarte como configurarlo manualmente — pregunta "como configuro [modulo]".
-Si necesitas asistencia adicional, un administrador puede ayudarte en ${DISCORD_SUPPORT}`,
-    admin: ADMIN_FALLBACK,
+Si necesitas asistencia adicional, un administrador puede ayudarte en ${sup}`,
+    admin: ADMIN_FALLBACK(),
   },
   plus: {
     antiraid: `Para activar AntiRaid (plan Plus):
@@ -152,8 +152,8 @@ Si necesitas asistencia adicional, un administrador puede ayudarte en ${DISCORD_
 6. Todas las acciones pueden ser: Advertencia, Timeout, Kick o Ban`,
     premium: "Tienes plan Plus activo. Incluye: IA avanzada, hasta 5 backups, exportar JSON, soporte prioritario.",
     default: `Soy Neuralix AI (plan Plus). Pregunta sobre: AntiRaid, Verificacion, Tickets, Logs, Backups, Bienvenidas, Sorteos, AutoMod.
-Si hay algo que no puedo resolver, un administrador puede ayudarte en ${DISCORD_SUPPORT}`,
-    admin: ADMIN_FALLBACK,
+Si hay algo que no puedo resolver, un administrador puede ayudarte en ${sup}`,
+    admin: ADMIN_FALLBACK(),
   },
   pro: {
     antiraid: `Con plan Pro tienes AntiNuke completo:
@@ -182,13 +182,13 @@ Si hay algo que no puedo resolver, un administrador puede ayudarte en ${DISCORD_
 3. Auto-finalizacion garantizada
 4. Ve al panel "Sorteos" para gestionar todos los sorteos activos y pasados`,
     default: "Soy Neuralix AI Pro. Tengo acceso a todas las funciones avanzadas. Pregunta lo que necesites.",
-    admin: ADMIN_FALLBACK,
+    admin: ADMIN_FALLBACK(),
   },
   ultra: {
     default: "Soy Neuralix AI Ultra. Puedo configurar automaticamente los sistemas de tu servidor. Escribe 'activa el antiraid', 'configura la verificacion', 'activa los logs' o 'activa los tickets'.",
-    admin: ADMIN_FALLBACK,
+    admin: ADMIN_FALLBACK(),
   },
-};
+}; }
 
 function detectIntent(msg: string): string {
   const lower = msg.toLowerCase();
@@ -342,7 +342,7 @@ router.post("/guilds/:guildId/ai/analyze", requireAuth, async (req, res) => {
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 const GROQ_MODEL = "llama-3.3-70b-versatile";
 
-const SYSTEM_PROMPT = `Eres el asistente IA de Neuralix, una plataforma enterprise de gestion de bots de Discord. Respondes SIEMPRE en español, de forma concisa y profesional. Solo ayudas con temas relacionados a Neuralix y la configuracion de servidores Discord. Si el usuario pregunta algo fuera de scope (politica, hackeo, adulto, etc.) lo rechazas amablemente. Modulos disponibles: AntiRaid (AntiJoin, AntiAlt, AntiBot, AntiSpam, AntiFlood, AntiLinks, AntiWebhook, AntiNuke), Verificacion (AntiVPN, AntiProxy, AntiAlt), Tickets, Logs, Backups, Bienvenidas, Despedidas, Sorteos, Auto-Roles, Comandos Personalizados, Webhooks personalizados. Para soporte adicional: ${DISCORD_SUPPORT}`;
+function getSystemPrompt() { return `Eres el asistente IA de Neuralix, una plataforma enterprise de gestion de bots de Discord. Respondes SIEMPRE en español, de forma concisa y profesional. Solo ayudas con temas relacionados a Neuralix y la configuracion de servidores Discord. Si el usuario pregunta algo fuera de scope (politica, hackeo, adulto, etc.) lo rechazas amablemente. Modulos disponibles: AntiRaid (AntiJoin, AntiAlt, AntiBot, AntiSpam, AntiFlood, AntiLinks, AntiWebhook, AntiNuke), Verificacion (AntiVPN, AntiProxy, AntiAlt), Tickets, Logs, Backups, Bienvenidas, Despedidas, Sorteos, Auto-Roles, Comandos Personalizados, Webhooks personalizados. Para soporte adicional: ${DISCORD_SUPPORT()}`; }
 
 const GROQ_MODELS_FALLBACK = [
   "llama-3.3-70b-versatile",
@@ -356,7 +356,7 @@ async function callGroq(userMessage: string, guildContext: string): Promise<stri
   const body = (model: string) => ({
     model,
     messages: [
-      { role: "system", content: SYSTEM_PROMPT + (guildContext ? `\n\nContexto del servidor:\n${guildContext}` : "") },
+      { role: "system", content: getSystemPrompt() + (guildContext ? `\n\nContexto del servidor:\n${guildContext}` : "") },
       { role: "user", content: userMessage },
     ],
     max_tokens: 512,
@@ -408,7 +408,7 @@ router.post("/guilds/:guildId/ai/chat", requireAuth, async (req, res) => {
 
     if (isOutOfScope(message)) {
       res.json({
-        response: `No puedo ayudarte con ese tema. Estoy especializado en la configuracion del dashboard de Neuralix. Si necesitas ayuda adicional, un administrador puede asistirte en ${DISCORD_SUPPORT}`,
+        response: `No puedo ayudarte con ese tema. Estoy especializado en la configuracion del dashboard de Neuralix. Si necesitas ayuda adicional, un administrador puede asistirte en ${DISCORD_SUPPORT()}`,
         action: undefined,
         plan: "free",
       });
@@ -424,6 +424,7 @@ router.post("/guilds/:guildId/ai/chat", requireAuth, async (req, res) => {
     let response: string;
     let action: string | undefined;
 
+    const RESPONSES = getResponses();
     const planResponses = RESPONSES[effectivePlan] || RESPONSES.free;
     const plusResponses = RESPONSES.plus;
     const proResponses = RESPONSES.pro;
@@ -472,9 +473,9 @@ router.post("/guilds/:guildId/ai/chat", requireAuth, async (req, res) => {
 
     // Fallback to static responses
     if (intent === "admin") {
-      response = ADMIN_FALLBACK;
+      response = ADMIN_FALLBACK();
     } else {
-      response = planResponses[intent] || plusResponses[intent] || RESPONSES.free[intent] || planResponses.default || ADMIN_FALLBACK;
+      response = planResponses[intent] || plusResponses[intent] || RESPONSES.free[intent] || planResponses.default || ADMIN_FALLBACK();
     }
 
     res.json({ response, action, plan: effectivePlan });

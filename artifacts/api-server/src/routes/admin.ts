@@ -316,7 +316,7 @@ router.post("/admin/blacklist/sweep", requireOwner, async (_req, res) => {
 
 // ─── Links / Platform URL ────────────────────────────────────────────────────
 router.get("/admin/links", requireOwner, async (_req, res) => {
-  const { getCustomBaseUrl } = await import("../app-config");
+  const { getCustomBaseUrl, getSupportServerInvite, getAppealServerId, getAppealServerInvite } = await import("../app-config");
   const { db: dbI, botSettingsTable } = await import("@workspace/db");
   const [settings] = await dbI.select().from(botSettingsTable).limit(1);
   const custom = getCustomBaseUrl();
@@ -344,25 +344,43 @@ router.get("/admin/links", requireOwner, async (_req, res) => {
     clientSecretConfigured: !!process.env.DISCORD_CLIENT_SECRET,
     botTokenConfigured: !!process.env.DISCORD_BOT_TOKEN,
     groqKeyConfigured: !!process.env.GROQ_API_KEY,
+    supportServerInvite: settings?.supportServerInvite || getSupportServerInvite(),
+    appealServerId: settings?.appealServerId || getAppealServerId(),
+    appealServerInvite: settings?.appealServerInvite || getAppealServerInvite(),
   });
 });
 
 router.put("/admin/links", requireOwner, async (req, res) => {
   const actor = (req as any).user!;
-  const { customBaseUrl } = req.body as { customBaseUrl?: string };
+  const { customBaseUrl, supportServerInvite, appealServerId, appealServerInvite } = req.body as {
+    customBaseUrl?: string;
+    supportServerInvite?: string;
+    appealServerId?: string;
+    appealServerInvite?: string;
+  };
   const { db: dbI, botSettingsTable } = await import("@workspace/db");
-  const { setCustomBaseUrl } = await import("../app-config");
+  const { setCustomBaseUrl, setPlatformLinks } = await import("../app-config");
   try {
     const url = customBaseUrl?.trim() || null;
+    const values: Record<string, string | null> = { customBaseUrl: url };
+    if (supportServerInvite !== undefined) values.supportServerInvite = supportServerInvite.trim() || null;
+    if (appealServerId !== undefined) values.appealServerId = appealServerId.trim() || null;
+    if (appealServerInvite !== undefined) values.appealServerInvite = appealServerInvite.trim() || null;
+
     const [existing] = await dbI.select().from(botSettingsTable).limit(1);
     if (existing) {
-      await dbI.update(botSettingsTable).set({ customBaseUrl: url });
+      await dbI.update(botSettingsTable).set(values as any);
     } else {
-      await dbI.insert(botSettingsTable).values({ customBaseUrl: url });
+      await dbI.insert(botSettingsTable).values(values as any);
     }
     setCustomBaseUrl(url);
-    await log(actor, "update_platform_url", url || "(cleared)", { url });
-    res.json({ ok: true, customBaseUrl: url });
+    setPlatformLinks({
+      supportServerInvite: values.supportServerInvite,
+      appealServerId: values.appealServerId,
+      appealServerInvite: values.appealServerInvite,
+    });
+    await log(actor, "update_platform_links", url || "(cleared)", values);
+    res.json({ ok: true, ...values });
   } catch (err: any) {
     res.status(500).json({ error: err?.message || "Error interno" });
   }

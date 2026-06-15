@@ -31,7 +31,7 @@ function generateAiReply(subject: string, message: string): { content: string; p
 
   if (text.includes("premium") || text.includes("licencia") || text.includes("plan") || text.includes("pago") || text.includes("precio")) {
     return {
-      content: "Hola! Para activar Premium necesitas un codigo de licencia. Ve a la seccion **Premium** del dashboard de tu servidor e ingresa el codigo. Si aun no tienes un codigo, puedes obtenerlo en nuestro Discord: discord.gg/wukr8apdQq\n\nEn unos instantes alguien del soporte te ayudara con mas detalles.",
+      content: `Hola! Para activar Premium necesitas un codigo de licencia. Ve a la seccion **Premium** del dashboard de tu servidor e ingresa el codigo. Si aun no tienes un codigo, puedes obtenerlo en nuestro Discord: ${(require("../app-config") as any).getSupportServerInvite()}\n\nEn unos instantes alguien del soporte te ayudara con mas detalles.`,
       priority: "normal",
     };
   }
